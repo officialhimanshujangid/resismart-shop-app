@@ -58,6 +58,29 @@ export interface PartnerBusinessSummary {
   kind: PartnerKind | string;
 }
 
+/** One thing standing between this business and being found by a resident. */
+export interface PartnerVisibilityBlocker {
+  code: 'NOT_ACTIVE' | 'NOT_VERIFIED' | 'NO_LOCATION' | 'NO_SERVICE_MODES' | 'NO_CATEGORY';
+  /** Already in the proprietor's language — render it, do not re-word it. */
+  message: string;
+  /** The web route that fixes it, when one exists. Mapped to a screen here. */
+  href?: string;
+}
+
+/**
+ * Whether residents can find this business, decided by the server.
+ *
+ * Deliberately NOT re-derived from `business.status` and `verificationStatus`.
+ * This app did exactly that and got it wrong the same way the web panel did:
+ * that pair says nothing about a partner with no map pin or no service modes,
+ * and either one makes them invisible at every distance. `partnerVisibility()`
+ * sits next to the discovery gates it describes; this is its answer.
+ */
+export interface PartnerVisibilityReport {
+  discoverable: boolean;
+  blockers: PartnerVisibilityBlocker[];
+}
+
 export interface PartnerEntitlementsPayload {
   plan: PartnerPlan;
   /** Passed BOTH gate 1 (bought) and gate 2 (switched on). */
@@ -70,6 +93,13 @@ export interface PartnerEntitlementsPayload {
   business?: PartnerBusinessSummary;
   /** Only sent to people who can act on it — admins and holders of SETTINGS. */
   usage?: PartnerUsageRow[];
+  visibility?: PartnerVisibilityReport;
+  /**
+   * Whether ResiSmart collects identity documents at all — the owner's switch.
+   * Optional so a response from a server that predates it is still readable;
+   * every reader treats anything but an explicit `false` as "yes".
+   */
+  kycRequired?: boolean;
 }
 
 // ----------------------------------------------------------------- onboarding
@@ -88,6 +118,12 @@ export interface OnboardingStatus {
   status: PartnerStatus | string;
   verificationStatus?: PartnerVerificationStatus | string;
   submittedAt?: string;
+  /**
+   * Whether this installation asks for documents. When false the server has
+   * ALSO stopped requiring one, so step 5 must stop asking — a required-looking
+   * upload that blocks nothing is worse than no upload at all.
+   */
+  kycRequired?: boolean;
 }
 
 export interface Step1Payload {
@@ -238,6 +274,24 @@ export const partnerApi = {
         '/partners/me/partner',
       )
       .then((r) => r.data),
+
+  /**
+   * Change the business profile after it has gone live.
+   *
+   * NOT `saveStep`. That endpoint 409s the moment a partner is ACTIVE
+   * (`EDITABLE_ONBOARDING_STATUSES` is DRAFT/PENDING/REJECTED), which is right
+   * — the wizard is for registering, not for running a business — but it left a
+   * live partner with no way to change where they work. `PUT /me/partner` is
+   * the one that stays open, and its `pickDetails` already accepts these.
+   *
+   * `serviceRadiusKm` is required by the server exactly when `serviceModes`
+   * includes AT_CUSTOMER, and REFUSED when it does not. Send accordingly.
+   */
+  updateMe: (body: {
+    serviceModes?: PartnerServiceMode[];
+    serviceRadiusKm?: number;
+  }) =>
+    apiClient.put<{ message: string; partner: MyPartner }>('/partners/me/partner', body).then((r) => r.data),
 
   /**
    * The one call the whole app hangs off. Ungated server-side on purpose — it is

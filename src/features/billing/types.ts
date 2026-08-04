@@ -233,6 +233,20 @@ export interface InvoiceDraft {
   partySnapshot: DocumentPartySnapshot;
   lines: DraftLineInput[];
   notes?: string;
+  /**
+   * The job or order this bill is FOR, when it was started from one.
+   *
+   * `POST /partners/me/documents` has accepted these since P6, and
+   * `POST /bookings/:id/invoice` reads them back to decide whether a job has
+   * actually been billed — it refuses while no live document names the booking.
+   * The draft used to hardcode `sourceType: 'MANUAL'`, so every bill raised on a
+   * phone was unattached and no service job could ever reach INVOICED.
+   *
+   * Absent for a bill typed from scratch, which is still the common case and
+   * still `MANUAL`.
+   */
+  sourceType?: 'BOOKING' | 'ORDER';
+  sourceId?: string;
   status: DraftSyncStatus;
   /** Set the instant `create` succeeds, persisted before `issue` is ever attempted. */
   serverDraftId?: string;
@@ -250,4 +264,7 @@ export interface AddDraftInput {
   partySnapshot: DocumentPartySnapshot;
   lines: DraftLineInput[];
   notes?: string;
+  /** The job this bill is for, when the screen was opened from one. */
+  sourceType?: 'BOOKING' | 'ORDER';
+  sourceId?: string;
 }

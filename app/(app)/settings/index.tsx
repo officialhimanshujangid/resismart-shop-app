@@ -8,8 +8,19 @@ import { Card, Row, Screen } from '../../../src/features/more/ui';
 
 export default function SettingsHubScreen() {
   const c = themeColors(useColorScheme() === 'dark');
-  const { can } = usePartnerEntitlements();
+  const { can, entitlements } = usePartnerEntitlements();
   const level = can('SETTINGS', 'FULL') ? 'Manage' : 'View only';
+
+  /**
+   * The row's own subtitle carries the state, so a partner who is invisible
+   * learns it from the menu rather than by opening every screen looking for the
+   * reason nobody is booking them.
+   */
+  const verificationSubtitle = entitlements.visibility && !entitlements.visibility.discoverable
+    ? 'Residents cannot find you yet — see what is missing'
+    : entitlements.business?.verificationStatus === 'VERIFIED'
+      ? 'Verified. Documents and status'
+      : 'Documents and approval status';
 
   return (
     <Screen c={c} title="Settings" subtitle={level} back={false}>
@@ -28,6 +39,31 @@ export default function SettingsHubScreen() {
           title="Invoice settings"
           subtitle="Theme, numbering, bank details, thermal printing"
           onPress={() => router.push('/settings/invoice')}
+        />
+        <View style={{ height: 1, opacity: 0.5 }} />
+        {/* `serviceModes` had no editor after registration — see the screen's
+            own note. It is the field discovery tests, so a partner without it
+            is one no resident can be matched to. */}
+        <Row
+          c={c}
+          icon="map-marker-radius-outline"
+          title="Where you work"
+          subtitle="Customers come to you, you travel to them, or both"
+          onPress={() => router.push('/settings/where-you-work')}
+        />
+        <View style={{ height: 1, opacity: 0.5 }} />
+        {/* Where the proprietor sends documents in and reads what ResiSmart
+            decided. It had no entry anywhere: documents could only be attached
+            inside the signup wizard, which a signed-in partner cannot get back
+            to — so a partner who skipped step 5, or who was added by the owner
+            console, could not become verified and therefore could never be
+            found by a resident. */}
+        <Row
+          c={c}
+          icon="shield-check-outline"
+          title="Verification"
+          subtitle={verificationSubtitle}
+          onPress={() => router.push('/settings/verification')}
         />
         <View style={{ height: 1, opacity: 0.5 }} />
         <Row

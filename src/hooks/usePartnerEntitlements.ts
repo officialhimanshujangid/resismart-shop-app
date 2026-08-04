@@ -206,6 +206,12 @@ function normalise(raw: PartnerEntitlementsPayload | undefined): PartnerEntitlem
     offeredPermissions: Array.isArray(raw.offeredPermissions) ? raw.offeredPermissions : [],
     business: raw.business,
     usage: Array.isArray(raw.usage) ? raw.usage : undefined,
+    // Carried through untouched. The blockers are already sentences written for
+    // the proprietor, and normalising them here would mean this file deciding
+    // what "invisible" means — which is precisely the judgement that belongs
+    // beside the discovery gates on the server.
+    visibility: raw.visibility,
+    kycRequired: raw.kycRequired,
   };
 }
 

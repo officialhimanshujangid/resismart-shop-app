@@ -49,6 +49,7 @@ export default function TodayScreen() {
   const { user, profile } = useAuth();
   const { entitlements, ready, failed, refresh, hasModule, can } = usePartnerEntitlements();
   const business = entitlements.business;
+  const visibility = entitlements.visibility;
 
   const showBookings = ready && hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ');
   const showOrders = ready && hasModule('ORDERS') && can('ORDERS_VIEW', 'READ');
@@ -105,10 +106,32 @@ export default function TodayScreen() {
         body: 'ResiSmart has paused this account. Contact support to have it looked at.',
       };
     }
-    if (business && business.status !== 'ACTIVE' && business.verificationStatus !== 'VERIFIED') {
+    /**
+     * "Residents cannot find you", and WHY — from the server, not from a guess
+     * made here.
+     *
+     * The condition this replaces was `status !== 'ACTIVE' && verificationStatus
+     * !== 'VERIFIED'`, and it missed every case that actually bites: a partner
+     * who is ACTIVE but never verified (which is how the owner console used to
+     * create them) passed it silently, as did one with no map pin and one with
+     * no service modes. All three are invisible to every resident at every
+     * distance, and this screen told them nothing was wrong.
+     *
+     * `blockers` arrive already written for the proprietor — rendered verbatim
+     * rather than re-worded, so the sentence a partner reads here is the one the
+     * web panel shows and the one support will quote back to them.
+     */
+    if (visibility && !visibility.discoverable) {
+      const reasons = visibility.blockers
+        .filter((b) => b.code !== 'NO_CATEGORY')
+        .map((b) => b.message);
       return {
-        title: 'Your registration is not finished',
-        body: 'Complete the remaining steps and send your profile for verification to start taking bookings.',
+        title: 'Residents cannot find you yet',
+        body: reasons.length
+          ? `${reasons.join(' ')} Until this is sorted out, nobody can book or order from you.`
+          : 'Your business is not appearing in Services & shops yet.',
+        action: 'Open verification',
+        onAction: () => router.push('/settings/verification'),
       };
     }
     if (entitlements.awaitingRole) {
@@ -146,8 +169,15 @@ export default function TodayScreen() {
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{banner.title}</Text>
             <Text style={[styles.cardBody, { color: c.textSecondary }]}>{banner.body}</Text>
+            {/* `onAction` where the banner names one, `refresh` otherwise — the
+                only action this card had was "try again", which is the right
+                answer for a failed load and useless for "you have no map pin". */}
             {banner.action && (
-              <Button mode="contained" onPress={refresh} style={styles.cardAction}>
+              <Button
+                mode="contained"
+                onPress={'onAction' in banner && banner.onAction ? banner.onAction : refresh}
+                style={styles.cardAction}
+              >
                 {banner.action}
               </Button>
             )}

@@ -8,7 +8,11 @@ import { BookingCard } from '../../../src/features/bookings/components/BookingCa
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction, useBookingsList } from '../../../src/features/bookings/hooks';
 import { BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
-import { apiErrorMessage } from '../../../src/api/axios';
+import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
+// `as Href` on the push below: the destination is built with a query string, so
+// it is not one of the literal routes the generated union describes — the same
+// documented escape hatch `catalog/create.tsx` uses for `returnTo`.
+import { router, type Href } from 'expo-router';
 
 /**
  * Accept / reject / reschedule / assign, and "I've reached" → the customer's
@@ -59,11 +63,59 @@ export default function BookingsScreen() {
   const list = useBookingsList(filters);
   const { act, pendingId, isPending } = useBookingAction();
 
+  /**
+   * The Billing screen, opened to raise the bill for THIS job.
+   *
+   * `sourceType`/`sourceId` are the link `POST /bookings/:id/invoice` reads back
+   * — without them the document is MANUAL and the job can never be invoiced.
+   * The rest is prefill: the party the booking already created, and one line at
+   * the total actually agreed (`pricing.totalPaise`, not the service's list
+   * price — a job that was rescheduled, or one carrying a visit charge, is
+   * billed at what the booking says).
+   *
+   * `advancePaise` is deliberately NOT subtracted. An advance is a PAYMENT
+   * against the bill, recorded on the document where it moves the party's
+   * balance; netting it off the line would hide it from the ledger and hand the
+   * customer an invoice whose total is not what they agreed.
+   */
+  const openBillFor = useCallback((booking: PartnerBookingView) => {
+    const q = new URLSearchParams({
+      sourceType: 'BOOKING',
+      sourceId: booking.id,
+      itemName: booking.serviceSnapshot.name,
+      ratePaise: String(booking.pricing.totalPaise),
+    });
+    if (booking.customer.partyId) q.set('partyId', booking.customer.partyId);
+    if (booking.customer.name) q.set('partyName', booking.customer.name);
+    if (booking.customer.phone) q.set('partyPhone', booking.customer.phone);
+    router.push(`/(app)/billing/new?${q.toString()}` as Href);
+  }, []);
+
   const runQuick = useCallback(
     (booking: PartnerBookingView, verb: BookingVerb) => {
       const prompt = CONFIRM_COPY[verb];
       const fire = () => {
-        act(booking.id, verb).catch((e) => Alert.alert('Could not do that', apiErrorMessage(e)));
+        act(booking.id, verb).catch((e) => {
+          /**
+           * `invoice` does not raise the bill — it records that a bill covers
+           * the job, and refuses while none does. That refusal has an obvious
+           * next step, and leaving the partner to find the Billing tab, pick the
+           * right customer and retype the amount is how a finished job stays
+           * unbilled. So the refusal offers to go and do it.
+           */
+          if (verb === 'invoice' && apiErrorCode(e) === 'NO_BILL_RAISED') {
+            Alert.alert(
+              'No bill for this job yet',
+              'Raise it now? The customer and the amount are filled in for you.',
+              [
+                { text: 'Not now', style: 'cancel' },
+                { text: 'Raise the bill', onPress: () => openBillFor(booking) },
+              ],
+            );
+            return;
+          }
+          Alert.alert('Could not do that', apiErrorMessage(e));
+        });
       };
       if (!prompt) return fire();
       Alert.alert(VERB_LABELS[verb], prompt, [
@@ -71,7 +123,7 @@ export default function BookingsScreen() {
         { text: VERB_LABELS[verb], onPress: fire },
       ]);
     },
-    [act],
+    [act, openBillFor],
   );
 
   const openForm = useCallback((booking: PartnerBookingView, verb: BookingVerb) => {

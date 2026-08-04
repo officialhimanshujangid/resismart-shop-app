@@ -77,6 +77,17 @@ export interface BookingTimelineEntry {
 }
 
 export interface PartnerBookingCustomerView {
+  /**
+   * The `PartnerParty` this job was booked against — the business's own customer
+   * record, created idempotently when the booking was made.
+   *
+   * Not masked, and it is not a resident identifier: it is a row in the
+   * PARTNER's own ledger. Carried so a bill raised for this job attaches to the
+   * customer the job already created; billing against a name typed into the
+   * Billing screen makes a SECOND party and splits the balance across two
+   * ledgers, each internally consistent and neither right.
+   */
+  partyId?: string;
   name: string;
   societyName?: string;
   contactMasked: boolean;

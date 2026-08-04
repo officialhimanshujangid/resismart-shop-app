@@ -260,6 +260,19 @@ export function isUpgradeRequired(error: unknown): boolean {
 }
 
 /**
+ * The machine-readable reason, where the server sent one.
+ *
+ * The SENTENCE is what a partner reads and `apiErrorMessage` is how it is
+ * shown; this is for the handful of refusals a screen has to branch on rather
+ * than merely print — `NO_BILL_RAISED` being the one that has an obvious next
+ * step ("raise it now?") the message itself cannot perform.
+ */
+export function apiErrorCode(error: unknown): string | undefined {
+  if (!axios.isAxiosError(error)) return undefined;
+  return (error.response?.data as ApiErrorBody | undefined)?.code;
+}
+
+/**
  * An idempotency key for a create request, so a retry on a flaky connection
  * cannot produce two invoices (PARTNERS_PLAN §12.5).
  *

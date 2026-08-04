@@ -21,11 +21,18 @@ import { themeColors, radii } from '../../../constants/colors';
  */
 const ROUTED_VERBS = new Set<BookingVerb>([
   'accept', 'reject', 'assign', 'reschedule', 'start', 'reach', 'complete', 'noShow', 'cancel', 'note',
+  // P6 mounted `/:id/invoice` and `/:id/mark-paid`; the note above was written
+  // before it and outlived it. While they were excluded, a job finished on a
+  // phone stopped dead at COMPLETED — no invoice, no payment, nothing on the
+  // customer's balance — and the partner had no way to tell that anything was
+  // outstanding.
+  'invoice', 'markPaid',
 ]);
 
 /** Reading order for the action row — the happy path left to right, `cancel` always last. */
 const VERB_ORDER: BookingVerb[] = [
-  'accept', 'start', 'reach', 'complete', 'assign', 'reschedule', 'reject', 'noShow', 'cancel', 'note',
+  'accept', 'start', 'reach', 'complete', 'invoice', 'markPaid',
+  'assign', 'reschedule', 'reject', 'noShow', 'cancel', 'note',
 ];
 
 export function routedVerbsOf(booking: PartnerBookingView): BookingVerb[] {
@@ -33,7 +40,11 @@ export function routedVerbsOf(booking: PartnerBookingView): BookingVerb[] {
 }
 
 /** Which verbs are destructive/careful enough to ask "are you sure?" before firing with no form. */
-const CONFIRM_DIRECTLY = new Set<BookingVerb>(['accept', 'start', 'reach', 'noShow']);
+// `invoice` and `markPaid` are here rather than in a form: neither takes any
+// input the partner has to type. Both simply ask the server to read the billing
+// engine and record what it finds, and their refusals are sentences about the
+// bill, not about a field.
+const CONFIRM_DIRECTLY = new Set<BookingVerb>(['accept', 'start', 'reach', 'noShow', 'invoice', 'markPaid']);
 const OUTLINED_VERBS = new Set<BookingVerb>(['reject', 'cancel', 'noShow']);
 
 interface Props {

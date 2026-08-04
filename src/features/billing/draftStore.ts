@@ -103,7 +103,13 @@ async function syncDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
           partySnapshot: draft.partySnapshot,
           lines: draft.lines,
           notes: draft.notes,
-          sourceType: 'MANUAL',
+          // The draft's own source, not a hardcoded `MANUAL`. A bill started
+          // from a job has to reach the server carrying that link, or
+          // `POST /bookings/:id/invoice` can never find it and the job stays
+          // uninvoiced forever. Falls back to MANUAL for a bill typed from
+          // scratch, which is what it always was.
+          sourceType: draft.sourceType ?? 'MANUAL',
+          sourceId: draft.sourceId,
         },
         draft.idempotencyKey,
       );
@@ -218,6 +224,11 @@ async function addDraft(input: AddDraftInput): Promise<InvoiceDraft> {
     partySnapshot: input.partySnapshot,
     lines: input.lines,
     notes: input.notes,
+    // Carried onto the draft so it survives being queued offline: a bill raised
+    // in a basement and synced an hour later must still come back attached to
+    // the job it was raised for.
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
     status: 'PENDING',
   };
   setDrafts([draft, ...drafts]);

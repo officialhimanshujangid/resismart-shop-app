@@ -903,6 +903,19 @@ function StepPapers({ c, busy, setBusy, show, onSaved }: StepProps) {
   const [week, setWeek] = useState<DayTiming[]>(defaultWeek());
   const [docs, setDocs] = useState<PartnerKycDoc[]>([]);
   const [docType, setDocType] = useState<PartnerDocType>('GST');
+  /**
+   * Whether ResiSmart is collecting documents at all. Read from the server's
+   * onboarding status, never decided here — the same status object whose
+   * `missing[]` this step renders, so the form cannot ask for a document the
+   * checklist has stopped requiring.
+   *
+   * `!== false` so a server that predates the switch still asks. Fail-closed.
+   */
+  const { data: liveStatus } = useQuery({
+    queryKey: qk.onboarding.status(),
+    queryFn: partnerApi.onboardingStatus,
+  });
+  const kycRequired = liveStatus?.kycRequired !== false;
   const [uploading, setUploading] = useState(false);
   const [missing, setMissing] = useState<OnboardingStatus['missing']>([]);
 
@@ -1001,33 +1014,46 @@ function StepPapers({ c, busy, setBusy, show, onSaved }: StepProps) {
         reviewer actually looks at.
       </Text>
 
-      <Divider style={styles.divider} />
-      <Text style={[styles.label, { color: c.textPrimary }]}>Documents</Text>
-      <View style={styles.chips}>
-        {DOC_TYPES.map((t) => (
-          <Chip key={t.value} selected={docType === t.value} onPress={() => setDocType(t.value)} style={styles.chip}>
-            {t.label}
-          </Chip>
-        ))}
-      </View>
-      <AppButton
-        label={uploading ? 'Uploading…' : 'Attach a photo or scan'}
-        mode="outlined"
-        icon="upload"
-        loading={uploading}
-        onPress={attach}
-      />
-      {docs.map((d) => (
-        <View key={d._id} style={[styles.docRow, { borderColor: c.divider }]}>
-          <MaterialCommunityIcons name="file-check-outline" size={20} color={c.success} />
-          <Text style={[styles.flex, { color: c.textPrimary }]} numberOfLines={1}>
-            {d.fileName ?? d.type}
-          </Text>
-          <TouchableOpacity onPress={() => removeDoc(d._id)}>
-            <MaterialCommunityIcons name="trash-can-outline" size={20} color={c.error} />
-          </TouchableOpacity>
-        </View>
-      ))}
+      {/**
+        * The whole documents block disappears when this installation does not
+        * ask for them — the owner's switch in Settings → Partner Settings.
+        *
+        * It must disappear rather than merely stop being required: with KYC off
+        * the server has also stopped listing a missing document in `missing[]`,
+        * so an upload control left on screen would be asking for something
+        * nothing needs and blocking nothing if ignored.
+        */}
+      {kycRequired && (
+        <>
+          <Divider style={styles.divider} />
+          <Text style={[styles.label, { color: c.textPrimary }]}>Documents</Text>
+          <View style={styles.chips}>
+            {DOC_TYPES.map((t) => (
+              <Chip key={t.value} selected={docType === t.value} onPress={() => setDocType(t.value)} style={styles.chip}>
+                {t.label}
+              </Chip>
+            ))}
+          </View>
+          <AppButton
+            label={uploading ? 'Uploading…' : 'Attach a photo or scan'}
+            mode="outlined"
+            icon="upload"
+            loading={uploading}
+            onPress={attach}
+          />
+          {docs.map((d) => (
+            <View key={d._id} style={[styles.docRow, { borderColor: c.divider }]}>
+              <MaterialCommunityIcons name="file-check-outline" size={20} color={c.success} />
+              <Text style={[styles.flex, { color: c.textPrimary }]} numberOfLines={1}>
+                {d.fileName ?? d.type}
+              </Text>
+              <TouchableOpacity onPress={() => removeDoc(d._id)}>
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color={c.error} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </>
+      )}
 
       <Divider style={styles.divider} />
       <Text style={[styles.label, { color: c.textPrimary }]}>Opening hours</Text>

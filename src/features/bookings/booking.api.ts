@@ -77,6 +77,36 @@ export const bookingApi = {
     apiClient
       .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/note`, body)
       .then((r) => unwrap(r.data)),
+
+  /**
+   * COMPLETED → INVOICED, and it does NOT raise the bill.
+   *
+   * The controller looks for a live document whose `sourceType` is BOOKING and
+   * whose `sourceId` is this booking, and answers 409 `NO_BILL_RAISED` when
+   * there is none. That is the design: pricing a line, reserving a number and
+   * moving a party's balance all live in the billing engine, and a second copy
+   * of any of them is a second answer to what the customer owes. So this verb
+   * records that the bill covers the job — `startBillForBooking` is what raises
+   * the bill in the first place.
+   */
+  invoice: (id: string, body: { note?: string } = {}) =>
+    apiClient
+      .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/invoice`, body)
+      .then((r) => unwrap(r.data)),
+
+  /**
+   * INVOICED → PAID, and it reads rather than asserts: the controller refuses
+   * (409 `BILL_NOT_SETTLED`) while any bill for the job is still open. Payment
+   * is recorded against the DOCUMENT, which is what moves the party balance and
+   * what a receipt prints from.
+   *
+   * `mark-paid` in the URL, `markPaid` as the verb — the route is hyphenated
+   * like every other multi-word path on that router.
+   */
+  markPaid: (id: string, body: { note?: string } = {}) =>
+    apiClient
+      .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/mark-paid`, body)
+      .then((r) => unwrap(r.data)),
 };
 
 /**
@@ -98,13 +128,13 @@ export const bookingVerbCall: Record<
   noShow: (id, body) => bookingApi.noShow(id, body),
   cancel: (id, body) => bookingApi.cancel(id, body),
   note: (id, body) => bookingApi.note(id, body as { note?: string }),
-  // Billing verbs. Declared so the map stays TOTAL over `BookingVerb` — the
-  // transition table reaches COMPLETED/INVOICED, but P6's billing screens own
-  // raising the bill and recording payment; a booking never offers these here
-  // because `allowedVerbs` only returns them from statuses this vertical does
-  // not reach through the Bookings tab's own actions.
-  invoice: () => { throw new Error('Raise the bill from Billing, not Bookings.'); },
-  markPaid: () => { throw new Error('Record payment from Billing, not Bookings.'); },
+  // Billing verbs. These used to throw, on the belief that `booking.routes.ts`
+  // mounted no route for either — true when this file was written, and untrue
+  // since P6 added `/:id/invoice` and `/:id/mark-paid`. While they threw, a
+  // service job finished on a phone could never be invoiced, never marked paid
+  // and never settled against the customer's balance.
+  invoice: (id, body) => bookingApi.invoice(id, body),
+  markPaid: (id, body) => bookingApi.markPaid(id, body),
 };
 
 /**

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, useColorScheme, View,
 } from 'react-native';
@@ -6,7 +6,7 @@ import {
   ActivityIndicator, Button, Divider, IconButton, Modal, Portal, SegmentedButtons, Snackbar, Surface, Text, TextInput,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, usePathname } from 'expo-router';
+import { router, usePathname, useLocalSearchParams } from 'expo-router';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
@@ -23,6 +23,9 @@ import {
   PartnerPartyRecord,
 } from '../../../src/features/billing/types';
 import { toHref } from '../../../src/features/billing/routeHref';
+// Reached only when this screen was opened FROM a booking — see the note at the
+// call site on why the job is settled here rather than left for a second tap.
+import { bookingApi } from '../../../src/features/bookings/booking.api';
 
 /**
  * The two-tap invoice (build spec §4 / PARTNERS_PLAN §12.5): pick a party,
@@ -62,6 +65,26 @@ export default function NewInvoiceScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const pathname = usePathname();
+
+  /**
+   * The job this bill is being raised FOR, when Bookings sent us here.
+   *
+   * `POST /bookings/:id/invoice` does not raise a bill — it looks for a live
+   * document whose `sourceType` is BOOKING and whose `sourceId` is the booking,
+   * and refuses otherwise. Nothing in this app ever set those, so a service job
+   * finished on a phone could never be invoiced. These params are the link, and
+   * they are passed straight through to the draft: this screen does not
+   * interpret them, because what a source means belongs to the document engine.
+   */
+  const jobParams = useLocalSearchParams<{
+    sourceType?: string; sourceId?: string;
+    partyId?: string; partyName?: string; partyPhone?: string;
+    itemName?: string; ratePaise?: string;
+  }>();
+  const sourceType = jobParams.sourceType === 'BOOKING' || jobParams.sourceType === 'ORDER'
+    ? jobParams.sourceType
+    : undefined;
+  const sourceId = sourceType ? jobParams.sourceId : undefined;
   const { can } = usePartnerEntitlements();
   const { capacity } = usePlanUsage();
   const { addDraft, retryDraft } = useOfflineDrafts();
@@ -114,6 +137,43 @@ export default function NewInvoiceScreen() {
   const [customName, setCustomName] = useState('');
   const [customQty, setCustomQty] = useState('1');
   const [customRate, setCustomRate] = useState('');
+
+  /**
+   * Seed the form from the job, once.
+   *
+   * Once, because after this the partner owns the form: re-running on every
+   * render would overwrite a rate they had just corrected, and a form that
+   * fights back is worse than one that starts empty.
+   *
+   * The customer is filled in as a WALK-IN with the name we were handed, and the
+   * party id rides along separately on the draft — the booking already created a
+   * `PartnerParty` (`createResidentParty`), so matching on a typed name here
+   * would make a SECOND one and split the customer's balance across two ledgers.
+   * `partyId` is what prevents that; the name is only what the partner reads.
+   */
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    const { partyName, partyPhone, itemName, ratePaise } = jobParams;
+    if (!partyName && !itemName && !ratePaise) return;
+    seeded.current = true;
+
+    if (partyName) setWalkinName(partyName);
+    if (partyPhone) setWalkinPhone(partyPhone);
+    if (itemName || ratePaise) {
+      setLines([{
+        key: nextLineKey(),
+        itemName: itemName || 'Service',
+        unit: 'JOB',
+        qty: 1,
+        // Paise on the wire, paise in the draft. The only place this becomes
+        // rupees is the label a person reads.
+        ratePaise: Number(ratePaise) || 0,
+        taxRatePercent: 0,
+        taxInclusive: true,
+      }]);
+    }
+  }, [jobParams]);
 
   useEffect(() => {
     if (!debouncedProductQuery.trim()) {
@@ -242,14 +302,37 @@ export default function NewInvoiceScreen() {
 
     const draft = await addDraft({
       type: docType,
-      partyId: selectedParty?._id,
+      // The job's own party wins when the screen was opened from one: it is the
+      // record the booking already created, and billing against anything else
+      // gives the customer a second balance.
+      partyId: selectedParty?._id ?? jobParams.partyId,
       partySnapshot,
       lines: plainLines,
+      sourceType,
+      sourceId,
     });
     const settled = await retryDraft(draft.id);
     setSubmitting(false);
 
     if (settled?.status === 'SYNCED' && settled.syncedDocumentId) {
+      /**
+       * The job is marked invoiced here rather than left for a second tap.
+       *
+       * `POST /bookings/:id/invoice` is a READ of the billing engine — it looks
+       * for the document we have just issued and records that it covers the
+       * job. Making the partner go back to Bookings and press the same button
+       * again, to tell the app something it can already see, is the kind of step
+       * that gets skipped and leaves a bill raised against a job that still says
+       * it was never invoiced.
+       *
+       * Best-effort on purpose: the DOCUMENT is the thing that matters and it
+       * exists either way. If this call fails — offline, or a race with another
+       * device — the booking simply stays COMPLETED and its own "Raise the bill"
+       * button will settle it, now that a live document names it.
+       */
+      if (sourceType === 'BOOKING' && sourceId) {
+        await bookingApi.invoice(sourceId).catch(() => {});
+      }
       router.replace(toHref(`/(app)/billing/${settled.syncedDocumentId}`));
       return;
     }
@@ -266,7 +349,8 @@ export default function NewInvoiceScreen() {
     // Still PENDING — genuinely offline. The bill is safe on-device; sync
     // happens automatically the moment the connection returns.
     router.replace('/(app)/billing/drafts');
-  }, [lines, selectedParty, walkinName, walkinPhone, docType, addDraft, retryDraft]);
+  }, [lines, selectedParty, walkinName, walkinPhone, docType, addDraft, retryDraft,
+    sourceType, sourceId, jobParams.partyId]);
 
   if (!canManage) {
     return (
