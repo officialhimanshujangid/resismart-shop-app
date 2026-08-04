@@ -53,7 +53,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "node scripts/generate-router-types.js && tsc --noEmit",
-    "routes:generate": "node scripts/generate-router-types.js"
+    "routes:generate": "node scripts/generate-router-types.js",
+    "lint": "expo lint"
   },
   "private": true
 }
