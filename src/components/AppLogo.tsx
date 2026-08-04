@@ -36,7 +36,7 @@ export function AppLogo({ size = 'medium', showTagline = true, variant = 'light'
 
       {showTagline && (
         <Text style={[styles.tagline, { fontSize: s.tagline, color: subColor }]}>
-          Shop Management Panel
+          Partner Management Panel
         </Text>
       )}
     </View>

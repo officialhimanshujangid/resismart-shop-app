@@ -1,5 +1,5 @@
-import { MD3LightTheme, MD3DarkTheme, configureFonts } from 'react-native-paper';
-import { Colors } from './colors';
+import { MD3LightTheme, MD3DarkTheme, configureFonts, MD3Theme } from 'react-native-paper';
+import { Colors, DarkColors, ColorScheme } from './colors';
 
 const fontConfig = {
   displayLarge: { fontFamily: 'System', fontSize: 57, fontWeight: '400' as const },
@@ -19,46 +19,44 @@ const fontConfig = {
   labelSmall: { fontFamily: 'System', fontSize: 11, fontWeight: '500' as const },
 };
 
-export const AppLightTheme = {
-  ...MD3LightTheme,
-  fonts: configureFonts({ config: fontConfig }),
-  colors: {
-    ...MD3LightTheme.colors,
-    primary: Colors.primary,
-    primaryContainer: Colors.primaryLight,
-    secondary: Colors.secondary,
-    secondaryContainer: Colors.secondaryLight,
-    background: Colors.background,
-    surface: Colors.surface,
-    surfaceVariant: Colors.surfaceVariant,
-    error: Colors.error,
-    onPrimary: Colors.textInverse,
-    onSecondary: Colors.textInverse,
-    onBackground: Colors.textPrimary,
-    onSurface: Colors.textPrimary,
-    onSurfaceVariant: Colors.textSecondary,
-    outline: Colors.border,
-  },
-};
+const fonts = configureFonts({ config: fontConfig });
 
-export const AppDarkTheme = {
-  ...MD3DarkTheme,
-  fonts: configureFonts({ config: fontConfig }),
+/**
+ * One builder for both schemes, fed the matching colour map.
+ *
+ * Two hand-written theme objects is how the light one gains a token the dark one
+ * never gets — the bug shows up as one unreadable label on one screen, months
+ * later, only on a device set to dark. Deriving both from the same function
+ * makes that impossible: a key added to `ColorScheme` has to exist in both maps
+ * before this file compiles.
+ */
+const buildTheme = (base: MD3Theme, c: ColorScheme): MD3Theme => ({
+  ...base,
+  fonts,
   colors: {
-    ...MD3DarkTheme.colors,
-    primary: Colors.primaryLight,
-    primaryContainer: Colors.primary,
-    secondary: Colors.secondaryLight,
-    secondaryContainer: Colors.secondary,
-    background: '#0D1117',
-    surface: '#161B22',
-    surfaceVariant: '#1C2A3D',
-    error: '#F87171',
-    onPrimary: Colors.textInverse,
-    onSecondary: Colors.textInverse,
-    onBackground: '#E2E8F0',
-    onSurface: '#E2E8F0',
-    onSurfaceVariant: '#94A3B8',
-    outline: '#334155',
+    ...base.colors,
+    primary: c.primary,
+    onPrimary: c.textInverse,
+    primaryContainer: c.surfaceVariant,
+    onPrimaryContainer: c.primaryDark,
+    secondary: c.secondary,
+    onSecondary: c.textInverse,
+    secondaryContainer: c.secondaryLight,
+    onSecondaryContainer: c.secondaryDark,
+    background: c.background,
+    onBackground: c.textPrimary,
+    surface: c.surface,
+    onSurface: c.textPrimary,
+    surfaceVariant: c.surfaceVariant,
+    onSurfaceVariant: c.textSecondary,
+    error: c.error,
+    outline: c.border,
+    outlineVariant: c.divider,
+    // Paper draws Snackbars and menus on `elevation.level2`; leaving it at the
+    // MD3 default put a near-white sheet on the dark background.
+    elevation: { ...base.colors.elevation, level1: c.surface, level2: c.surfaceVariant },
   },
-};
+});
+
+export const AppLightTheme = buildTheme(MD3LightTheme, Colors);
+export const AppDarkTheme = buildTheme(MD3DarkTheme, DarkColors);

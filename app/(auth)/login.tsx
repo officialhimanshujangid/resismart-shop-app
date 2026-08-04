@@ -36,7 +36,7 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function LoginScreen() {
-  const { login, selectContext } = useAuth();
+  const { login, selectContext, requestLoginOtp } = useAuth();
 
   const [isLoading, setIsLoading] = useState(false);
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; error: boolean }>({
@@ -67,7 +67,11 @@ export default function LoginScreen() {
     try {
       const result: LoginResult = await login(data.email, data.password);
       if (result.success) {
-        router.replace('/(app)');
+        // `/(app)/(tabs)`, not `/(app)`: `(app)/_layout.tsx` is a Stack whose
+        // only child is the `(tabs)` group, so `(app)` has no index route of
+        // its own. A successful sign-in was replacing onto a pathname that
+        // does not exist.
+        router.replace('/(app)/(tabs)');
         return;
       }
       if (result.requiresContextSelection && result.profiles && result.userId) {
@@ -76,10 +80,39 @@ export default function LoginScreen() {
         setContextModal(true);
         return;
       }
+      // A partner created by the signup wizard has NO password —
+      // `registerPartnerPublic` opens the identity passwordless and the server
+      // answers 401 with `useOtp: true`. Reporting that as a failed sign-in
+      // would lock every self-registered partner out of their own app, so the
+      // code is sent and the OTP screen is opened instead.
+      if (result.requiresOtp) {
+        await sendCode(data.email);
+        return;
+      }
       showSnack(result.error ?? 'Login failed. Please try again.', true);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /** Passwordless sign-in, from the "email me a code" link and from the 401 above. */
+  const sendCode = async (identifier: string) => {
+    if (!identifier.trim()) {
+      showSnack('Enter your email address or mobile number first.', true);
+      return;
+    }
+    const result = await requestLoginOtp(identifier.trim());
+    if (!result.success) {
+      showSnack(result.error ?? 'Could not send a code. Please try again.', true);
+      return;
+    }
+    router.push({
+      pathname: '/(auth)/verify-otp',
+      params: {
+        identifier: identifier.trim(),
+        ...(result.devCode ? { devCode: result.devCode } : {}),
+      },
+    });
   };
 
   const handleContextSelect = async (profile: ProfileInfo) => {
@@ -88,7 +121,8 @@ export default function LoginScreen() {
     try {
       await selectContext(pendingUserId, profile.tenantId, profile.role);
       setContextModal(false);
-      router.replace('/(app)');
+      // Same non-route as in `onSubmit` above — see the note there.
+      router.replace('/(app)/(tabs)');
     } catch (err: any) {
       showSnack(err?.response?.data?.error ?? 'Context selection failed.', true);
     } finally {
@@ -124,7 +158,7 @@ export default function LoginScreen() {
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Welcome Back</Text>
-            <Text style={styles.cardSubtitle}>Sign in to your shop account</Text>
+            <Text style={styles.cardSubtitle}>Sign in to your partner account</Text>
 
             <View style={styles.form}>
               <Controller
@@ -180,10 +214,34 @@ export default function LoginScreen() {
               />
             </View>
 
+            {/*
+              Two links added by the P9 foundation agent, and they are the only
+              change to this screen. Without them nothing else in the auth flow
+              is REACHABLE: the 5-step signup wizard has no entry point, and a
+              partner whose identity is passwordless (which is every partner who
+              registered in the app) has no way to reach the code screen.
+            */}
+            <Controller
+              control={control}
+              name="email"
+              render={({ field: { value } }) => (
+                <TouchableOpacity
+                  onPress={() => sendCode(value)}
+                  style={styles.otpLink}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.otpText}>Sign in with a one-time code instead</Text>
+                </TouchableOpacity>
+              )}
+            />
+
             <View style={styles.footer}>
-              <Text style={styles.footerText}>
-                Having trouble? Contact your shop administrator.
-              </Text>
+              <TouchableOpacity onPress={() => router.push('/(auth)/register')} activeOpacity={0.7}>
+                <Text style={styles.footerText}>
+                  New to ResiSmart?{' '}
+                  <Text style={styles.footerLink}>Register your business</Text>
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -248,8 +306,11 @@ const styles = StyleSheet.create({
   forgotLink: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 8, paddingVertical: 4 },
   forgotText: { color: Colors.primaryLight, fontWeight: '600', fontSize: 14 },
   signInButton: { marginTop: 8 },
-  footer: { marginTop: 32, alignItems: 'center' },
-  footerText: { fontSize: 12, color: Colors.textDisabled, textAlign: 'center' },
+  otpLink: { alignSelf: 'center', paddingVertical: 14 },
+  otpText: { color: Colors.primary, fontWeight: '600', fontSize: 14 },
+  footer: { marginTop: 20, alignItems: 'center' },
+  footerText: { fontSize: 13, color: Colors.textSecondary, textAlign: 'center' },
+  footerLink: { color: Colors.primary, fontWeight: '700' },
   modal: {
     backgroundColor: Colors.surface,
     borderRadius: 24,
