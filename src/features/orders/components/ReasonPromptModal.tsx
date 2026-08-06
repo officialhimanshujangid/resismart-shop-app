@@ -6,9 +6,10 @@ import { KnownOrderVerb } from '../api';
 import { ORDER_VERB_LABELS } from '../backend-mirror';
 
 /**
- * `reject` and `markReturned` both require a reason the CUSTOMER reads
- * (`orderReasonSchema`: min 3 characters). One modal for both, since the shape
- * of the ask is identical — only the title and the verb sent differ.
+ * `reject`, `markReturned` and `cancel` all require a reason the CUSTOMER
+ * reads (`orderReasonSchema`: min 3 characters). One modal for all three,
+ * since the shape of the ask is identical — only the title and the sentence
+ * shown differ.
  */
 export interface ReasonPromptTarget {
   orderCode: string;
@@ -42,7 +43,9 @@ export function ReasonPromptModal({ target, submitting, onCancel, onSubmit }: Re
           <Text style={[styles.body, { color: c.textSecondary }]}>
             {target?.verb === 'reject'
               ? `Say why order ${target.orderCode} cannot be taken — the customer reads this.`
-              : `Say why order ${target?.orderCode} came back — this stays on the record.`}
+              : target?.verb === 'cancel'
+                ? `Say why order ${target.orderCode} is being cancelled — the customer reads this.`
+                : `Say why order ${target?.orderCode} came back — this stays on the record.`}
           </Text>
           <TextInput
             mode="outlined"

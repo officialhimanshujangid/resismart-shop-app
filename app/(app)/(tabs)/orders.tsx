@@ -1,17 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList, useColorScheme, Pressable, RefreshControl } from 'react-native';
+import { Alert, View, StyleSheet, FlatList, useColorScheme, Pressable, RefreshControl } from 'react-native';
 import { Text, Searchbar, Snackbar, ActivityIndicator } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+// `as Href` below: the destination carries a query string, so it is not one of
+// the literal routes the generated union describes — the same escape hatch
+// `(tabs)/bookings.tsx#openBillFor` uses for the identical link.
+import { router, type Href } from 'expo-router';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
-import { apiErrorMessage } from '../../../src/api/axios';
+import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
 import {
   useOrders, useOrder, useOrderTransition,
-  OrderCard, OrderDetailModal, ReasonPromptModal,
+  OrderCard, OrderDetailModal, ReasonPromptModal, RecordReturnModal,
   filterKnownVerbs, verbNeedsReason,
 } from '../../../src/features/orders';
-import type { KnownOrderVerb, PartnerOrder, ReasonPromptTarget } from '../../../src/features/orders';
+import type { KnownOrderVerb, PartnerOrder, ReasonPromptTarget, OrderReturnResult } from '../../../src/features/orders';
+import { formatPaise } from '../../../src/lib/money';
 
 /**
  * This tab is only reachable when the gate says so: ORDERS_VIEW READ / module
@@ -100,16 +105,80 @@ export default function OrdersScreen() {
   const [reasonTarget, setReasonTarget] = useState<(ReasonPromptTarget & { orderId: string }) | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
 
+  // ---- M5: record a return ----
+  const [returnOrder, setReturnOrder] = useState<PartnerOrder | null>(null);
+
+  /**
+   * B6 fix: `rows` is this screen's own accumulated-pages array (see the
+   * effect above) — `useOrderTransition`'s own `onSuccess` only touches the
+   * react-query CACHE (the detail entry + an invalidation of the `orders`
+   * branch), which does nothing for a page already sitting in local state
+   * until the next full refetch. Without this patch, a mutated order on an
+   * earlier page — e.g. `accept` on page 1 while page 2 is also loaded —
+   * kept its stale `allowedVerbs` in `rows` until a pull-to-refresh, so the
+   * button just pressed appeared to still be there.
+   */
+  const patchRow = useCallback((updated: PartnerOrder) => {
+    setRows((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+  }, []);
+
+  /**
+   * The Billing screen, opened to raise the bill for THIS order.
+   *
+   * `POST /partners/me/orders/:id/invoice` does not raise a bill — the same
+   * design as the booking close-out (`(tabs)/bookings.tsx#openBillFor`): it
+   * looks for a live document whose `sourceType` is ORDER and whose `sourceId`
+   * is this order, and refuses (409 `NO_BILL_RAISED`) otherwise. These params
+   * are the link, and the prefill: one line at `amounts.totalPaise` — the
+   * order's agreed total, goods + tax + delivery together, not re-priced from
+   * the live catalogue. The order carries no `partyId` (contact stays masked
+   * until acceptance and is never resolved to a billing party here), so the
+   * customer crosses over as a name and the partner picks or confirms the
+   * party on the form before issuing.
+   */
+  const openBillFor = useCallback((order: PartnerOrder) => {
+    const q = new URLSearchParams({
+      sourceType: 'ORDER',
+      sourceId: order.id,
+      itemName: `Order ${order.code}`,
+      ratePaise: String(order.amounts.totalPaise),
+    });
+    if (order.customer.name) q.set('partyName', order.customer.name);
+    if (order.customer.phone) q.set('partyPhone', order.customer.phone);
+    router.push(`/(app)/billing/new?${q.toString()}` as Href);
+  }, []);
+
   const runTransition = useCallback((order: PartnerOrder, verb: KnownOrderVerb, text?: string) => {
     setPendingId(order.id);
     transition.mutate(
       { id: order.id, verb, text },
       {
-        onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
+        onSuccess: patchRow,
+        onError: (e: unknown) => {
+          /**
+           * `invoice`'s refusal has an obvious next step, and leaving the
+           * partner to find the Billing tab, pick the right customer and
+           * retype the total is how a delivered order stays unbilled — the
+           * exact reasoning `(tabs)/bookings.tsx#runQuick` already applies to
+           * a finished job.
+           */
+          if (verb === 'invoice' && apiErrorCode(e) === 'NO_BILL_RAISED') {
+            Alert.alert(
+              'No bill for this order yet',
+              'Raise it now? The customer and the amount are filled in for you.',
+              [
+                { text: 'Not now', style: 'cancel' },
+                { text: 'Raise the bill', onPress: () => openBillFor(order) },
+              ],
+            );
+            return;
+          }
+          setSnackbar(apiErrorMessage(e));
+        },
         onSettled: () => setPendingId(null),
       },
     );
-  }, [transition]);
+  }, [transition, patchRow, openBillFor]);
 
   const handleAction = useCallback((order: PartnerOrder, verb: KnownOrderVerb) => {
     if (verbNeedsReason(verb)) {
@@ -127,12 +196,27 @@ export default function OrdersScreen() {
     transition.mutate(
       { id: order.id, verb: reasonTarget.verb, text: reason },
       {
-        onSuccess: () => setReasonTarget(null),
+        onSuccess: (updated) => { patchRow(updated); setReasonTarget(null); },
         onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
         onSettled: () => setPendingId(null),
       },
     );
-  }, [reasonTarget, rows, detail.data, transition]);
+  }, [reasonTarget, rows, detail.data, transition, patchRow]);
+
+  /**
+   * `{ order, creditNote }` — patch every cache the same way a normal
+   * transition does (`runTransition`'s `onSuccess`), then confirm the credit
+   * note by name/amount so the shop owner has proof a numbered document was
+   * actually raised, not just a silent screen refresh.
+   */
+  const handleReturnSuccess = useCallback((result: OrderReturnResult) => {
+    patchRow(result.order);
+    setReturnOrder(null);
+    Alert.alert(
+      'Return recorded',
+      `Credit note ${result.creditNote.number ?? ''} for ${formatPaise(result.creditNote.totals.grandPaise)} has been raised.`,
+    );
+  }, [patchRow]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
@@ -231,11 +315,22 @@ export default function OrdersScreen() {
         order={detail.data ?? null}
         loading={Boolean(selectedId) && detail.isLoading}
         pending={Boolean(selectedId) && pendingId === selectedId}
+        canManage={canManage}
         onClose={() => setSelectedId(null)}
         onAction={(verb) => {
           if (!detail.data) return;
           handleAction(detail.data, verb);
         }}
+        onRecordReturn={() => {
+          if (!detail.data) return;
+          setReturnOrder(detail.data);
+        }}
+      />
+
+      <RecordReturnModal
+        order={returnOrder}
+        onClose={() => setReturnOrder(null)}
+        onSuccess={handleReturnSuccess}
       />
 
       <ReasonPromptModal

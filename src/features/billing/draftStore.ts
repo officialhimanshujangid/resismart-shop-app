@@ -103,6 +103,10 @@ async function syncDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
           partySnapshot: draft.partySnapshot,
           lines: draft.lines,
           notes: draft.notes,
+          documentDate: draft.documentDate,
+          dueDate: draft.dueDate,
+          validUntil: draft.validUntil,
+          goodsReturned: draft.goodsReturned,
           // The draft's own source, not a hardcoded `MANUAL`. A bill started
           // from a job has to reach the server carrying that link, or
           // `POST /bookings/:id/invoice` can never find it and the job stays
@@ -224,6 +228,10 @@ async function addDraft(input: AddDraftInput): Promise<InvoiceDraft> {
     partySnapshot: input.partySnapshot,
     lines: input.lines,
     notes: input.notes,
+    documentDate: input.documentDate,
+    dueDate: input.dueDate,
+    validUntil: input.validUntil,
+    goodsReturned: input.goodsReturned,
     // Carried onto the draft so it survives being queued offline: a bill raised
     // in a basement and synced an hour later must still come back attached to
     // the job it was raised for.

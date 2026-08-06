@@ -46,6 +46,26 @@ export interface PartnerInvoiceSettings {
   showUpiQr: boolean;
   showSignature: boolean;
   thermal: InvoiceThermal;
+  /**
+   * Theme M order-billing automation, opt-OUT: order DELIVERED auto-raises +
+   * issues a TAX_INVOICE (`autoInvoiceOnDelivery`), and a COD delivery
+   * auto-records the payment/receipt (`autoReceiptOnCodDelivery`).
+   * `partner-invoice-settings.model.ts` ships both with NO schema default —
+   * `order-billing.service.ts#loadBillingSettings` reads absent as ON
+   * (`settings?.autoInvoiceOnDelivery !== false`), so `undefined` here means
+   * "on" too — mirror that with `!== false`, never `?? false`.
+   *
+   * KNOWN GAP (flagged, not fixed here — out of this app's file-seam):
+   * `updateInvoiceSettingsSchema` (`backend/src/validators/partner-billing.validator.ts`)
+   * does not list either field, so a `PUT` carrying them is silently stripped
+   * by zod before the controller ever sees it — this screen's toggle will
+   * flip locally and revert on the next load until a backend session adds
+   * both fields to that schema (and the matching `if (body.x !== undefined)`
+   * lines in `updateInvoiceSettings`). GET already returns whatever is
+   * stored, so once the PUT gap is closed this needs no client change.
+   */
+  autoInvoiceOnDelivery?: boolean;
+  autoReceiptOnCodDelivery?: boolean;
 }
 
 export type UpdateInvoiceSettingsPayload = Partial<{
@@ -65,6 +85,9 @@ export type UpdateInvoiceSettingsPayload = Partial<{
   showUpiQr: boolean;
   showSignature: boolean;
   thermal: Partial<InvoiceThermal>;
+  /** See the GAP note on `PartnerInvoiceSettings` — sent, but currently dropped server-side. */
+  autoInvoiceOnDelivery: boolean;
+  autoReceiptOnCodDelivery: boolean;
 }>;
 
 export interface BusinessExtraField {

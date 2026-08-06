@@ -49,6 +49,8 @@ export default function InvoiceSettingsScreen() {
   const [showTaxBreakup, setShowTaxBreakup] = useState(true);
   const [showUpiQr, setShowUpiQr] = useState(true);
   const [showSignature, setShowSignature] = useState(true);
+  const [autoInvoiceOnDelivery, setAutoInvoiceOnDelivery] = useState(true);
+  const [autoReceiptOnCodDelivery, setAutoReceiptOnCodDelivery] = useState(true);
   const [thermalWidth, setThermalWidth] = useState<'58' | '80'>('80');
   const [thermalCopies, setThermalCopies] = useState('1');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -69,6 +71,9 @@ export default function InvoiceSettingsScreen() {
     setShowTaxBreakup(s.showTaxBreakup);
     setShowUpiQr(s.showUpiQr);
     setShowSignature(s.showSignature);
+    // Absent reads as ON — matches `order-billing.service.ts#loadBillingSettings`'s `!== false`.
+    setAutoInvoiceOnDelivery(s.autoInvoiceOnDelivery !== false);
+    setAutoReceiptOnCodDelivery(s.autoReceiptOnCodDelivery !== false);
     setThermalWidth(String(s.thermal.width) as '58' | '80');
     setThermalCopies(String(s.thermal.copies));
   }, [query.data]);
@@ -86,6 +91,7 @@ export default function InvoiceSettingsScreen() {
         upiId: upiId.trim() || undefined,
       },
       showHsn, showDiscount, showTaxBreakup, showUpiQr, showSignature,
+      autoInvoiceOnDelivery, autoReceiptOnCodDelivery,
       thermal: { width: Number(thermalWidth) as 58 | 80, copies: Math.min(5, Math.max(1, Number(thermalCopies) || 1)) },
     }),
     onSuccess: () => {
@@ -121,6 +127,27 @@ export default function InvoiceSettingsScreen() {
       <ToggleRow c={c} label="Tax breakup (CGST/SGST/IGST)" value={showTaxBreakup} onChange={setShowTaxBreakup} disabled={!canEdit} />
       <ToggleRow c={c} label="UPI QR code" value={showUpiQr} onChange={setShowUpiQr} disabled={!canEdit} />
       <ToggleRow c={c} label="Signature" value={showSignature} onChange={setShowSignature} disabled={!canEdit} />
+
+      <SectionLabel c={c}>When an order is delivered</SectionLabel>
+      <ToggleRow
+        c={c}
+        label="Auto-raise invoice on delivery"
+        value={autoInvoiceOnDelivery}
+        onChange={setAutoInvoiceOnDelivery}
+        disabled={!canEdit}
+      />
+      <ToggleRow
+        c={c}
+        label="Auto-record COD payment on delivery"
+        value={autoReceiptOnCodDelivery}
+        onChange={setAutoReceiptOnCodDelivery}
+        disabled={!canEdit}
+      />
+      <Text style={{ color: c.textSecondary, fontSize: 11.5, lineHeight: 16, marginBottom: 8 }}>
+        On by default. Switch the first off to raise the tax invoice yourself instead of the moment a delivery is
+        marked done. Switch the second off if cash-on-delivery orders should NOT get an automatic receipt — e.g. a
+        running credit account you settle separately.
+      </Text>
 
       <SectionLabel c={c}>Bank details</SectionLabel>
       <AppInput label="Account name" value={bankName} onChangeText={setBankName} disabled={!canEdit} />

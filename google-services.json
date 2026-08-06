@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "440464911801",
+    "project_id": "resismart-4364b",
+    "storage_bucket": "resismart-4364b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:440464911801:android:9a1007961f34007dd2da68",
+        "android_client_info": {
+          "package_name": "com.himanshujangidalwar.mobilesociety"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6I7fXx8zrcAZeyYhAM13P7NI2465UlNU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:440464911801:android:998bcfddbf3c52f9d2da68",
+        "android_client_info": {
+          "package_name": "com.resismart.shop"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6I7fXx8zrcAZeyYhAM13P7NI2465UlNU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

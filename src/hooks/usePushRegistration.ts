@@ -2,38 +2,42 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { useQueryClient } from '@tanstack/react-query';
 import { notificationApi } from '../api/notification.api';
 import { store } from '../lib/store';
-import { DEVICE_KEYS, PUSH_CHANNEL_ID } from '../constants/app';
+import { DEVICE_KEYS, PUSH_CHANNEL_URGENT, PUSH_CHANNEL_DEFAULT } from '../constants/app';
 import { qk } from '../lib/queryKeys';
 
 /**
  * Register this device so a new booking reaches a partner who is not looking at
  * the app.
  *
- * ── The transport, and why this is Android-only today ──────────────────────
+ * ── The transport (K3) ──────────────────────────────────────────────────────
  *
- * `backend/src/services/push.service.ts` sends through `firebase-admin`:
- * `getMessaging().send({ token })`. That call takes an **FCM registration
- * token** and nothing else. So:
+ * **Expo Push, not FCM — this hook used to be Android-only, and this is the
+ * fix.** It went through `firebase-admin`'s raw FCM token
+ * (`getDevicePushTokenAsync()`), which only understands an FCM registration
+ * token: on iOS that call instead hands back an APNs device token, a foreign
+ * shape FCM rejects outright (`messaging/invalid-registration-token`), so iOS
+ * was skipped deliberately rather than registering a token that would fail
+ * every single send. `getExpoPushTokenAsync({ projectId })` replaces it with
+ * `ExponentPushToken[...]` — one token shape that works on both platforms —
+ * and `backend/src/services/push.service.ts` runs an Expo transport alongside
+ * FCM, telling the two apart by the token's own shape
+ * (`Expo.isExpoPushToken`), so nothing about `/notifications/devices` itself
+ * changes. `mobile-society`'s `usePushRegistration` made this same move first;
+ * this hook mirrors it.
  *
- *   Android — `getDevicePushTokenAsync()` returns exactly that. Works.
- *   iOS     — it returns an **APNs** device token, which firebase-admin rejects
- *             (`messaging/invalid-registration-token`). Registering it anyway
- *             would create a `PushToken` row that fails on every single send,
- *             quietly incrementing `failureCount` until the pruner deletes it —
- *             i.e. iOS push would look wired up and deliver nothing. So iOS is
- *             skipped deliberately, and the gap is reported rather than hidden.
- *             Closing it needs an owner decision: either add
- *             `@react-native-firebase/messaging` (a config plugin + a dev build,
- *             so it also changes how this app ships) or give the backend an APNs
- *             sender alongside FCM.
+ * ── The two channels (K2) ────────────────────────────────────────────────
  *
- * `getExpoPushTokenAsync()` is NOT used, and that is the mistake worth naming:
- * it returns `ExponentPushToken[...]`, which only Expo's own push service
- * understands. This backend does not use it, so an Expo token stored here would
- * be a string FCM has never heard of.
+ * On Android 8+ the CHANNEL owns the sound, importance and DND behaviour —
+ * not the message — so a killed app plays the right tone only because
+ * `urgent` and `default` already exist by the time a push arrives.
+ * `PUSH_CHANNEL_URGENT` / `PUSH_CHANNEL_DEFAULT` name exactly the ids the
+ * backend's `notification-categories.ts` hardcodes, so a HIGH payload's
+ * `channelId: 'urgent'` always finds a channel that already has `urgent.wav`
+ * wired to it — never the other way round.
  *
  * ── Scope ─────────────────────────────────────────────────────────────────
  *
@@ -44,15 +48,30 @@ import { qk } from '../lib/queryKeys';
  * stored token is keyed with the partner id it was registered under.
  */
 
-/** Android 8+ fixes importance when the channel is created, not when a message is sent. */
-async function ensureAndroidChannel(): Promise<void> {
+/** Android 8+ fixes importance, sound and DND behaviour when the channel is
+ *  created, not when a message is sent — both must exist before any push can
+ *  arrive at a killed app. */
+async function ensureAndroidChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
-    name: 'Bookings and orders',
-    importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 250, 250, 250],
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-  });
+  await Promise.all([
+    Notifications.setNotificationChannelAsync(PUSH_CHANNEL_URGENT, {
+      name: 'Urgent alerts',
+      description: 'New bookings and orders that need you now.',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'urgent',
+      vibrationPattern: [0, 400, 250, 400],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
+    }),
+    Notifications.setNotificationChannelAsync(PUSH_CHANNEL_DEFAULT, {
+      name: 'Notifications',
+      description: 'Everything else — status updates, reminders, plan notices.',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'notification',
+      vibrationPattern: [0, 250, 250, 250],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    }),
+  ]);
 }
 
 /**
@@ -96,16 +115,16 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
 
   useEffect(() => {
     if (!enabled || !partnerId) return;
+    if (Constants.appOwnership === 'expo') return; // push was removed from Expo Go on SDK 53+
     let cancelled = false;
 
     (async () => {
       try {
         // A simulator has no push service to hand out a token, and asking throws.
         if (!Device.isDevice) return;
-        if (Platform.OS !== 'android') return; // see the header — iOS needs an owner decision
 
         installHandlerOnce();
-        await ensureAndroidChannel();
+        await ensureAndroidChannels();
 
         const existing = await Notifications.getPermissionsAsync();
         const granted =
@@ -116,24 +135,24 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
         // would burn the partner's remaining chances to say yes.
         if (!granted || cancelled) return;
 
-        const devicePushToken = await Notifications.getDevicePushTokenAsync();
-        if (cancelled) return;
-        // Narrowing on 'android' is what makes `data` a string: the other branch
-        // of `DevicePushToken` types it as `any`, which this codebase does not use.
-        if (devicePushToken.type !== 'android') return;
-        const token = devicePushToken.data;
+        const projectId =
+          Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+        if (!projectId) return; // no EAS project configured — nothing to register against
+
+        const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+        if (cancelled || !token) return;
 
         const [storedToken, storedScope] = await Promise.all([
           store.get(DEVICE_KEYS.PUSH_TOKEN),
           store.get(DEVICE_KEYS.PUSH_TOKEN_SCOPE),
         ]);
-        // Re-register only when something actually changed. FCM rotates tokens
+        // Re-register only when something actually changed. Expo tokens rotate
         // rarely, and a POST on every cold start is a write per launch per device
         // for nothing.
         if (storedToken === token && storedScope === partnerId) return;
 
         await notificationApi.registerDevice({
-          platform: 'ANDROID',
+          platform: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
           token,
           deviceLabel: Device.deviceName ?? `${Device.manufacturer ?? ''} ${Device.modelName ?? ''}`.trim(),
         });
@@ -144,7 +163,7 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
       } catch (error) {
         // Never fatal. Push is an extra way to hear about a booking; the app has
         // to keep working for a partner who denied the permission, is on a
-        // simulator, or is running a build with no `google-services.json`.
+        // simulator, or is running a build with no EAS project wired up.
         console.warn('[push] registration skipped:', error);
       }
     })();
@@ -162,6 +181,7 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
    */
   useEffect(() => {
     if (!enabled) return;
+    if (Constants.appOwnership === 'expo') return; // Expo Go does not support push notifications
     const sub = Notifications.addNotificationReceivedListener(() => {
       void queryClient.invalidateQueries({ queryKey: qk.notifications() });
       void queryClient.invalidateQueries({ queryKey: qk.today() });

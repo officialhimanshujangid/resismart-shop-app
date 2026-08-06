@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { todayOrdersApi, todayProductsApi } from './today.api';
+import { analyticsApi } from '../../api/analytics.api';
 import { bookingApi } from '../bookings/booking.api';
 import { LIVE_STATUSES, todayCivilDate } from '../bookings/format';
 import { qk } from '../../lib/queryKeys';
@@ -34,16 +34,6 @@ export function usePendingOrders(enabled: boolean) {
   });
 }
 
-function useTodayOrdersForSale(enabled: boolean) {
-  const today = todayCivilDate();
-  return useQuery({
-    queryKey: [...qk.today(), 'orders-today'] as const,
-    queryFn: () => todayOrdersApi.today(today),
-    enabled,
-    staleTime: 30_000,
-  });
-}
-
 export function useLowStockProducts(enabled: boolean) {
   return useQuery({
     queryKey: [...qk.today(), 'low-stock'] as const,
@@ -53,44 +43,27 @@ export function useLowStockProducts(enabled: boolean) {
   });
 }
 
-const SOLD_ORDER_STATUSES = new Set(['DELIVERED', 'INVOICED', 'PAID']);
-const SOLD_BOOKING_STATUSES = new Set(['COMPLETED', 'INVOICED', 'PAID']);
-
-export interface TodaySaleSummary {
-  totalPaise: number;
-  /** True when either source's page was cut off — the total is a floor, not exact. */
-  maybeIncomplete: boolean;
-  loading: boolean;
-}
-
 /**
- * Today's takings, summed client-side from what was already fetched for the
- * other two tiles — no separate request. See `today.api.ts`'s header for why
- * there is no dedicated endpoint this reads instead.
+ * The Today board: today's sale, order count, pending decisions, low-stock
+ * count and a 14-day sales sparkline, all computed server-side in one
+ * aggregation (`partner-today.service.ts`) — replaces the client-side
+ * `limit: 100` sum this hook used to do (`useTodaySale`/`useTodayOrdersForSale`,
+ * removed). Not gated by module — see `analytics.api.ts`'s header and the
+ * route file for why; the screen still gates individual TILES on
+ * `showBookings`/`showOrders`/`showCatalog` so a partner never sees a number
+ * about a module they cannot open.
+ *
+ * Keyed under `qk.today()` (`qk.analytics.today()`) for the same reason
+ * `useTodayBookings` above is — so a pull-to-refresh and every relevant SSE
+ * frame (`useLiveEvents`' `keysForKind`) refetch this board too.
  */
-export function useTodaySale(bookingsEnabled: boolean, ordersEnabled: boolean): TodaySaleSummary {
-  const bookingsQuery = useTodayBookings(bookingsEnabled);
-  const ordersQuery = useTodayOrdersForSale(ordersEnabled);
-
-  return useMemo(() => {
-    const bookingRows = bookingsQuery.data?.data ?? [];
-    const orderRows = ordersQuery.data?.data ?? [];
-    const bookingSale = bookingRows
-      .filter((b) => SOLD_BOOKING_STATUSES.has(b.status))
-      .reduce((sum, b) => sum + b.pricing.totalPaise, 0);
-    const orderSale = orderRows
-      .filter((o) => SOLD_ORDER_STATUSES.has(o.status))
-      .reduce((sum, o) => sum + o.amounts.totalPaise, 0);
-
-    const bookingsTruncated = (bookingsQuery.data?.total ?? 0) > bookingRows.length;
-    const ordersTruncated = (ordersQuery.data?.total ?? 0) > orderRows.length;
-
-    return {
-      totalPaise: bookingSale + orderSale,
-      maybeIncomplete: bookingsTruncated || ordersTruncated,
-      loading: (bookingsEnabled && bookingsQuery.isLoading) || (ordersEnabled && ordersQuery.isLoading),
-    };
-  }, [bookingsQuery.data, bookingsQuery.isLoading, ordersQuery.data, ordersQuery.isLoading, bookingsEnabled, ordersEnabled]);
+export function useTodayAnalytics(enabled: boolean) {
+  return useQuery({
+    queryKey: qk.analytics.today(),
+    queryFn: analyticsApi.today,
+    enabled,
+    staleTime: 30_000,
+  });
 }
 
 export { LIVE_STATUSES };

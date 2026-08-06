@@ -257,6 +257,16 @@ export interface MyPartner {
   verification?: { status: PartnerVerificationStatus; docs: PartnerKycDoc[]; note?: string };
   kyc?: { gstNumber?: string; panMasked?: string; licenseNumber?: string };
   timings?: { weekly: DayTiming[]; holidays?: string[] };
+  /**
+   * L1 — "I can take an immediate job right now", a live flag separate from
+   * the weekly schedule (`partner.model.ts:223`, default `false`). Read here
+   * off `GET /partners/me/partner` (there is no dedicated GET for this one
+   * field); written with `partnerApi.setAvailableNow` below, which hits the
+   * dedicated `PUT /partners/me/availability/available-now` — NOT this
+   * endpoint's own `updateMe`, which does not accept it.
+   */
+  availableNow?: boolean;
+  availableNowUpdatedAt?: string;
 }
 
 export const partnerApi = {
@@ -292,6 +302,19 @@ export const partnerApi = {
     serviceRadiusKm?: number;
   }) =>
     apiClient.put<{ message: string; partner: MyPartner }>('/partners/me/partner', body).then((r) => r.data),
+
+  /**
+   * L1's live "available now" switch. Deliberately its own tiny endpoint,
+   * mirroring the web partner availability page
+   * (`frontend/.../partner/availability/page.tsx#setLiveAvailability`) rather
+   * than folding into `updateMe` above — gated `BOOKINGS_MANAGE` FULL
+   * server-side (`partner-service.routes.ts`'s `canManageBookings`), not
+   * `SETTINGS`. Returns only the flag, not the whole partner document.
+   */
+  setAvailableNow: (availableNow: boolean) =>
+    apiClient
+      .put<ApiEnvelope<{ availableNow: boolean }>>('/partners/me/availability/available-now', { availableNow })
+      .then((r) => unwrap(r.data)),
 
   /**
    * The one call the whole app hangs off. Ungated server-side on purpose — it is

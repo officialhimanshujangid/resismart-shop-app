@@ -10,11 +10,15 @@ import {
   reportsApi, exportReport, PartnerReportKey, ReportQuery,
   RegisterReport, ItemWiseReport, GrossProfitReport, PartyWiseReport, AgeingReport,
 } from '../../../src/api/reports.api';
+import {
+  analyticsApi, AnalyticsBoard, findKpi, findSeries, findBreakdown, formatKpiValue,
+} from '../../../src/api/analytics.api';
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppButton } from '../../../src/components/AppButton';
 import { AppInput } from '../../../src/components/AppInput';
 import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
+import { MiniBars, DonutRing, ProgressBar } from '../../../src/components/charts';
 
 /**
  * `sales`/`purchase`/`items`/`parties`/`outstanding`/`profit` are read on
@@ -26,7 +30,20 @@ import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '..
  * straight to WhatsApp or email is the honest phone-shaped version of this
  * feature (spec: "say what you decided").
  */
-const REPORT_TABS: { key: PartnerReportKey; label: string }[] = [
+/**
+ * `insights` is NOT a `PartnerReportKey` — it draws from
+ * `GET /analytics/partner/overview` (the Phase-0 board), not from
+ * `partner-report.service.ts`'s eight-report registry, and it is neither
+ * exportable (no `exportReport('insights', …)` on the server) nor JSON-fetched
+ * through `reportsApi`. Kept as a sibling union rather than folded into
+ * `PartnerReportKey` for that reason — widening that type would make every
+ * OTHER switch over it (in `reportsApi`, in `exportReport`) need an `insights`
+ * case it can never honestly serve.
+ */
+type ReportTabKey = 'insights' | PartnerReportKey;
+
+const REPORT_TABS: { key: ReportTabKey; label: string }[] = [
+  { key: 'insights', label: 'Insights' },
   { key: 'sales', label: 'Sales' },
   { key: 'purchase', label: 'Purchase' },
   { key: 'items', label: 'Items' },
@@ -50,13 +67,17 @@ function monthRange(monthsAgo: number): { from: string; to: string } {
 export default function ReportsScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const [key, setKey] = useState<PartnerReportKey>('sales');
+  // Insights is the first tab AND the default — the charts a partner opens
+  // Reports to see, same reasoning `TodayScreen` leads with its KPI grid.
+  const [key, setKey] = useState<ReportTabKey>('insights');
   const [range, setRange] = useState(monthRange(0));
   const [asOf, setAsOf] = useState(isoDate(new Date()));
   const [exporting, setExporting] = useState<'pdf' | 'xlsx' | null>(null);
 
+  const isInsights = key === 'insights';
   const query: ReportQuery = key === 'outstanding' ? { asOf } : { from: range.from, to: range.to };
-  const exportOnly = EXPORT_ONLY.has(key);
+  // `!isInsights` narrows `key` to `PartnerReportKey` for `EXPORT_ONLY.has`, below.
+  const exportOnly = !isInsights && EXPORT_ONLY.has(key);
 
   const cacheKey = qk.reports(`${key}:${JSON.stringify(query)}`);
   const data = useQuery({
@@ -69,14 +90,23 @@ export default function ReportsScreen() {
       if (key === 'outstanding') return reportsApi.outstanding(query);
       return null;
     },
-    enabled: !exportOnly,
+    enabled: !exportOnly && !isInsights,
+    staleTime: 30_000,
+  });
+
+  /** The Insights tab's own board — a different endpoint, same period controls. */
+  const insights = useQuery({
+    queryKey: qk.analytics.overview({ from: range.from, to: range.to }),
+    queryFn: () => analyticsApi.overview({ from: range.from, to: range.to }),
+    enabled: isInsights,
     staleTime: 30_000,
   });
 
   const doExport = async (format: 'pdf' | 'xlsx') => {
+    if (isInsights) return; // no export path for the analytics board yet (plan Phase 8)
     setExporting(format);
     try {
-      await exportReport(key, format, query);
+      await exportReport(key as PartnerReportKey, format, query);
     } catch (err) {
       Alert.alert('Could not export that report', apiErrorMessage(err));
     } finally {
@@ -132,12 +162,25 @@ export default function ReportsScreen() {
           </View>
         )}
 
-        <View style={styles.exportRow}>
-          <AppButton label="PDF" mode="outlined" onPress={() => doExport('pdf')} loading={exporting === 'pdf'} disabled={exporting !== null} style={styles.exportBtn} fullWidth={false} />
-          <AppButton label="Excel" mode="outlined" onPress={() => doExport('xlsx')} loading={exporting === 'xlsx'} disabled={exporting !== null} style={styles.exportBtn} fullWidth={false} />
-        </View>
+        {/* No export path for the analytics board (plan Phase 8) — the eight
+            report exports below are untouched, this just does not grow a
+            ninth. */}
+        {!isInsights && (
+          <View style={styles.exportRow}>
+            <AppButton label="PDF" mode="outlined" onPress={() => doExport('pdf')} loading={exporting === 'pdf'} disabled={exporting !== null} style={styles.exportBtn} fullWidth={false} />
+            <AppButton label="Excel" mode="outlined" onPress={() => doExport('xlsx')} loading={exporting === 'xlsx'} disabled={exporting !== null} style={styles.exportBtn} fullWidth={false} />
+          </View>
+        )}
 
-        {exportOnly ? (
+        {isInsights ? (
+          insights.isPending ? (
+            <Loading c={c} />
+          ) : insights.isError ? (
+            <ErrorBlock c={c} message={apiErrorMessage(insights.error, 'Could not load your insights.')} onRetry={() => insights.refetch()} />
+          ) : (
+            <InsightsBody c={c} board={insights.data} />
+          )
+        ) : exportOnly ? (
           <Card c={c}>
             <Text style={{ color: c.textPrimary, fontWeight: '700' }}>
               {key === 'gstr1' ? 'GSTR-1 — outward supplies' : 'GSTR-3B — summary return'}
@@ -152,13 +195,137 @@ export default function ReportsScreen() {
         ) : data.isError ? (
           <ErrorBlock c={c} message={apiErrorMessage(data.error, 'Could not load that report.')} onRetry={() => data.refetch()} />
         ) : (
-          <ReportBody c={c} reportKey={key} data={data.data} />
+          // `isInsights` (checked above) has already excluded `'insights'`.
+          <ReportBody c={c} reportKey={key as PartnerReportKey} data={data.data} />
         )}
 
         <SectionLabel c={c}>Party balances</SectionLabel>
         <AppButton label="Check for drift" mode="text" onPress={checkDrift} />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/**
+ * The Reports → Insights tab: `sales trend`, `top items bar`,
+ * `receivables ageing donut` from `GET /analytics/partner/overview`, plus a
+ * summary card built from the same board's KPI headline numbers (the board
+ * already carries them at no extra cost — leaving them unread would waste the
+ * one request this tab makes).
+ *
+ * Reuses `Card`/`SectionLabel`/`SummaryLine`/`EmptyBlock` exactly as
+ * `ReportBody` below does, and the same "dense but possibly all-zero" rule
+ * every chart primitive in `components/charts/` already applies: a quiet
+ * period draws flat bars and an empty ring, never a blank tab.
+ */
+function InsightsBody({ c, board }: { c: ReturnType<typeof themeColors>; board: AnalyticsBoard | undefined }) {
+  if (!board) return <EmptyBlock c={c} title="Nothing to show" />;
+
+  const totalSales = findKpi(board, 'total_sales');
+  const ordersCount = findKpi(board, 'orders_count');
+  const bookingsCount = findKpi(board, 'bookings_count');
+  const aov = findKpi(board, 'average_order_value');
+  const margin = findKpi(board, 'gross_margin');
+  const marginValue = margin?.value ?? null;
+  const receivablesKpi = findKpi(board, 'receivables_outstanding');
+  const receivablesValue = receivablesKpi?.value ?? 0;
+
+  const salesSeries = findSeries(board, 'sales_revenue');
+  const hasSales = (salesSeries?.points ?? []).some((p) => (p.v ?? 0) > 0);
+
+  const topItems = findBreakdown(board, 'top_items_by_revenue');
+  const topItemsMax = topItems?.rows[0]?.value ?? 0;
+
+  const ageing = findBreakdown(board, 'receivables_ageing');
+  const ageingRows = ageing?.rows ?? [];
+  const ageingTotal = ageingRows.reduce((sum, r) => sum + r.value, 0);
+  // 0-30 → green, 90+ → red — the same "closer to due, closer to danger"
+  // reading `AgeingCard` below gives with plain text; here it is colour.
+  const AGEING_COLORS = [c.success, c.primary, c.warning, c.error];
+
+  return (
+    <>
+      <Card c={c}>
+        <SummaryLine c={c} label="Total sales" value={formatKpiValue(totalSales?.value ?? null, 'PAISE')} bold />
+        <SummaryLine c={c} label="Orders" value={formatKpiValue(ordersCount?.value ?? null, 'COUNT')} />
+        <SummaryLine c={c} label="Bookings" value={formatKpiValue(bookingsCount?.value ?? null, 'COUNT')} />
+        <SummaryLine c={c} label="Average order value" value={formatKpiValue(aov?.value ?? null, 'PAISE')} />
+        <SummaryLine
+          c={c}
+          label="Gross margin"
+          value={formatKpiValue(marginValue, 'PERCENT')}
+          tone={marginValue !== null && marginValue < 0 ? 'warn' : undefined}
+        />
+        <SummaryLine
+          c={c}
+          label="Receivables outstanding"
+          value={formatKpiValue(receivablesValue, 'PAISE')}
+          tone={receivablesValue > 0 ? 'warn' : undefined}
+        />
+      </Card>
+
+      <SectionLabel c={c}>Sales trend</SectionLabel>
+      <Card c={c}>
+        {hasSales ? (
+          <MiniBars c={c} points={salesSeries?.points ?? []} height={90} width={280} />
+        ) : (
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>No sales in this period.</Text>
+        )}
+      </Card>
+
+      <SectionLabel c={c}>Top items by revenue</SectionLabel>
+      {!topItems || topItems.rows.length === 0 ? (
+        <Card c={c}>
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>No item sold in this period.</Text>
+        </Card>
+      ) : (
+        <Card c={c} style={{ gap: 12 }}>
+          {topItems.rows.map((row) => (
+            <ProgressBar
+              key={row.label}
+              c={c}
+              value={row.value}
+              max={topItemsMax}
+              label={row.label}
+              valueLabel={formatPaise(row.value)}
+            />
+          ))}
+        </Card>
+      )}
+
+      <SectionLabel c={c}>Receivables ageing</SectionLabel>
+      <Card c={c} style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+        <DonutRing
+          c={c}
+          size={104}
+          strokeWidth={14}
+          centerValue={formatPaise(ageingTotal, { showDecimals: false })}
+          centerLabel="Outstanding"
+          slices={ageingRows.map((r, i) => ({
+            label: r.label,
+            value: r.value,
+            color: AGEING_COLORS[i % AGEING_COLORS.length],
+          }))}
+        />
+        <View style={{ flex: 1, gap: 8 }}>
+          {ageingTotal <= 0 ? (
+            <Text style={{ color: c.textSecondary, fontSize: 12 }}>Nothing outstanding.</Text>
+          ) : (
+            ageingRows.map((r, i) => (
+              <View key={r.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: AGEING_COLORS[i % AGEING_COLORS.length] }} />
+                <Text style={{ color: c.textSecondary, fontSize: 12, flex: 1 }} numberOfLines={1}>
+                  {r.label}
+                </Text>
+                <Text style={{ color: c.textPrimary, fontSize: 12, fontWeight: '700' }}>
+                  {formatPaise(r.value, { showDecimals: false })}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+      </Card>
+    </>
   );
 }
 

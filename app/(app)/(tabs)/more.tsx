@@ -9,6 +9,7 @@ import { usePartnerEntitlements, ModuleMenuEntry } from '../../../src/hooks';
 import { useAuth } from '../../../src/context/AuthContext';
 import { PartnerModule } from '../../../src/types/api-contract.generated';
 import { Card, Row, SectionLabel } from '../../../src/features/more/ui';
+import { toHref } from '../../../src/features/billing/routeHref';
 
 /**
  * The More tab: everything that is not a bottom tab.
@@ -107,7 +108,7 @@ function onLockedTap(entry: ModuleMenuEntry) {
 export default function MoreScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const { menu, ready, entitlements, can } = usePartnerEntitlements();
+  const { menu, ready, entitlements, can, hasModule } = usePartnerEntitlements();
   const { user, profile, logout } = useAuth();
 
   const moduleRows = useMemo(
@@ -115,20 +116,52 @@ export default function MoreScreen() {
     [menu],
   );
 
-  const businessRows = useMemo(
-    () => [
+  /**
+   * The fixed "Business" rows — gate-3 permission only, no plan lock (see the
+   * header). Three of these are NOT `PartnerAccessModule` literals with a
+   * matching `can(key, 'READ')` shortcut the way Parties/Reports/Staff/Settings
+   * are, so they carry their own `visible` boolean instead of the uniform
+   * `.filter(row => can(row.key, 'READ'))` the original four used:
+   *
+   *   - Payments (C1) — gated the SAME way `billing/_layout.tsx` gates the
+   *     whole Billing tree: `INVOICING` module + `INVOICING_VIEW`. Recording
+   *     money is part of billing, not a separate permission surface — see
+   *     web `payments/page.tsx`'s own header.
+   *   - Services (C3) and Availability (C2) — built by this wave's sibling
+   *     agent (1C) at `app/(app)/services` and `app/(app)/availability`.
+   *     Both sit under the BOOKINGS module gate on the server
+   *     (`partner-service.routes.ts`), Services behind `CATALOG_VIEW` (the
+   *     service price-list is catalogue data) and Availability behind
+   *     `BOOKINGS_VIEW`. Neither has its own bottom tab — like Catalogue,
+   *     they are sub-screens of a module that IS tab-covered, so More is the
+   *     only path in.
+   *
+   * `toHref()` (not a bare string literal) for these three: `.expo/types/router.d.ts`
+   * is regenerated from the file system at typecheck time, and this file
+   * cannot know whether 1C's `services`/`availability` routes have been
+   * generated yet in a given build — see `routeHref.ts`'s header. Cast, not
+   * suppressed: `router.push`/`Href` still reject a malformed object.
+   */
+  const businessRows = useMemo(() => {
+    const rows: { key: string; label: string; icon: string; blurb: string; href: ReturnType<typeof toHref>; visible: boolean }[] = [
       // `/parties`, not `/parties/index`: expo-router strips the trailing
       // `/index` when it builds a route key, so the `/index` spelling these
       // four shipped with matched no route at all and every Business row was
-      // a dead tap. They are plain literals (no cast) so the generated
-      // declaration file is what proves each one still exists.
-      { key: 'CUSTOMERS' as const, label: 'Parties', icon: 'account-group-outline', blurb: 'Customers, suppliers, and the ones who are both — with their running balance.', href: '/parties' as const },
-      { key: 'REPORTS' as const, label: 'Reports', icon: 'chart-line', blurb: 'Sales, purchases, GST returns, outstanding and profit.', href: '/reports' as const },
-      { key: 'STAFF' as const, label: 'Staff', icon: 'account-tie-outline', blurb: 'Who works here, their roles, and what each role may touch.', href: '/staff' as const },
-      { key: 'SETTINGS' as const, label: 'Settings', icon: 'cog-outline', blurb: 'Business details, how invoices look, and WhatsApp alerts.', href: '/settings' as const },
-    ].filter((row) => can(row.key, 'READ')),
-    [can],
-  );
+      // a dead tap.
+      { key: 'CUSTOMERS', label: 'Parties', icon: 'account-group-outline', blurb: 'Customers, suppliers, and the ones who are both — with their running balance.', href: toHref('/parties'), visible: can('CUSTOMERS', 'READ') },
+      // C7 — reviews reply. Same `CUSTOMERS` permission row Parties uses;
+      // there is no dedicated review permission on the server (see
+      // `features/reviews/api.ts`'s header).
+      { key: 'REVIEWS', label: 'Reviews', icon: 'star-outline', blurb: 'What residents said after a booking or an order, and your reply to it.', href: toHref('/reviews'), visible: can('CUSTOMERS', 'READ') },
+      { key: 'PAYMENTS', label: 'Payments', icon: 'cash-multiple', blurb: 'Money in against a sale, money out against a purchase — allocated to what it settles.', href: toHref('/payments'), visible: hasModule('INVOICING') && can('INVOICING_VIEW', 'READ') },
+      { key: 'SERVICES', label: 'Services', icon: 'clipboard-list-outline', blurb: 'The services you offer, and what each one costs.', href: toHref('/services'), visible: hasModule('BOOKINGS') && can('CATALOG_VIEW', 'READ') },
+      { key: 'AVAILABILITY', label: 'Availability', icon: 'clock-outline', blurb: 'Your working hours — no hours set, no booking can reach you.', href: toHref('/availability'), visible: hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ') },
+      { key: 'REPORTS', label: 'Reports', icon: 'chart-line', blurb: 'Sales, purchases, GST returns, outstanding and profit.', href: toHref('/reports'), visible: can('REPORTS', 'READ') },
+      { key: 'STAFF', label: 'Staff', icon: 'account-tie-outline', blurb: 'Who works here, their roles, and what each role may touch.', href: toHref('/staff'), visible: can('STAFF', 'READ') },
+      { key: 'SETTINGS', label: 'Settings', icon: 'cog-outline', blurb: 'Business details, how invoices look, and WhatsApp alerts.', href: toHref('/settings'), visible: can('SETTINGS', 'READ') },
+    ];
+    return rows.filter((row) => row.visible);
+  }, [can, hasModule]);
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'You will need to sign in again to use this app.', [

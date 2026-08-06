@@ -11,7 +11,15 @@ import {
  */
 
 export interface DocumentListFilters {
-  type?: PartnerDocumentType;
+  /**
+   * One type, or several comma-separated (`documentTypeCsv` on the server
+   * splits and validates each member). Typed as `string` rather than
+   * `PartnerDocumentType` because the Sales/Purchase toggle (C5) and the
+   * payment allocation picker (C1) both need to ask for several types in one
+   * request — see `partner-billing.validator.ts`'s comment on why this was
+   * widened from a single-member enum in the first place.
+   */
+  type?: string;
   /** Comma-separated — the server does `status.split(',')` into an `$in`. */
   status?: string;
   partyId?: string;
@@ -33,8 +41,20 @@ export interface CreateDocumentPayload {
   partySnapshot: DocumentPartySnapshot;
   lines: DocumentLineInput[];
   notes?: string;
+  /** ISO strings — see C6. Server defaults `documentDate` to "now" when absent. */
+  documentDate?: string;
+  dueDate?: string;
+  validUntil?: string;
+  goodsReturned?: boolean;
   sourceType?: 'BOOKING' | 'ORDER' | 'MANUAL';
   sourceId?: string;
+}
+
+export interface ConvertDocumentPayload {
+  to: PartnerDocumentType;
+  documentDate?: string;
+  dueDate?: string;
+  validUntil?: string;
 }
 
 export const documentsApi = {
@@ -83,6 +103,19 @@ export const documentsApi = {
         { reason },
       )
       .then((r) => r.data),
+
+  /**
+   * Turn this document into its target type — C4. One server transaction
+   * writes both documents; there is no client-side "half converted" state.
+   * Mirrors `ConvertDialog.tsx` on web.
+   */
+  convert: (id: string, payload: ConvertDocumentPayload) =>
+    apiClient
+      .post<ApiEnvelope<{ source: PartnerDocumentRecord; created: PartnerDocumentRecord }>>(
+        `/partners/me/documents/${id}/convert`,
+        payload,
+      )
+      .then((r) => unwrap(r.data)),
 
   send: (id: string, channel: 'WHATSAPP' | 'EMAIL' | 'SMS') =>
     apiClient

@@ -22,7 +22,7 @@ export function AppLogo({ size = 'medium', showTagline = true, variant = 'light'
     <View style={styles.container}>
       {/* App icon (RS badge) */}
       <Image
-        source={require('../../assets/appicon.png')}
+        source={require('../../assets/appicon.jpg')}
         style={[styles.icon, { width: s.icon, height: s.icon, borderRadius: s.icon * 0.22 }]}
         resizeMode="contain"
       />

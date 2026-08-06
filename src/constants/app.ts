@@ -47,10 +47,15 @@ export const APP_NAME = 'ResiSmart Partner';
 export const APP_VERSION = '1.0.0';
 
 /**
- * The Android notification channel every partner alert lands on.
+ * The two Android notification channels every partner alert lands on (K2).
  *
- * Android 8+ ignores importance set at send time; it is fixed when the channel
- * is created. Without a channel created at HIGH, a new booking arrives silently
- * and the whole point of push is gone.
+ * Android 8+ ignores importance, sound and DND behaviour set at send time —
+ * it is fixed when the CHANNEL is created, not when a message arrives — so
+ * both must exist before any push can reach a killed app. The ids are bare
+ * names the backend already hardcodes (`channelForPriority` in
+ * `notification-categories.ts`: HIGH → `'urgent'`, else → `'default'`), so a
+ * channel named anything else here would silently never be matched and every
+ * push would fall back to the OS default sound.
  */
-export const PUSH_CHANNEL_ID = 'partner-alerts';
+export const PUSH_CHANNEL_URGENT = 'urgent';
+export const PUSH_CHANNEL_DEFAULT = 'default';

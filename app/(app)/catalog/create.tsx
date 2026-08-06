@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View, useColorScheme, Pressable } from 'react-native';
-import { Text, Switch, HelperText } from 'react-native-paper';
+import { Text, Switch, HelperText, IconButton, Portal, Modal } from 'react-native-paper';
 import { router, useLocalSearchParams, Href } from 'expo-router';
 
 import { themeColors, radii } from '../../../src/constants/colors';
@@ -11,6 +11,7 @@ import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { PRODUCT_UNITS, ProductUnit } from '../../../src/types/api-contract.generated';
 import { useCreateProduct, useProductCategories, CategoryPicker, UsageMeterBar } from '../../../src/features/catalog';
+import { BarcodeScannerView, ProductScanOutcome } from '../../../src/features/scanner';
 
 /**
  * New product. `?barcode=` and `?returnTo=` are the scanner's contract — see
@@ -22,6 +23,15 @@ import { useCreateProduct, useProductCategories, CategoryPicker, UsageMeterBar }
  * `/catalog/scan` — a partner who scans nine items and is at their limit on
  * the tenth must see why Save is refusing them, not just a 402 after typing
  * a name and a price.
+ *
+ * **The Barcode field carries its own scan button too (E5).** Reaching this
+ * screen via `/catalog/scan`'s "unknown code" hand-off already covers the
+ * common case, but a partner can also open Add straight from the catalog list
+ * for an item they have not scanned yet — that path had no camera at all, so
+ * the barcode had to be typed by hand. The button below opens the same
+ * `BarcodeScannerView` used everywhere else in a `Portal`/`Modal`, over this
+ * screen rather than navigating away from it, so nothing already typed above
+ * (name, price, unit…) is lost while the camera is open.
  */
 export default function CreateProductScreen() {
   const isDark = useColorScheme() === 'dark';
@@ -47,8 +57,39 @@ export default function CreateProductScreen() {
   const [trackStock, setTrackStock] = useState(true);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const canManage = can('CATALOG_MANAGE', 'FULL');
+
+  const handleBarcodeScan = useCallback((outcome: ProductScanOutcome) => {
+    if (outcome.status === 'unknown') {
+      setBarcode(outcome.barcode);
+      setScannerOpen(false);
+      return;
+    }
+    if (outcome.status === 'found') {
+      // This code already belongs to a product. Filling it in here would only
+      // fail at save time on the barcode's unique index — send the partner to
+      // the product that already owns it instead of letting them discover
+      // that the hard way after typing out a name and a price.
+      setScannerOpen(false);
+      Alert.alert(
+        'Already in your catalogue',
+        `"${outcome.product.name}" already carries this barcode.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open it',
+            onPress: () => router.push({ pathname: '/catalog/[id]', params: { id: outcome.product._id } }),
+          },
+        ],
+      );
+      return;
+    }
+    // 'error' — the lookup itself failed (network/5xx), not "code unknown".
+    // The camera stays open; nothing has been decided about this code yet.
+    Alert.alert('Could not check that barcode', outcome.message);
+  }, []);
 
   const goBackToOrigin = () => {
     if (params.returnTo) {
@@ -177,7 +218,17 @@ export default function CreateProductScreen() {
       <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={canManage} />
 
       <AppInput label="SKU (optional)" value={sku} onChangeText={setSku} autoCapitalize="characters" />
-      <AppInput label="Barcode (optional)" value={barcode} onChangeText={setBarcode} autoCapitalize="characters" />
+      <View style={styles.barcodeRow}>
+        <AppInput label="Barcode (optional)" value={barcode} onChangeText={setBarcode} autoCapitalize="characters" style={styles.barcodeInput} />
+        <IconButton
+          icon="barcode-scan"
+          mode="outlined"
+          size={22}
+          onPress={() => setScannerOpen(true)}
+          accessibilityLabel="Scan a barcode"
+          style={styles.scanBtn}
+        />
+      </View>
       <AppInput label="HSN code (optional)" value={hsnCode} onChangeText={setHsnCode} />
 
       <View style={[styles.switchBox, { marginTop: 4 }]}>
@@ -199,6 +250,20 @@ export default function CreateProductScreen() {
       )}
 
       <AppButton label="Save product" onPress={submit} loading={createProduct.isPending} disabled={cap.atLimit} />
+
+      <Portal>
+        <Modal
+          visible={scannerOpen}
+          onDismiss={() => setScannerOpen(false)}
+          contentContainerStyle={[styles.scannerModal, { backgroundColor: c.background }]}
+        >
+          <View style={styles.scannerHeader}>
+            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '800' }}>Scan barcode</Text>
+            <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel="Done scanning" />
+          </View>
+          <BarcodeScannerView active={scannerOpen} onResult={handleBarcodeScan} hint="Scan the barcode printed on the pack." />
+        </Modal>
+      </Portal>
     </ScrollView>
   );
 }
@@ -212,4 +277,9 @@ const styles = StyleSheet.create({
   unitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
   unitChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   deniedBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  barcodeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  barcodeInput: { flex: 1 },
+  scanBtn: { marginTop: 2 },
+  scannerModal: { flex: 1, margin: 0 },
+  scannerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingTop: 8 },
 });

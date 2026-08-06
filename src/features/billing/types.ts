@@ -31,23 +31,19 @@ export const PARTNER_DOCUMENT_TYPES = [
 export type PartnerDocumentType = typeof PARTNER_DOCUMENT_TYPES[number];
 
 /**
- * The types this screen's "New Invoice" flow may create.
+ * The types the New Invoice screen may create — as of C5, all nine.
  *
- * Narrower than `PARTNER_DOCUMENT_TYPES` on purpose. Every one of these is a
- * SALES document that never requires a party (`requiresParty: false` on the
- * server's behaviour table), so a walk-in customer can always be billed. The
- * four purchase-side types (`PURCHASE_INVOICE`, `PURCHASE_ORDER`, `DEBIT_NOTE`)
- * and the two return types (`CREDIT_NOTE`, `SALES_RETURN`) all need an
- * existing document or supplier to make sense of, which is a different screen
- * than "two-tap invoice" — see `judgementCalls`.
+ * Used to be the four SALES types that never require a party
+ * (`requiresParty: false`), because the purchase-side types and the two
+ * return types "need an existing document or supplier to make sense of".
+ * That reasoning does not survive contact with the actual behaviour table:
+ * `PURCHASE_ORDER` and `PURCHASE_INVOICE` need a SUPPLIER, not an existing
+ * document, and `partiesApi` can search suppliers exactly as it searches
+ * customers — there was no missing capability, only a missing toggle. See
+ * `PARTNER_DOCUMENT_BEHAVIOUR` below for what each type still requires.
  */
-export const BILLING_SCREEN_DOCUMENT_TYPES = [
-  'TAX_INVOICE',
-  'QUOTATION',
-  'PROFORMA',
-  'DELIVERY_CHALLAN',
-] as const;
-export type BillingScreenDocumentType = typeof BILLING_SCREEN_DOCUMENT_TYPES[number];
+export const BILLING_SCREEN_DOCUMENT_TYPES = PARTNER_DOCUMENT_TYPES;
+export type BillingScreenDocumentType = PartnerDocumentType;
 
 export const DOCUMENT_TYPE_LABEL: Record<PartnerDocumentType, string> = {
   TAX_INVOICE: 'Tax invoice',
@@ -60,6 +56,69 @@ export const DOCUMENT_TYPE_LABEL: Record<PartnerDocumentType, string> = {
   PURCHASE_ORDER: 'Purchase order',
   DEBIT_NOTE: 'Debit note',
 };
+
+// ──────────────────────────────────────────────────────────── behaviour
+
+/**
+ * Mirrors `PARTNER_DOCUMENT_BEHAVIOUR` in `backend/src/models/partner-document.model.ts`
+ * — same rule as the header above: hand-copied, kept narrow to what a SCREEN
+ * needs to decide what to show or require, and never authoritative. The
+ * server re-checks every one of these independently
+ * (`partner-document.service.ts`), so a stale entry here costs a confusing
+ * form, never a wrong document.
+ */
+export type DocumentDirection = 'SALES' | 'PURCHASE';
+export type DocumentSettlement = 'IN' | 'OUT' | 'NONE';
+
+export interface DocumentBehaviour {
+  label: string;
+  direction: DocumentDirection;
+  /** Which date field this type carries, if any. */
+  dateField: 'validUntil' | 'dueDate' | 'none';
+  /** A purchase document needs a named supplier; a counter sale can be a name on a slip. */
+  requiresParty: boolean;
+  /** Only a credit note and a debit note ask "did goods actually move?" — the `goodsReturned` flag decides. */
+  stockNeedsGoodsFlag: boolean;
+  isTaxDocument: boolean;
+  /** Which way money moves to settle this document — drives the payment direction, `NONE` for paper that is never paid against. */
+  settlement: DocumentSettlement;
+}
+
+export const PARTNER_DOCUMENT_BEHAVIOUR: Readonly<Record<PartnerDocumentType, DocumentBehaviour>> = Object.freeze({
+  TAX_INVOICE: { label: 'Tax invoice', direction: 'SALES', dateField: 'dueDate', requiresParty: false, stockNeedsGoodsFlag: false, isTaxDocument: true, settlement: 'IN' },
+  QUOTATION: { label: 'Quotation', direction: 'SALES', dateField: 'validUntil', requiresParty: false, stockNeedsGoodsFlag: false, isTaxDocument: false, settlement: 'NONE' },
+  PROFORMA: { label: 'Proforma invoice', direction: 'SALES', dateField: 'none', requiresParty: false, stockNeedsGoodsFlag: false, isTaxDocument: false, settlement: 'NONE' },
+  DELIVERY_CHALLAN: { label: 'Delivery challan', direction: 'SALES', dateField: 'none', requiresParty: false, stockNeedsGoodsFlag: false, isTaxDocument: false, settlement: 'NONE' },
+  CREDIT_NOTE: { label: 'Credit note', direction: 'SALES', dateField: 'none', requiresParty: false, stockNeedsGoodsFlag: true, isTaxDocument: true, settlement: 'OUT' },
+  SALES_RETURN: { label: 'Sales return', direction: 'SALES', dateField: 'none', requiresParty: false, stockNeedsGoodsFlag: false, isTaxDocument: true, settlement: 'OUT' },
+  PURCHASE_INVOICE: { label: 'Purchase invoice', direction: 'PURCHASE', dateField: 'dueDate', requiresParty: true, stockNeedsGoodsFlag: false, isTaxDocument: true, settlement: 'OUT' },
+  PURCHASE_ORDER: { label: 'Purchase order', direction: 'PURCHASE', dateField: 'none', requiresParty: true, stockNeedsGoodsFlag: false, isTaxDocument: false, settlement: 'NONE' },
+  DEBIT_NOTE: { label: 'Debit note', direction: 'PURCHASE', dateField: 'none', requiresParty: true, stockNeedsGoodsFlag: true, isTaxDocument: true, settlement: 'IN' },
+});
+
+export const behaviourOf = (type: PartnerDocumentType): DocumentBehaviour => PARTNER_DOCUMENT_BEHAVIOUR[type];
+
+export const SALES_DOCUMENT_TYPES: PartnerDocumentType[] =
+  PARTNER_DOCUMENT_TYPES.filter((t) => PARTNER_DOCUMENT_BEHAVIOUR[t].direction === 'SALES');
+export const PURCHASE_DOCUMENT_TYPES: PartnerDocumentType[] =
+  PARTNER_DOCUMENT_TYPES.filter((t) => PARTNER_DOCUMENT_BEHAVIOUR[t].direction === 'PURCHASE');
+
+/**
+ * Mirrors `PARTNER_DOCUMENT_CONVERSIONS` — which button `billing/[id].tsx`
+ * offers, never what the server accepts. `conversionTargets()` on the server
+ * is the same table read the other way round.
+ */
+export const CONVERSION_TARGETS: Readonly<Record<PartnerDocumentType, PartnerDocumentType[]>> = Object.freeze({
+  TAX_INVOICE: ['CREDIT_NOTE'],
+  QUOTATION: ['TAX_INVOICE'],
+  PROFORMA: ['TAX_INVOICE'],
+  DELIVERY_CHALLAN: ['TAX_INVOICE'],
+  CREDIT_NOTE: [],
+  SALES_RETURN: [],
+  PURCHASE_INVOICE: [],
+  PURCHASE_ORDER: ['PURCHASE_INVOICE'],
+  DEBIT_NOTE: [],
+});
 
 export const PARTNER_DOCUMENT_STATUSES = [
   'DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED', 'CONVERTED', 'EXPIRED',
@@ -233,6 +292,12 @@ export interface InvoiceDraft {
   partySnapshot: DocumentPartySnapshot;
   lines: DraftLineInput[];
   notes?: string;
+  /** ISO date strings — see C6. `documentDate` defaults to "now" server-side when absent. */
+  documentDate?: string;
+  dueDate?: string;
+  validUntil?: string;
+  /** Only meaningful when the type's `stockNeedsGoodsFlag` is true (CREDIT_NOTE, DEBIT_NOTE). */
+  goodsReturned?: boolean;
   /**
    * The job or order this bill is FOR, when it was started from one.
    *
@@ -264,6 +329,10 @@ export interface AddDraftInput {
   partySnapshot: DocumentPartySnapshot;
   lines: DraftLineInput[];
   notes?: string;
+  documentDate?: string;
+  dueDate?: string;
+  validUntil?: string;
+  goodsReturned?: boolean;
   /** The job this bill is for, when the screen was opened from one. */
   sourceType?: 'BOOKING' | 'ORDER';
   sourceId?: string;

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { ordersApi, KnownOrderVerb } from './api';
+import { ordersApi, KnownOrderVerb, OrderReturnLine, OrderReturnResult } from './api';
 import { OrderListFilters, PartnerOrder } from './types';
 import { qk } from '../../lib/queryKeys';
 
@@ -43,6 +43,44 @@ export function useOrderTransition() {
       void queryClient.invalidateQueries({ queryKey: qk.orders.all() });
       // Today's "pending orders" count is built off the same data.
       void queryClient.invalidateQueries({ queryKey: qk.today() });
+    },
+  });
+}
+
+export interface OrderReturnInput {
+  id: string;
+  lines: OrderReturnLine[];
+  reason: string;
+  /**
+   * Minted by the CALLER once per return decision (`newIdempotencyKey`) and
+   * held for every retry of that same decision — never regenerated inside
+   * this hook, which is exactly what would turn a retried tap into a second
+   * credit note on a flaky connection.
+   */
+  idempotencyKey: string;
+}
+
+/**
+ * M5 — record a partial (or full-by-line) return off a delivered/invoiced
+ * order. On success the server hands back the RE-PRICED order (stock and
+ * receivable already adjusted) plus the credit note it raised; both caches
+ * are refreshed the same way `useOrderTransition` does it, and the
+ * return-eligibility lookup (`useOrderReturnEligibility`) is invalidated so a
+ * second return in the same session sees the updated already-returned sums —
+ * this is what makes multiple partial returns on one order keep working
+ * without a screen reload.
+ */
+export function useOrderReturnItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, lines, reason, idempotencyKey }: OrderReturnInput) =>
+      ordersApi.returnItems(id, { lines, reason }, idempotencyKey),
+    onSuccess: ({ order }: OrderReturnResult) => {
+      queryClient.setQueryData(qk.orders.detail(order.id), order);
+      void queryClient.invalidateQueries({ queryKey: qk.orders.all() });
+      void queryClient.invalidateQueries({ queryKey: qk.today() });
+      void queryClient.invalidateQueries({ queryKey: ['orders', 'return-eligibility', order.id] });
+      void queryClient.invalidateQueries({ queryKey: qk.billing.documents() });
     },
   });
 }

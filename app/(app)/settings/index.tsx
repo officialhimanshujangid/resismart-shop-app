@@ -73,6 +73,17 @@ export default function SettingsHubScreen() {
           subtitle="Bookings, orders and plan alerts on WhatsApp"
           onPress={() => router.push('/settings/notifications')}
         />
+        <View style={{ height: 1, opacity: 0.5 }} />
+        {/* C7 — see what this business uses and switch it off/on, matching
+            web `settings/modules`. Reachable at READ (this hub's own gate),
+            the screen itself requires SETTINGS FULL to change anything. */}
+        <Row
+          c={c}
+          icon="view-grid-outline"
+          title="Modules"
+          subtitle="Bookings, Catalogue, Orders, Invoicing, Promotion — on or off"
+          onPress={() => router.push('/settings/modules')}
+        />
       </Card>
     </Screen>
   );

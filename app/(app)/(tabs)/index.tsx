@@ -11,13 +11,15 @@ import { themeColors, radii } from '../../../src/constants/colors';
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { qk } from '../../../src/lib/queryKeys';
+import { Kpi, findKpi, findSeries } from '../../../src/api/analytics.api';
 
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction } from '../../../src/features/bookings/hooks';
 import { BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
 import { LIVE_STATUSES } from '../../../src/features/bookings/format';
-import { useLowStockProducts, usePendingOrders, useTodayBookings, useTodaySale } from '../../../src/features/today/hooks';
+import { useLowStockProducts, usePendingOrders, useTodayAnalytics, useTodayBookings } from '../../../src/features/today/hooks';
+import { TodayKpiTile } from '../../../src/features/today/components/TodayKpiTile';
 
 /**
  * The screen a partner opens twenty times a day.
@@ -58,7 +60,20 @@ export default function TodayScreen() {
   const bookingsQuery = useTodayBookings(showBookings);
   const ordersQuery = usePendingOrders(showOrders);
   const lowStockQuery = useLowStockProducts(showCatalog);
-  const sale = useTodaySale(showBookings, showOrders);
+  // Not gated on any one module — see `analytics.api.ts`'s header. Only fired
+  // when at least one of the three tiles it feeds could show something; the
+  // "Nothing switched on yet" card below covers the all-false case.
+  const analyticsQuery = useTodayAnalytics(ready && (showBookings || showOrders || showCatalog));
+  const board = analyticsQuery.data;
+  /** The 14-day trend both `today_sale` and `today_orders` draw from. */
+  const salesSpark = findSeries(board, 'sales')?.points ?? [];
+  /**
+   * `board`'s own KPI when it has loaded, a `value: null` placeholder while it
+   * has not — a tile always has a frame to draw ("—" via `formatKpiValue"),
+   * never a gap that reflows the grid the moment the request resolves.
+   */
+  const kpiOf = (key: string, label: string, unit: Kpi['unit'], goodWhen: Kpi['goodWhen']): Kpi =>
+    findKpi(board, key) ?? { key, label, value: null, unit, previous: null, deltaPercent: null, direction: null, goodWhen };
   const { act, pendingId, isPending } = useBookingAction();
 
   const [formTarget, setFormTarget] = useState<{ booking: PartnerBookingView; verb: BookingVerb } | null>(null);
@@ -86,7 +101,7 @@ export default function TodayScreen() {
     [act, formTarget],
   );
 
-  const refreshing = bookingsQuery.isFetching || ordersQuery.isFetching || lowStockQuery.isFetching;
+  const refreshing = bookingsQuery.isFetching || ordersQuery.isFetching || lowStockQuery.isFetching || analyticsQuery.isFetching;
   const onRefresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: qk.today() });
   }, [queryClient]);
@@ -184,17 +199,46 @@ export default function TodayScreen() {
           </Surface>
         )}
 
-        {ready && !banner && (showBookings || showOrders) && (
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Today&apos;s sale</Text>
-            <Text style={[styles.saleFigure, { color: c.textPrimary }]}>
-              {sale.loading ? '—' : formatPaise(sale.totalPaise)}
-            </Text>
-            <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-              Completed bookings and delivered orders, today.
-              {sale.maybeIncomplete ? ' (Showing at least this much — a busy day may run higher.)' : ''}
-            </Text>
-          </Surface>
+        {ready && !banner && (showBookings || showOrders || showCatalog) && (
+          <View style={styles.kpiGrid}>
+            {(showBookings || showOrders) && (
+              <TodayKpiTile
+                c={c}
+                icon="cash-multiple"
+                kpi={kpiOf('today_sale', "Today's sale", 'PAISE', 'UP')}
+                sparkline={salesSpark}
+              />
+            )}
+            {showOrders && (
+              <TodayKpiTile
+                c={c}
+                icon="package-variant-closed"
+                kpi={kpiOf('today_orders', 'Orders today', 'COUNT', 'UP')}
+                sparkline={salesSpark}
+                sparklineColor={c.secondary}
+              />
+            )}
+            {(showBookings || showOrders) && (
+              <TodayKpiTile
+                c={c}
+                icon="clock-alert-outline"
+                kpi={kpiOf('pending_decisions', 'Awaiting your decision', 'COUNT', 'DOWN')}
+              />
+            )}
+            {showCatalog && (
+              <TodayKpiTile
+                c={c}
+                icon="alert-octagon-outline"
+                kpi={kpiOf('low_stock', 'Running low', 'COUNT', 'DOWN')}
+              />
+            )}
+          </View>
+        )}
+
+        {analyticsQuery.isError && (
+          <Text style={[styles.errorHint, { color: c.error }]}>
+            {apiErrorMessage(analyticsQuery.error, "Could not load today's numbers.")}
+          </Text>
         )}
 
         {ready && !banner && showOrders && pendingOrders.length > 0 && (
@@ -309,7 +353,8 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: '700' },
   cardBody: { fontSize: 14, lineHeight: 20 },
   cardAction: { marginTop: 6, alignSelf: 'flex-start' },
-  saleFigure: { fontSize: 30, fontWeight: '800' },
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  errorHint: { fontSize: 12, marginTop: -6 },
   orderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   orderCode: { fontSize: 13, fontWeight: '700', flex: 1 },
   orderMeta: { fontSize: 12, flex: 1.4 },

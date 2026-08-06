@@ -68,10 +68,43 @@ export const qk = {
     detail: (id: string) => ['parties', 'detail', id] as const,
   },
 
+  payments: {
+    all: () => ['payments'] as const,
+    list: (filters?: Record<string, string | number | undefined>) =>
+      ['payments', 'list', filters ?? {}] as const,
+  },
+
+  services: {
+    all: () => ['services'] as const,
+    list: (filters?: Record<string, string | undefined>) => ['services', 'list', filters ?? {}] as const,
+    detail: (id: string) => ['services', 'detail', id] as const,
+  },
+
+  availability: {
+    /** The business's own default schedule (`staffId: null`) — this app does not build staff overrides. */
+    business: () => ['availability', 'business'] as const,
+  },
+
   reports: (range: string) => ['reports', range] as const,
+  analytics: {
+    /**
+     * Nested UNDER `qk.today()` — deliberately, unlike every other leaf below
+     * `today()` is written as its own top-level key. `useLiveEvents.ts`'s
+     * `keysForKind` invalidates the bare `qk.today()` on EVERY notification
+     * frame, and the Today screen's own pull-to-refresh does the same
+     * (`onRefresh` in `(tabs)/index.tsx`); prefix-matching that invalidation is
+     * exactly how this board picks up a new order/booking without a bespoke
+     * SSE key of its own. The board also carries a server-side 60s cache, so a
+     * burst of frames costs cheap re-checks, not re-aggregation.
+     */
+    today: () => [...qk.today(), 'analytics'] as const,
+    /** The Reports → Insights tab's board — a different screen, no SSE tie-in. */
+    overview: (query?: Record<string, string | undefined>) => ['analytics', 'overview', query ?? {}] as const,
+  },
   staff: () => ['staff'] as const,
   promotion: () => ['promotion'] as const,
   notifications: () => ['notifications'] as const,
+  reviews: (page?: number) => ['reviews', page ?? 1] as const,
 
   // Added by the More-tab agent (parties/staff/reports/promotion/settings).
   // Kept as new siblings rather than folding into `staff()`/`promotion()`

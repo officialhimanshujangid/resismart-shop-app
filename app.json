@@ -23,6 +23,7 @@
         "backgroundColor": "#0A4020"
       },
       "package": "com.resismart.shop",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -66,7 +67,13 @@
           "microphonePermission": false
         }
       ],
-      "expo-notifications"
+      [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/urgent.wav", "./assets/sounds/notification.wav"]
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

@@ -2,17 +2,22 @@ import { apiClient } from '../../api/axios';
 import { PagedRows, TodayOrderRow, TodayProductRow } from './today.types';
 
 /**
- * Read-only calls the Today screen needs from Orders and Catalogue.
+ * Read-only calls the Today screen needs from Orders and Catalogue, for the
+ * ROW-LEVEL strips (which orders, which products) — the headline numbers
+ * (today's sale, order count, pending decisions, low-stock count, the 14-day
+ * sparkline) come from `GET /analytics/partner/today`
+ * (`src/api/analytics.api.ts`, `useTodayAnalytics` in `./hooks`) instead.
  *
- * `limit: 100` on both — there is no partner-facing endpoint that returns a
- * single "today's sale" number (the closest, `GET /partners/me/reports/sales`,
- * sits behind the `INVOICING` module and is a register export, not a dashboard
- * tile: gating the Today screen's sale total on a module most partners on the
- * Bookings/Orders plan do not buy would blank the one number they open the app
- * to see). A shop doing more than 100 orders or bookings before the total is
- * checked is a real business the owner should be told about — see
- * `ownerDecisionsNeeded` for the dedicated aggregate endpoint this should
- * become.
+ * This file used to ALSO carry a `today(civilDate)` call that fetched
+ * `limit: 100` orders just to sum them client-side into a sale total — the
+ * compromise `partner-today.service.ts` on the backend now documents and
+ * replaces (there was no aggregate endpoint yet, and the closest one,
+ * `GET /partners/me/reports/sales`, sits behind the `INVOICING` module most
+ * partners on the Bookings/Orders plan do not buy). With the aggregate board
+ * in place that call and its `useTodaySale`/`useTodayOrdersForSale` hooks are
+ * gone — `pending` below stays, because it feeds the actual ROW LIST shown in
+ * the pending-orders strip, which the aggregate board (a count, not rows)
+ * cannot replace.
  */
 export const todayOrdersApi = {
   /** `PLACED` orders — the ones needing an accept/reject decision right now. */
@@ -20,14 +25,6 @@ export const todayOrdersApi = {
     apiClient
       .get<{ success: boolean } & PagedRows<TodayOrderRow>>('/partners/me/orders', {
         params: { status: 'PLACED', limit: 100 },
-      })
-      .then((r) => r.data),
-
-  /** Everything touched today, for the sale total — `from`/`to` filter on `createdAt` server-side. */
-  today: (civilDate: string) =>
-    apiClient
-      .get<{ success: boolean } & PagedRows<TodayOrderRow>>('/partners/me/orders', {
-        params: { from: civilDate, to: civilDate, limit: 100 },
       })
       .then((r) => r.data),
 };

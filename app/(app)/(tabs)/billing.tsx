@@ -11,7 +11,9 @@ import { qk } from '../../../src/lib/queryKeys';
 import { formatPaise } from '../../../src/lib/money';
 import { documentsApi, documentStatusGroup } from '../../../src/features/billing/documents.api';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
-import { DOCUMENT_TYPE_LABEL, PartnerDocumentRecord } from '../../../src/features/billing/types';
+import {
+  DOCUMENT_TYPE_LABEL, DocumentDirection, PURCHASE_DOCUMENT_TYPES, PartnerDocumentRecord, SALES_DOCUMENT_TYPES,
+} from '../../../src/features/billing/types';
 import { DocumentStatusChip } from '../../../src/features/billing/components/StatusChip';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import { toHref } from '../../../src/features/billing/routeHref';
@@ -50,10 +52,18 @@ export default function BillingScreen() {
 
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [search, setSearch] = useState('');
+  // C5 — All/Sales/Purchase, on top of the status filter above. 'ALL' asks for
+  // every one of the nine types at once (the server accepts the CSV either way).
+  const [direction, setDirection] = useState<'ALL' | DocumentDirection>('ALL');
 
   const filters = useMemo(
-    () => ({ status: filterToStatus(filter), q: search.trim() || undefined, limit: 30 }),
-    [filter, search],
+    () => ({
+      status: filterToStatus(filter),
+      type: direction === 'ALL' ? undefined : (direction === 'SALES' ? SALES_DOCUMENT_TYPES : PURCHASE_DOCUMENT_TYPES).join(','),
+      q: search.trim() || undefined,
+      limit: 30,
+    }),
+    [filter, direction, search],
   );
 
   const query = useQuery({
@@ -118,6 +128,19 @@ export default function BillingScreen() {
         style={[styles.search, { backgroundColor: c.surface }]}
         inputStyle={{ fontSize: 14 }}
       />
+
+      <View style={styles.filterRow}>
+        <SegmentedButtons
+          value={direction}
+          onValueChange={(v) => setDirection(v as 'ALL' | DocumentDirection)}
+          buttons={[
+            { value: 'ALL', label: 'All' },
+            { value: 'SALES', label: 'Sales' },
+            { value: 'PURCHASE', label: 'Purchase' },
+          ]}
+          density="small"
+        />
+      </View>
 
       <View style={styles.filterRow}>
         <SegmentedButtons

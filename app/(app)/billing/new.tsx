@@ -3,12 +3,13 @@ import {
   KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, useColorScheme, View,
 } from 'react-native';
 import {
-  ActivityIndicator, Button, Divider, IconButton, Modal, Portal, SegmentedButtons, Snackbar, Surface, Text, TextInput,
+  ActivityIndicator, Button, Divider, IconButton, Modal, Portal, SegmentedButtons, Snackbar, Surface, Switch, Text, TextInput,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, usePathname, useLocalSearchParams } from 'expo-router';
 
 import { themeColors, radii } from '../../../src/constants/colors';
+import { DateField } from '../../../src/components/DateField';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { formatPaise, parseRupeesToPaise } from '../../../src/lib/money';
 import { BarcodeScannerView, ProductScanOutcome } from '../../../src/features/scanner';
@@ -19,13 +20,15 @@ import { useDebouncedValue } from '../../../src/features/billing/useDebouncedVal
 import { estimateDraftTotalPaise } from '../../../src/features/billing/offlineDrafts';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import {
-  BILLING_SCREEN_DOCUMENT_TYPES, BillingScreenDocumentType, DOCUMENT_TYPE_LABEL, DraftLineInput,
-  PartnerPartyRecord,
+  BillingScreenDocumentType, DOCUMENT_TYPE_LABEL, DocumentDirection, DraftLineInput,
+  PartnerPartyRecord, SALES_DOCUMENT_TYPES, PURCHASE_DOCUMENT_TYPES, behaviourOf,
 } from '../../../src/features/billing/types';
 import { toHref } from '../../../src/features/billing/routeHref';
-// Reached only when this screen was opened FROM a booking — see the note at the
-// call site on why the job is settled here rather than left for a second tap.
+// Reached only when this screen was opened FROM a booking or an order — see
+// the note at the call site on why the job is settled here rather than left
+// for a second tap.
 import { bookingApi } from '../../../src/features/bookings/booking.api';
+import { ordersApi } from '../../../src/features/orders/api';
 
 /**
  * The two-tap invoice (build spec §4 / PARTNERS_PLAN §12.5): pick a party,
@@ -91,9 +94,27 @@ export default function NewInvoiceScreen() {
   const canManage = can('INVOICING_MANAGE', 'FULL');
   const invoiceCapacity = capacity('max_invoices_month');
 
+  // ---- direction + type (C5) ----
+  const [direction, setDirection] = useState<DocumentDirection>('SALES');
   const [docType, setDocType] = useState<BillingScreenDocumentType>('TAX_INVOICE');
+  const typesForDirection = direction === 'SALES' ? SALES_DOCUMENT_TYPES : PURCHASE_DOCUMENT_TYPES;
+  const behaviour = behaviourOf(docType);
+
+  // ---- dates (C6) ----
+  const today = useMemo(() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }, []);
+  const [documentDate, setDocumentDate] = useState(today);
+  const [dueDate, setDueDate] = useState('');
+  const [validUntil, setValidUntil] = useState('');
+  const [goodsReturned, setGoodsReturned] = useState(false);
 
   // ---- party ----
+  // A purchase document always names a supplier (`requiresParty: true` for
+  // every PURCHASE type) — there is no walk-in equivalent for "who did we buy
+  // this from", so the direction toggle forces search mode and never offers it.
   const [partyMode, setPartyMode] = useState<'WALKIN' | 'SEARCH'>('WALKIN');
   const [walkinName, setWalkinName] = useState('');
   const [walkinPhone, setWalkinPhone] = useState('');
@@ -111,7 +132,7 @@ export default function NewInvoiceScreen() {
     let cancelled = false;
     setPartySearching(true);
     partiesApi
-      .search(debouncedPartyQuery.trim())
+      .search(debouncedPartyQuery.trim(), direction === 'PURCHASE' ? 'SUPPLIER' : 'CUSTOMER')
       .then((rows) => {
         if (!cancelled) setPartyResults(rows);
       })
@@ -124,7 +145,31 @@ export default function NewInvoiceScreen() {
     return () => {
       cancelled = true;
     };
-  }, [partyMode, debouncedPartyQuery]);
+  }, [partyMode, debouncedPartyQuery, direction]);
+
+  /**
+   * Switching Sales ↔ Purchase (C5) invalidates the type (each side has its
+   * own list), the party (a customer picked for a sale is not a supplier for
+   * a purchase) and forces search mode — every PURCHASE type requires a named
+   * party, so "walk-in" is not offered on that side.
+   */
+  useEffect(() => {
+    setDocType(direction === 'SALES' ? 'TAX_INVOICE' : 'PURCHASE_INVOICE');
+    setPartyMode(direction === 'PURCHASE' ? 'SEARCH' : 'WALKIN');
+    setSelectedParty(null);
+    setPartyQuery('');
+    setPartyResults([]);
+  }, [direction]);
+
+  // A type change can leave a date field or the goods-returned flag pointing
+  // at a value the NEW type does not carry — e.g. `validUntil` typed for a
+  // quotation, then switching to a proforma, which has no date field at all.
+  useEffect(() => {
+    if (behaviour.dateField !== 'dueDate') setDueDate('');
+    if (behaviour.dateField !== 'validUntil') setValidUntil('');
+    if (!behaviour.stockNeedsGoodsFlag) setGoodsReturned(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docType]);
 
   // ---- line items ----
   const [lines, setLines] = useState<EditableLine[]>([]);
@@ -276,6 +321,10 @@ export default function NewInvoiceScreen() {
       setErrorMessage('Add at least one item first.');
       return;
     }
+    if (behaviour.requiresParty && !selectedParty) {
+      setErrorMessage(`Pick a supplier first — a ${DOCUMENT_TYPE_LABEL[docType].toLowerCase()} always names one.`);
+      return;
+    }
     setSubmitting(true);
     setErrorMessage(null);
 
@@ -300,6 +349,11 @@ export default function NewInvoiceScreen() {
 
     const plainLines: DraftLineInput[] = lines.map(({ key, ...rest }) => rest);
 
+    // "YYYY-MM-DD" (DateField's `date` output) → ISO, at local midnight —
+    // never sent as a bare date string, the server's `dateInput` schema wants
+    // a `Date`-coercible value like everything else on the wire.
+    const isoOf = (d: string): string | undefined => (d ? new Date(`${d}T00:00:00`).toISOString() : undefined);
+
     const draft = await addDraft({
       type: docType,
       // The job's own party wins when the screen was opened from one: it is the
@@ -308,6 +362,10 @@ export default function NewInvoiceScreen() {
       partyId: selectedParty?._id ?? jobParams.partyId,
       partySnapshot,
       lines: plainLines,
+      documentDate: isoOf(documentDate),
+      dueDate: behaviour.dateField === 'dueDate' ? isoOf(dueDate) : undefined,
+      validUntil: behaviour.dateField === 'validUntil' ? isoOf(validUntil) : undefined,
+      goodsReturned: behaviour.stockNeedsGoodsFlag ? goodsReturned : undefined,
       sourceType,
       sourceId,
     });
@@ -333,6 +391,21 @@ export default function NewInvoiceScreen() {
       if (sourceType === 'BOOKING' && sourceId) {
         await bookingApi.invoice(sourceId).catch(() => {});
       }
+      /**
+       * The order mirror of the booking case just above: `POST
+       * /partners/me/orders/:id/invoice` is the same kind of READ — it looks
+       * for the document just issued and flips DELIVERED → INVOICED. Without
+       * this the order board's own "Raise the bill" flow
+       * ((tabs)/orders.tsx#openBillFor) would land here, issue the bill, and
+       * still leave the order sitting at DELIVERED until the partner noticed
+       * and pressed `invoice` a second time by hand. Best-effort for the same
+       * reason as the booking branch: the document exists either way, and a
+       * failed settle here just leaves the order's own `invoice` verb to
+       * finish the job once a live document names it.
+       */
+      if (sourceType === 'ORDER' && sourceId) {
+        await ordersApi.transition(sourceId, 'invoice').catch(() => {});
+      }
       router.replace(toHref(`/(app)/billing/${settled.syncedDocumentId}`));
       return;
     }
@@ -349,8 +422,8 @@ export default function NewInvoiceScreen() {
     // Still PENDING — genuinely offline. The bill is safe on-device; sync
     // happens automatically the moment the connection returns.
     router.replace('/(app)/billing/drafts');
-  }, [lines, selectedParty, walkinName, walkinPhone, docType, addDraft, retryDraft,
-    sourceType, sourceId, jobParams.partyId]);
+  }, [lines, selectedParty, walkinName, walkinPhone, docType, behaviour, addDraft, retryDraft,
+    sourceType, sourceId, jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned]);
 
   if (!canManage) {
     return (
@@ -376,26 +449,43 @@ export default function NewInvoiceScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <SegmentedButtons
-            value={docType}
-            onValueChange={(v) => setDocType(v as BillingScreenDocumentType)}
+            value={direction}
+            onValueChange={(v) => setDirection(v as DocumentDirection)}
             density="small"
-            buttons={BILLING_SCREEN_DOCUMENT_TYPES.map((t) => ({ value: t, label: DOCUMENT_TYPE_LABEL[t] }))}
+            buttons={[
+              { value: 'SALES', label: 'Sales' },
+              { value: 'PURCHASE', label: 'Purchase' },
+            ]}
           />
 
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Customer</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
             <SegmentedButtons
-              value={partyMode}
-              onValueChange={(v) => {
-                setPartyMode(v as 'WALKIN' | 'SEARCH');
-                setSelectedParty(null);
-              }}
+              value={docType}
+              onValueChange={(v) => setDocType(v as BillingScreenDocumentType)}
               density="small"
-              buttons={[
-                { value: 'WALKIN', label: 'Walk-in' },
-                { value: 'SEARCH', label: 'Existing party' },
-              ]}
+              style={{ minWidth: '100%' }}
+              buttons={typesForDirection.map((t) => ({ value: t, label: DOCUMENT_TYPE_LABEL[t] }))}
             />
+          </ScrollView>
+
+          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
+              {direction === 'PURCHASE' ? 'Supplier' : 'Customer'}
+            </Text>
+            {direction === 'SALES' && (
+              <SegmentedButtons
+                value={partyMode}
+                onValueChange={(v) => {
+                  setPartyMode(v as 'WALKIN' | 'SEARCH');
+                  setSelectedParty(null);
+                }}
+                density="small"
+                buttons={[
+                  { value: 'WALKIN', label: 'Walk-in' },
+                  { value: 'SEARCH', label: 'Existing party' },
+                ]}
+              />
+            )}
             {partyMode === 'WALKIN' ? (
               <View style={styles.walkinRow}>
                 <TextInput
@@ -444,6 +534,42 @@ export default function NewInvoiceScreen() {
                     {!!p.phone && <Text style={[styles.resultMeta, { color: c.textSecondary }]}>{p.phone}</Text>}
                   </Pressable>
                 ))}
+              </View>
+            )}
+          </Surface>
+
+          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Dates</Text>
+            <DateField label="Document date" value={documentDate} onChangeText={setDocumentDate} mode="date" />
+            {behaviour.dateField === 'dueDate' && (
+              <DateField
+                label="Due date"
+                value={dueDate}
+                onChangeText={setDueDate}
+                mode="date"
+                minimumDate={documentDate ? new Date(`${documentDate}T00:00:00`) : undefined}
+                placeholder="When payment is due"
+              />
+            )}
+            {behaviour.dateField === 'validUntil' && (
+              <DateField
+                label="Valid until"
+                value={validUntil}
+                onChangeText={setValidUntil}
+                mode="date"
+                minimumDate={documentDate ? new Date(`${documentDate}T00:00:00`) : undefined}
+                placeholder="How long this quote holds"
+              />
+            )}
+            {behaviour.stockNeedsGoodsFlag && (
+              <View style={styles.goodsRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>Goods actually returned?</Text>
+                  <Text style={{ color: c.textSecondary, fontSize: 11, marginTop: 2 }}>
+                    On for a returned item, off for a price correction — this decides whether it goes back on the shelf.
+                  </Text>
+                </View>
+                <Switch value={goodsReturned} onValueChange={setGoodsReturned} />
               </View>
             )}
           </Surface>
@@ -621,6 +747,7 @@ const styles = StyleSheet.create({
   qtyStepper: { flexDirection: 'row', alignItems: 'center' },
   lineAmount: { fontSize: 13, fontWeight: '700', minWidth: 64, textAlign: 'right' },
   customBox: { gap: 8, marginTop: 4 },
+  goodsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   customRow: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end', alignItems: 'center' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { fontSize: 13, fontWeight: '600' },

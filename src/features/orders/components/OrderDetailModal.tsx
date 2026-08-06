@@ -8,6 +8,7 @@ import { PartnerOrder } from '../types';
 import { KnownOrderVerb, filterKnownVerbs, verbNeedsReason } from '../api';
 import { ORDER_VERB_LABELS } from '../backend-mirror';
 import { OrderStatusChip } from './OrderStatusChip';
+import { useOrderReturnEligibility, hasReturnableItems } from '../returnEligibility';
 import { themeColors, radii } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
 
@@ -15,14 +16,29 @@ interface OrderDetailModalProps {
   order: PartnerOrder | null;
   loading: boolean;
   pending: boolean;
+  /** Gate 3 (`ORDERS_MANAGE` FULL) — the same check `(tabs)/orders.tsx` applies before drawing any other action button; fail-closed for the return button too. */
+  canManage: boolean;
   onClose: () => void;
   onAction: (verb: KnownOrderVerb) => void;
+  /** M5 — opens the record-return sheet for this order. Only ever called while the button below is actually shown. */
+  onRecordReturn: () => void;
 }
 
-export function OrderDetailModal({ order, loading, pending, onClose, onAction }: OrderDetailModalProps) {
+export function OrderDetailModal({ order, loading, pending, canManage, onClose, onAction, onRecordReturn }: OrderDetailModalProps) {
   const c = themeColors(useColorScheme() === 'dark');
   const visible = loading || Boolean(order);
   const verbs = order ? filterKnownVerbs(order.allowedVerbs) : [];
+
+  // M5 gate: an ISSUED order-sourced invoice must exist, and something must
+  // still be returnable — see `returnEligibility.ts` for why this cannot be
+  // read off `allowedVerbs` (`returnItems` is not a transition verb).
+  const eligibility = useOrderReturnEligibility(order);
+  const canRecordReturn =
+    canManage &&
+    Boolean(order) &&
+    eligibility.isSuccess &&
+    eligibility.data.invoiceFound &&
+    hasReturnableItems(order as PartnerOrder, eligibility.data.returnedByItem);
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
@@ -145,6 +161,17 @@ export function OrderDetailModal({ order, loading, pending, onClose, onAction }:
                 ))}
               </View>
             )}
+
+            {canRecordReturn && (
+              <View style={[styles.returnFooter, { borderTopColor: c.divider, backgroundColor: c.surface }]}>
+                <Pressable
+                  onPress={onRecordReturn}
+                  style={[styles.returnBtn, { borderColor: c.error }]}
+                >
+                  <Text style={[styles.returnBtnLabel, { color: c.error }]}>Record a return</Text>
+                </Pressable>
+              </View>
+            )}
           </>
         )}
       </SafeAreaView>
@@ -209,4 +236,9 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', gap: 8, padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
   footerBtn: { flex: 1, paddingVertical: 12, borderRadius: radii.card, alignItems: 'center', justifyContent: 'center' },
   footerBtnLabel: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  returnFooter: { padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  returnBtn: {
+    paddingVertical: 11, borderRadius: radii.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5,
+  },
+  returnBtnLabel: { fontWeight: '700', fontSize: 13 },
 });
