@@ -1,5 +1,5 @@
-// export const API_BASE_URL = 'http://10.182.174.83:8000/api/v1';
-export const API_BASE_URL = 'https://resismart-backend-q0lf.onrender.com/api/v1';
+export const API_BASE_URL = 'http://10.182.174.83:8000/api/v1';
+// export const API_BASE_URL = 'https://resismart-backend-q0lf.onrender.com/api/v1';
 
 // These key strings deliberately keep the retired "shop" spelling. They are the on-device
 // SecureStore namespace of an already-installed app: renaming them would make every stored
