@@ -4,6 +4,7 @@ import { Chip, Searchbar, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { themeColors, radii } from '../../../src/constants/colors';
+import { Hero } from '../../../src/components/Hero';
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction, useBookingsList } from '../../../src/features/bookings/hooks';
@@ -145,8 +146,8 @@ export default function BookingsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: c.textPrimary }]}>Bookings</Text>
+      <Hero isDark={isDark} rounded={false} eyebrow="Manage" title="Bookings" />
+      <View style={styles.controls}>
         <Searchbar
           placeholder="Search by code (BK-0001)"
           value={code}
@@ -202,8 +203,7 @@ export default function BookingsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 8, gap: 10 },
-  title: { fontSize: 24, fontWeight: '800' },
+  controls: { paddingHorizontal: 20, paddingTop: 14, gap: 10 },
   search: { elevation: 0, borderRadius: radii.field },
   tabs: { flexDirection: 'row', gap: 8 },
   tabChip: {},

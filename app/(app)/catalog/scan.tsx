@@ -74,5 +74,5 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  headerTitle: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

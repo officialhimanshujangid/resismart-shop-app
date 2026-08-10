@@ -198,7 +198,7 @@ export default function CreateProductScreen() {
         </View>
       </View>
 
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>UNIT</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Unit</Text>
       <View style={styles.unitRow}>
         {PRODUCT_UNITS.map((u) => {
           const active = u === unit;
@@ -208,13 +208,13 @@ export default function CreateProductScreen() {
               onPress={() => setUnit(u)}
               style={[styles.unitChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
             >
-              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '700' }}>{u}</Text>
+              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{u}</Text>
             </Pressable>
           );
         })}
       </View>
 
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>CATEGORY</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Category</Text>
       <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={canManage} />
 
       <AppInput label="SKU (optional)" value={sku} onChangeText={setSku} autoCapitalize="characters" />
@@ -258,7 +258,7 @@ export default function CreateProductScreen() {
           contentContainerStyle={[styles.scannerModal, { backgroundColor: c.background }]}
         >
           <View style={styles.scannerHeader}>
-            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '800' }}>Scan barcode</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600' }}>Scan barcode</Text>
             <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel="Done scanning" />
           </View>
           <BarcodeScannerView active={scannerOpen} onResult={handleBarcodeScan} hint="Scan the barcode printed on the pack." />
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   row2: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
   switchBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
-  sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 12, marginBottom: 6 },
+  sectionLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2, marginTop: 12, marginBottom: 6 },
   unitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
   unitChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   deniedBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },

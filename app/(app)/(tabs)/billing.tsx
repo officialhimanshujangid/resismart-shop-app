@@ -17,6 +17,7 @@ import {
 import { DocumentStatusChip } from '../../../src/features/billing/components/StatusChip';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import { toHref } from '../../../src/features/billing/routeHref';
+import { Hero, GlassStat } from '../../../src/components/Hero';
 
 /**
  * Billing: the two-tap invoice, offline drafts and WhatsApp share
@@ -83,12 +84,17 @@ export default function BillingScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: c.textPrimary }]}>Billing</Text>
-        {!online && (
-          <Text style={[styles.offlineHint, { color: c.warning }]}>No connection — bills save on this device</Text>
-        )}
-      </View>
+      <Hero
+        isDark={isDark}
+        eyebrow="Billing"
+        title="Your bills"
+        subtitle={online ? 'Raise, share and track every bill.' : 'No connection — bills save on this device.'}
+        style={styles.hero}
+      >
+        {query.data ? (
+          <GlassStat icon="file-document-outline" label="In this view" value={String(query.data.total)} />
+        ) : null}
+      </Hero>
 
       {pendingCount > 0 && (
         <Surface style={[styles.draftBanner, { backgroundColor: c.surfaceVariant }]} elevation={0}>
@@ -206,14 +212,12 @@ function DocumentRow({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 8, gap: 2 },
-  title: { fontSize: 24, fontWeight: '800' },
-  offlineHint: { fontSize: 12, fontWeight: '600' },
+  hero: { marginHorizontal: 16, marginTop: 8, marginBottom: 4 },
   draftBanner: {
     marginHorizontal: 20, marginTop: 12, borderRadius: radii.card, padding: 12,
     flexDirection: 'row', alignItems: 'center', gap: 8,
   },
-  draftBannerTitle: { fontSize: 13, fontWeight: '700' },
+  draftBannerTitle: { fontSize: 13, fontWeight: '600' },
   draftBannerBody: { fontSize: 12, marginTop: 2 },
   newInvoiceRow: { paddingHorizontal: 20, marginTop: 14, gap: 8 },
   newInvoiceButton: { borderRadius: radii.field },
@@ -222,11 +226,11 @@ const styles = StyleSheet.create({
   list: { padding: 20, paddingTop: 10, gap: 10 },
   row: { borderRadius: radii.card, padding: 14 },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  rowNumber: { fontSize: 14, fontWeight: '700' },
-  rowAmount: { fontSize: 15, fontWeight: '800' },
+  rowNumber: { fontSize: 14, fontWeight: '600' },
+  rowAmount: { fontSize: 15, fontWeight: '600' },
   rowBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
   rowParty: { fontSize: 13, flex: 1, marginRight: 8 },
   empty: { padding: 32, alignItems: 'center', gap: 6 },
-  emptyTitle: { fontSize: 16, fontWeight: '700' },
+  emptyTitle: { fontSize: 16, fontWeight: '600' },
   emptyBody: { fontSize: 13, textAlign: 'center' },
 });

@@ -104,7 +104,7 @@ export function DonutRing({
         {(centerLabel || centerValue) && (
           <View style={{ position: 'absolute', alignItems: 'center', maxWidth: size - strokeWidth * 2 }}>
             {centerValue ? (
-              <Text style={{ fontSize: 16, fontWeight: '800', color: c.textPrimary }} numberOfLines={1}>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: c.textPrimary }} numberOfLines={1}>
                 {centerValue}
               </Text>
             ) : null}
@@ -124,7 +124,7 @@ export function DonutRing({
               <Text style={{ fontSize: 12, color: c.textPrimary, flex: 1 }} numberOfLines={1}>
                 {s.label}
               </Text>
-              <Text style={{ fontSize: 11, color: c.textSecondary, fontWeight: '700' }}>
+              <Text style={{ fontSize: 11, color: c.textSecondary, fontWeight: '600' }}>
                 {Math.round((s.value / total) * 100)}%
               </Text>
             </View>

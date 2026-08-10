@@ -578,10 +578,10 @@ function TotalRow({
 }) {
   return (
     <View style={styles.totalRow}>
-      <Text style={{ color: tone ?? c.textSecondary, fontSize: bold ? 15 : 13, fontWeight: bold ? '800' : '500' }}>
+      <Text style={{ color: tone ?? c.textSecondary, fontSize: bold ? 15 : 13, fontWeight: bold ? '600' : '500' }}>
         {label}
       </Text>
-      <Text style={{ color: tone ?? c.textPrimary, fontSize: bold ? 15 : 13, fontWeight: bold ? '800' : '600' }}>
+      <Text style={{ color: tone ?? c.textPrimary, fontSize: bold ? 15 : 13, fontWeight: bold ? '600' : '500' }}>
         {formatPaise(value)}
       </Text>
     </View>
@@ -591,19 +591,19 @@ function TotalRow({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
-  topBarTitle: { fontSize: 16, fontWeight: '800', flex: 1, textAlign: 'center' },
+  topBarTitle: { fontSize: 16, fontWeight: '600', flex: 1, textAlign: 'center' },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
   card: { borderRadius: radii.card, padding: 14, gap: 6 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  docType: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  docNumber: { fontSize: 18, fontWeight: '800', marginTop: 2 },
+  docType: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  docNumber: { fontSize: 18, fontWeight: '600', marginTop: 2 },
   docDate: { fontSize: 12, marginTop: 4 },
-  cardTitle: { fontSize: 14, fontWeight: '700' },
+  cardTitle: { fontSize: 14, fontWeight: '600' },
   cardBody: { fontSize: 13 },
   lineRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
   lineName: { fontSize: 13, fontWeight: '600' },
   lineMeta: { fontSize: 11, marginTop: 2 },
-  lineAmount: { fontSize: 13, fontWeight: '700' },
+  lineAmount: { fontSize: 13, fontWeight: '600' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
   centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   bottomBar: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth },

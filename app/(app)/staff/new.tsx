@@ -10,7 +10,7 @@ import { rolesApi, staffApi } from '../../../src/api/staff.api';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
-import { ChipRow, Screen } from '../../../src/features/more/ui';
+import { Card, ChipRow, Screen, SectionLabel } from '../../../src/features/more/ui';
 
 const NO_ROLE = '__none__';
 
@@ -112,33 +112,40 @@ export default function StaffFormScreen() {
   return (
     <Screen c={c} title={editing ? 'Edit staff member' : 'Invite staff'}>
       {!editing && (
-        <>
+        <Card c={c}>
+          <SectionLabel c={c}>Who you're inviting</SectionLabel>
           <AppInput label="Name" value={name} onChangeText={setName} error={errors.name} />
           <AppInput label="Phone (they sign in with an OTP)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" error={errors.phone} />
           <AppInput label="Email (optional if phone is given)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
-        </>
+        </Card>
       )}
 
-      <AppInput label="Designation" value={designation} onChangeText={setDesignation} placeholder="e.g. Counter staff, Technician" error={errors.designation} />
+      <Card c={c}>
+        <SectionLabel c={c}>Their job</SectionLabel>
+        <AppInput label="Designation" value={designation} onChangeText={setDesignation} placeholder="e.g. Counter staff, Technician" error={errors.designation} />
 
-      <Text style={[styles.label, { color: c.textSecondary }]}>Role</Text>
-      {roles.isPending ? (
-        <Text style={{ color: c.textSecondary, fontSize: 12 }}>Loading roles…</Text>
-      ) : (
-        <ChipRow c={c} value={roleId} options={roleOptions} onChange={setRoleId} />
-      )}
+        <Text style={[styles.label, { color: c.textSecondary }]}>Role</Text>
+        {roles.isPending ? (
+          <Text style={{ color: c.textSecondary, fontSize: 12 }}>Loading roles…</Text>
+        ) : (
+          <ChipRow c={c} value={roleId} options={roleOptions} onChange={setRoleId} />
+        )}
 
-      <View style={styles.switchRow}>
-        <Text style={{ color: c.textPrimary, fontSize: 14 }}>Can be assigned bookings</Text>
-        <Switch value={canTakeBookings} onValueChange={setCanTakeBookings} color={c.primary} />
-      </View>
+        <View style={[styles.switchRow, { borderTopColor: c.divider }]}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '600' }}>Can be assigned bookings</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>They show up when you assign a job.</Text>
+          </View>
+          <Switch value={canTakeBookings} onValueChange={setCanTakeBookings} color={c.primary} />
+        </View>
 
-      <AppInput
-        label="Skills (comma-separated, optional)"
-        value={skillsText}
-        onChangeText={setSkillsText}
-        placeholder="e.g. AC repair, plumbing"
-      />
+        <AppInput
+          label="Skills (comma-separated, optional)"
+          value={skillsText}
+          onChangeText={setSkillsText}
+          placeholder="e.g. AC repair, plumbing"
+        />
+      </Card>
 
       <AppButton label={editing ? 'Save changes' : 'Send invite'} onPress={onSubmit} loading={saving} disabled={saving} style={{ marginTop: 8 }} />
     </Screen>
@@ -146,6 +153,9 @@ export default function StaffFormScreen() {
 }
 
 const styles = StyleSheet.create({
-  label: { fontSize: 12, fontWeight: '700', marginTop: 4 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
+  label: { fontSize: 12, fontWeight: '600', marginTop: 4 },
+  switchRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 12, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth,
+  },
 });

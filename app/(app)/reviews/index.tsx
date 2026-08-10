@@ -120,12 +120,12 @@ export default function ReviewsScreen() {
         reviews.map((r) => (
           <Card key={r._id} c={c} style={styles.reviewCard}>
             <View style={styles.headerRow}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: c.textPrimary }} numberOfLines={1}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: c.textPrimary }} numberOfLines={1}>
                 {r.authorName || 'A resident'}
               </Text>
               <View style={styles.ratingRow}>
                 <MaterialCommunityIcons name="star" size={14} color={c.warning} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: c.textPrimary }}>{r.rating}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: c.textPrimary }}>{r.rating}</Text>
               </View>
             </View>
             <Text style={{ fontSize: 11, color: c.textDisabled, marginTop: 2 }}>
@@ -163,12 +163,12 @@ export default function ReviewsScreen() {
 function StatBlock({ c, label, value, icon }: { c: ReturnType<typeof themeColors>; label: string; value: string; icon?: string }) {
   return (
     <View style={{ flex: 1 }}>
-      <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', color: c.textDisabled }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', color: c.textDisabled }}>
         {label}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
         {icon && <MaterialCommunityIcons name={icon as never} size={14} color={c.warning} />}
-        <Text style={{ fontSize: 16, fontWeight: '800', color: c.textPrimary }}>{value}</Text>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: c.textPrimary }}>{value}</Text>
       </View>
     </View>
   );

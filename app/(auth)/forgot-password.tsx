@@ -18,6 +18,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { authApi } from '../../src/api/auth.api';
 import { AppButton } from '../../src/components/AppButton';
 import { AppInput } from '../../src/components/AppInput';
+import { Hero } from '../../src/components/Hero';
 import { Colors } from '../../src/constants/colors';
 
 const schema = z.object({
@@ -63,14 +64,19 @@ export default function ForgotPasswordScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
             <MaterialCommunityIcons name="arrow-left" size={22} color={Colors.primary} />
-            <Text style={styles.backText}>Back to Sign In</Text>
+            <Text style={styles.backText}>Back to sign in</Text>
           </TouchableOpacity>
 
+          <Hero
+            isDark={false}
+            variant="brand"
+            logoSize="medium"
+            subtitle="We'll help you back into your account."
+            style={styles.brandHero}
+          />
+
           <View style={styles.header}>
-            <View style={styles.iconCircle}>
-              <MaterialCommunityIcons name="lock-reset" size={40} color={Colors.primary} />
-            </View>
-            <Text style={styles.title}>Forgot Password?</Text>
+            <Text style={styles.title}>Forgot password?</Text>
             <Text style={styles.subtitle}>
               Enter your email and we'll send you a password reset link.
             </Text>
@@ -79,14 +85,14 @@ export default function ForgotPasswordScreen() {
           {submitted ? (
             <View style={styles.successCard}>
               <MaterialCommunityIcons name="email-check-outline" size={52} color={Colors.success} />
-              <Text style={styles.successTitle}>Check Your Inbox</Text>
+              <Text style={styles.successTitle}>Check your inbox</Text>
               <Text style={styles.successMessage}>
                 We've sent a password reset link to{' '}
-                <Text style={{ fontWeight: '700' }}>{getValues('email')}</Text>.{'\n\n'}
+                <Text style={{ fontWeight: '600' }}>{getValues('email')}</Text>.{'\n\n'}
                 The link will expire in 1 hour.
               </Text>
               <AppButton
-                label="Return to Sign In"
+                label="Return to sign in"
                 onPress={() => router.replace('/(auth)/login')}
                 mode="outlined"
                 style={styles.returnBtn}
@@ -112,14 +118,14 @@ export default function ForgotPasswordScreen() {
                 )}
               />
               <AppButton
-                label="Send Reset Link"
+                label="Send reset link"
                 onPress={handleSubmit(onSubmit)}
                 loading={isLoading}
                 icon="send"
                 style={styles.submitBtn}
               />
               <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.signInLink} activeOpacity={0.7}>
-                <Text style={styles.signInText}>Remember your password? Sign In</Text>
+                <Text style={styles.signInText}>Remember your password? Sign in</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -144,12 +150,9 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingVertical: 16 },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, marginBottom: 12 },
   backText: { fontSize: 15, color: Colors.primary, fontWeight: '600' },
-  header: { alignItems: 'center', marginBottom: 32, gap: 16 },
-  iconCircle: {
-    width: 96, height: 96, borderRadius: 48,
-    backgroundColor: Colors.surfaceVariant, alignItems: 'center', justifyContent: 'center',
-  },
-  title: { fontSize: 26, fontWeight: '800', color: Colors.textPrimary, textAlign: 'center' },
+  brandHero: { paddingVertical: 26, marginBottom: 24 },
+  header: { alignItems: 'center', marginBottom: 32, gap: 12 },
+  title: { fontSize: 26, fontWeight: '600', color: Colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, paddingHorizontal: 16 },
   formCard: {
     backgroundColor: Colors.surface, borderRadius: 20, padding: 24, gap: 8,
@@ -162,7 +165,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface, borderRadius: 20, padding: 28, alignItems: 'center', gap: 16,
     elevation: 2, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 12,
   },
-  successTitle: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary },
+  successTitle: { fontSize: 22, fontWeight: '600', color: Colors.textPrimary },
   successMessage: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
   returnBtn: { marginTop: 8, width: '100%' },
   snackError: { backgroundColor: Colors.error },

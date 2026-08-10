@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   box: { borderRadius: radii.sm, padding: 10, gap: 6 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   text: { fontSize: 12.5, fontWeight: '600' },
-  atLimit: { fontSize: 11.5, fontWeight: '700' },
+  atLimit: { fontSize: 11.5, fontWeight: '600' },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3 },
 });

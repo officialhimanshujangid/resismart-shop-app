@@ -264,7 +264,7 @@ export function BookingActionModal({ visible, verb, booking, isDark, submitting,
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { borderTopLeftRadius: radii.sheet, borderTopRightRadius: radii.sheet, padding: 20, gap: 4 },
-  title: { fontSize: 18, fontWeight: '800' },
+  title: { fontSize: 18, fontWeight: '600' },
   subtitle: { fontSize: 13, marginBottom: 8 },
   input: { marginTop: 10 },
   hint: { fontSize: 13, marginTop: 4 },

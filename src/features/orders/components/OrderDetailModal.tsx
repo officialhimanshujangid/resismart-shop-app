@@ -191,10 +191,10 @@ function Section({ title, c, children }: { title: string; c: ReturnType<typeof t
 function AmountRow({ label, value, c, bold }: { label: string; value: number; c: ReturnType<typeof themeColors>; bold?: boolean }) {
   return (
     <View style={styles.amountLine}>
-      <Text style={[styles.amountLabel, { color: bold ? c.textPrimary : c.textSecondary, fontWeight: bold ? '800' : '500' }]}>
+      <Text style={[styles.amountLabel, { color: bold ? c.textPrimary : c.textSecondary, fontWeight: bold ? '600' : '500' }]}>
         {label}
       </Text>
-      <Text style={[styles.amountValue, { color: c.textPrimary, fontWeight: bold ? '800' : '600' }]}>
+      <Text style={[styles.amountValue, { color: c.textPrimary, fontWeight: bold ? '600' : '500' }]}>
         {formatPaise(value)}
       </Text>
     </View>
@@ -207,21 +207,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  headerTitle: { fontSize: 17, fontWeight: '800' },
+  headerTitle: { fontSize: 17, fontWeight: '600' },
   loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 14, gap: 12, paddingBottom: 24 },
   statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
   deliveryMode: { fontSize: 12, fontWeight: '600' },
   section: { borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, padding: 14, gap: 6 },
-  sectionTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 4 },
-  customerName: { fontSize: 15, fontWeight: '700' },
+  sectionTitle: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6, marginBottom: 4 },
+  customerName: { fontSize: 15, fontWeight: '600' },
   customerLine: { fontSize: 13, lineHeight: 18 },
   maskNote: { fontSize: 12, marginTop: 4, lineHeight: 17, fontStyle: 'italic' },
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   itemNameCol: { flex: 1, paddingRight: 8 },
   itemName: { fontSize: 13.5, fontWeight: '600' },
   itemMeta: { fontSize: 12, marginTop: 1 },
-  itemLine: { fontSize: 13.5, fontWeight: '700' },
+  itemLine: { fontSize: 13.5, fontWeight: '600' },
   amountLine: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
   amountLabel: { fontSize: 13 },
   amountValue: { fontSize: 13 },
@@ -229,16 +229,16 @@ const styles = StyleSheet.create({
   timelineRow: { flexDirection: 'row', gap: 8, paddingVertical: 5 },
   timelineDot: { width: 7, height: 7, borderRadius: 4, marginTop: 5 },
   timelineTextCol: { flex: 1 },
-  timelineStatus: { fontSize: 12.5, fontWeight: '700' },
+  timelineStatus: { fontSize: 12.5, fontWeight: '600' },
   timelineAt: { fontSize: 11 },
   timelineNote: { fontSize: 12, marginTop: 2, fontStyle: 'italic' },
   endedReason: { fontSize: 12.5, marginTop: 4, fontWeight: '600' },
   footer: { flexDirection: 'row', gap: 8, padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
   footerBtn: { flex: 1, paddingVertical: 12, borderRadius: radii.card, alignItems: 'center', justifyContent: 'center' },
-  footerBtnLabel: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  footerBtnLabel: { color: '#fff', fontWeight: '600', fontSize: 13 },
   returnFooter: { padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
   returnBtn: {
     paddingVertical: 11, borderRadius: radii.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5,
   },
-  returnBtnLabel: { fontWeight: '700', fontSize: 13 },
+  returnBtnLabel: { fontWeight: '600', fontSize: 13 },
 });

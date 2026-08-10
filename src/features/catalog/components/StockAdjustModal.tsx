@@ -145,5 +145,5 @@ const styles = StyleSheet.create({
   outline: { borderRadius: radii.field },
   previewLine: { fontSize: 12, fontWeight: '600' },
   reasonChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
-  reasonChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 11.5, fontWeight: '700', overflow: 'hidden' },
+  reasonChip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, fontSize: 11.5, fontWeight: '600', overflow: 'hidden' },
 });

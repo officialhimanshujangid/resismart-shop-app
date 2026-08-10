@@ -75,12 +75,12 @@ export function ChartError({
       accessibilityRole="image"
       accessibilityLabel={message}
     >
-      <Text style={{ fontSize: 11, color: c.error, fontWeight: '700' }}>{message}</Text>
+      <Text style={{ fontSize: 11, color: c.error, fontWeight: '600' }}>{message}</Text>
       {onRetry ? (
         <Pressable onPress={onRetry} accessibilityRole="button" accessibilityLabel="Retry">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
             <MaterialCommunityIcons name="refresh" size={12} color={c.error} />
-            <Text style={{ fontSize: 11, color: c.error, fontWeight: '700' }}>Retry</Text>
+            <Text style={{ fontSize: 11, color: c.error, fontWeight: '600' }}>Retry</Text>
           </View>
         </Pressable>
       ) : null}
@@ -140,7 +140,7 @@ export function EmptyBoard({
       >
         <MaterialCommunityIcons name={icon as never} size={24} color={c.primary} />
       </View>
-      <Text style={{ fontSize: 14, fontWeight: '700', color: c.textPrimary, textAlign: 'center' }}>{title}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: c.textPrimary, textAlign: 'center' }}>{title}</Text>
       <Text style={{ fontSize: 12, color: c.textSecondary, textAlign: 'center', lineHeight: 18 }}>{body}</Text>
     </View>
   );

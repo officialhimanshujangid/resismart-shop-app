@@ -15,7 +15,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '../../src/context/AuthContext';
 import { AppButton } from '../../src/components/AppButton';
-import { AppLogo } from '../../src/components/AppLogo';
+import { Hero } from '../../src/components/Hero';
 import { themeColors, radii } from '../../src/constants/colors';
 
 /**
@@ -144,9 +144,12 @@ export default function VerifyOtpScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.logo}>
-            <AppLogo size="medium" showTagline={false} />
-          </View>
+          <Hero
+            isDark={isDark}
+            variant="brand"
+            logoSize="medium"
+            style={styles.brandHero}
+          />
 
           <Text style={[styles.title, { color: c.textPrimary }]}>
             {isNewAccount ? 'One last code' : 'Enter your code'}
@@ -236,8 +239,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centre: { flex: 1, justifyContent: 'center', padding: 28, gap: 12 },
   content: { padding: 28, gap: 14, flexGrow: 1, justifyContent: 'center' },
-  logo: { alignItems: 'center', marginBottom: 8 },
-  title: { fontSize: 24, fontWeight: '800' },
+  brandHero: { paddingVertical: 24, marginBottom: 12 },
+  title: { fontSize: 24, fontWeight: '600' },
   subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 10 },
   boxes: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginVertical: 10 },
   box: {
@@ -248,7 +251,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  boxText: { fontSize: 24, fontWeight: '700' },
+  boxText: { fontSize: 24, fontWeight: '600' },
   hidden: { position: 'absolute', opacity: 0, height: 1, width: 1 },
   spinner: { marginVertical: 14 },
   resend: { alignSelf: 'center', paddingVertical: 10 },

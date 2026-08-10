@@ -96,6 +96,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
-  role: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
+  role: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary },
   id: { fontSize: 11, color: Colors.textDisabled },
 });

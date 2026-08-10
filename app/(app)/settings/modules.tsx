@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
-import { Button, Switch, Text } from 'react-native-paper';
+import { Button, Chip, Switch, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -162,24 +162,22 @@ export default function PartnerModulesScreen() {
             <View style={styles.headerRow}>
               <View style={{ flex: 1 }}>
                 <View style={styles.titleRow}>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: c.textPrimary }}>{info.label}</Text>
-                  <View
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: c.textPrimary }}>{info.label}</Text>
+                  <Chip
+                    compact
                     style={[
                       styles.badge,
                       {
                         backgroundColor: state === 'ON' ? palette.brand[50] : state === 'OFF' ? c.surfaceVariant : palette.coral[100],
                       },
                     ]}
+                    textStyle={{
+                      fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3, marginVertical: 0,
+                      color: state === 'ON' ? c.primary : state === 'OFF' ? c.textSecondary : palette.coral[600],
+                    }}
                   >
-                    <Text
-                      style={{
-                        fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3,
-                        color: state === 'ON' ? c.primary : state === 'OFF' ? c.textSecondary : palette.coral[600],
-                      }}
-                    >
-                      {MODULE_STATE_COPY[state]}
-                    </Text>
-                  </View>
+                    {MODULE_STATE_COPY[state]}
+                  </Chip>
                 </View>
                 <Text style={{ fontSize: 12.5, color: c.textSecondary, marginTop: 4, lineHeight: 17 }}>{info.blurb}</Text>
               </View>
@@ -214,7 +212,7 @@ export default function PartnerModulesScreen() {
 const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  badge: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2 },
+  badge: { borderRadius: radii.pill },
   lockedFooter: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth,
   },

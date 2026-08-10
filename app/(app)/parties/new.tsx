@@ -123,7 +123,7 @@ export default function PartyFormScreen() {
     <Screen c={c} title={editing ? 'Edit party' : 'Add party'}>
       {!editing && cap.atLimit && (
         <View style={[styles.limitBanner, { backgroundColor: c.surfaceVariant }]}>
-          <Text style={{ color: c.error, fontWeight: '700' }}>
+          <Text style={{ color: c.error, fontWeight: '600' }}>
             You have reached your plan's limit of {cap.limit} {cap.noun}.
           </Text>
           <Text style={{ color: c.textSecondary, fontSize: 12 }}>
@@ -174,7 +174,7 @@ export default function PartyFormScreen() {
 }
 
 const styles = StyleSheet.create({
-  label: { fontSize: 12, fontWeight: '700', marginTop: 4 },
+  label: { fontSize: 12, fontWeight: '600', marginTop: 4 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
   limitBanner: { borderRadius: radii.card, padding: 14, gap: 4, marginBottom: 4 },
 });

@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
     marginVertical: 6,
   },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  code: { fontSize: 15, fontWeight: '800' },
+  code: { fontSize: 15, fontWeight: '600' },
   customerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   customerText: { fontSize: 13, flex: 1 },
   bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   spinner: { marginRight: 2 },
-  amount: { fontSize: 15, fontWeight: '800' },
+  amount: { fontSize: 15, fontWeight: '600' },
   actionsRow: { flexDirection: 'row', alignItems: 'stretch', marginVertical: 6, marginRight: 14, gap: 6 },
   actionBtn: {
     justifyContent: 'center',
@@ -139,5 +139,5 @@ const styles = StyleSheet.create({
     borderRadius: radii.card,
     minWidth: 84,
   },
-  actionLabel: { color: '#fff', fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  actionLabel: { color: '#fff', fontSize: 11, fontWeight: '600', textAlign: 'center' },
 });

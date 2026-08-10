@@ -32,6 +32,9 @@ export function AppLogo({ size = 'medium', showTagline = true, variant = 'light'
         source={require('../../assets/resismartlogo.png')}
         style={[styles.logo, { width: s.logo.width, height: s.logo.height }]}
         resizeMode="contain"
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel="ResiSmart"
       />
 
       {showTagline && (

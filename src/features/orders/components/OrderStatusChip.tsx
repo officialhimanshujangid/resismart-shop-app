@@ -39,5 +39,5 @@ export function OrderStatusChip({ status, c }: { status: OrderStatus; c: ColorSc
 
 const styles = StyleSheet.create({
   chip: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
-  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+  label: { fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
 });

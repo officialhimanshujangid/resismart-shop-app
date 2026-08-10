@@ -318,14 +318,14 @@ function Chip({ label, active, onPress, c }: { label: string; active: boolean; o
       onPress={onPress}
       style={[styles.chip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
     >
-      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   body: { padding: 16, gap: 4, paddingBottom: 40 },
-  sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 12, marginBottom: 6 },
+  sectionLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6, marginTop: 12, marginBottom: 6 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
   chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   hint: { fontSize: 11.5, marginTop: 4, lineHeight: 16 },

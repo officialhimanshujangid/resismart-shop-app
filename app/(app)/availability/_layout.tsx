@@ -38,7 +38,7 @@ export default function AvailabilityLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: c.surface },
         headerTintColor: c.textPrimary,
-        headerTitleStyle: { fontWeight: '800' },
+        headerTitleStyle: { fontWeight: '600' },
         headerShadowVisible: false,
         contentStyle: { backgroundColor: c.background },
       }}

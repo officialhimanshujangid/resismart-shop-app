@@ -39,6 +39,6 @@ const styles = StyleSheet.create({
   root: { gap: 6 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: { fontSize: 12, fontWeight: '600' },
-  limitLabel: { fontSize: 12, fontWeight: '700' },
+  limitLabel: { fontSize: 12, fontWeight: '600' },
   bar: { height: 6, borderRadius: radii.xs },
 });

@@ -12,6 +12,7 @@ import { partiesApi, PartnerParty, PartySide } from '../../../src/api/parties.ap
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { ChipRow, EmptyBlock, ErrorBlock, Loading } from '../../../src/features/more/ui';
+import { Hero, GlassStat } from '../../../src/components/Hero';
 
 /**
  * The Parties list — customers, suppliers, and the ones who are both.
@@ -78,9 +79,21 @@ export default function PartiesListScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: c.textPrimary }]}>Parties</Text>
-      </View>
+      <Hero
+        isDark={isDark}
+        eyebrow="Parties"
+        title="Customers & suppliers"
+        subtitle="Everyone you bill, buy from, and settle with."
+        style={styles.hero}
+      >
+        {query.data ? (
+          <GlassStat
+            icon={side === 'CUSTOMER' ? 'account-outline' : 'truck-outline'}
+            label={side === 'CUSTOMER' ? 'Customers' : 'Suppliers'}
+            value={String(query.data.total)}
+          />
+        ) : null}
+      </Hero>
 
       <View style={styles.controls}>
         <ChipRow c={c} value={side} options={TABS} onChange={setSide} />
@@ -133,16 +146,15 @@ export default function PartiesListScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
-  title: { fontSize: 22, fontWeight: '800' },
+  hero: { marginHorizontal: 16, marginTop: 8, marginBottom: 8 },
   controls: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
   search: { borderRadius: radii.field, elevation: 0 },
   listContent: { padding: 16, paddingBottom: 96, flexGrow: 1 },
   row: { borderRadius: radii.card },
   rowTouchable: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
-  name: { fontSize: 15, fontWeight: '700' },
+  name: { fontSize: 15, fontWeight: '600' },
   meta: { fontSize: 12, marginTop: 2 },
-  balance: { fontSize: 14, fontWeight: '700' },
+  balance: { fontSize: 14, fontWeight: '600' },
   balanceLabel: { fontSize: 10, marginTop: 1 },
   fab: { position: 'absolute', right: 16, bottom: 20, borderRadius: radii.pill },
 });

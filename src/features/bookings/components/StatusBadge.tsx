@@ -25,5 +25,5 @@ export function StatusBadge({ status }: { status: BookingStatus }) {
 
 const styles = StyleSheet.create({
   badge: { borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
-  text: { fontSize: 12, fontWeight: '700' },
+  text: { fontSize: 12, fontWeight: '600' },
 });

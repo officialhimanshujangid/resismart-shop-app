@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
+import { Hero, GlassStat } from '../../../src/components/Hero';
 import { apiErrorMessage } from '../../../src/api/axios';
 import {
   useServices, useWithdrawService, ServiceCard, ServiceUsageMeterBar,
@@ -69,6 +70,17 @@ export default function ServicesListScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
+      <Hero
+        isDark={isDark}
+        rounded={false}
+        eyebrow="Services"
+        headline={{ value: String(activeCount), label: 'offered' }}
+        subtitle={rows.length ? 'Your price list, at a glance' : 'Build your price list'}
+      >
+        <GlassStat icon="format-list-bulleted" label="In your list" value={String(rows.length)} />
+        <GlassStat icon="archive-outline" label="No longer offered" value={String(rows.length - activeCount)} />
+      </Hero>
+
       <View style={styles.headerBox}>
         <ServiceUsageMeterBar cap={cap} c={c} />
       </View>
@@ -90,7 +102,7 @@ export default function ServicesListScreen() {
               onPress={() => setTab(t)}
               style={[styles.tabChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
             >
-              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '700' }}>
+              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>
                 {t === 'on' ? 'Offered' : 'No longer offered'}
               </Text>
             </Pressable>
@@ -134,7 +146,7 @@ export default function ServicesListScreen() {
             <Pressable onPress={() => router.push('/availability')} style={styles.footerNote}>
               <MaterialCommunityIcons name="clock-alert-outline" size={14} color={c.primary} />
               <Text style={[styles.footerNoteText, { color: c.textSecondary }]}>
-                Residents can only book these once your <Text style={{ color: c.primary, fontWeight: '700' }}>working hours</Text> are set.
+                Residents can only book these once your <Text style={{ color: c.primary, fontWeight: '600' }}>working hours</Text> are set.
               </Text>
             </Pressable>
           ) : null
@@ -174,7 +186,7 @@ function ServiceCardRow({
       <ServiceCard service={service} onPress={onPress} />
       {canManage && service.isActive && (
         <Pressable onPress={onWithdraw} disabled={withdrawing} style={styles.withdrawBtn}>
-          <Text style={{ color: c.error, fontSize: 12, fontWeight: '700' }}>
+          <Text style={{ color: c.error, fontSize: 12, fontWeight: '600' }}>
             {withdrawing ? 'Removing…' : 'Stop offering'}
           </Text>
         </Pressable>
@@ -192,7 +204,7 @@ const styles = StyleSheet.create({
   listPad: { paddingBottom: 90 },
   emptyGrow: { flexGrow: 1, justifyContent: 'center' },
   emptyBox: { alignItems: 'center', gap: 6, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 15, fontWeight: '700', marginTop: 4, textAlign: 'center' },
+  emptyTitle: { fontSize: 15, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   emptyBody: { fontSize: 13, textAlign: 'center' },
   withdrawBtn: { alignSelf: 'flex-end', marginRight: 22, marginTop: -8, marginBottom: 4, paddingVertical: 4, paddingHorizontal: 6 },
   footerNote: { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 14, marginTop: 4, paddingVertical: 8 },
@@ -201,5 +213,5 @@ const styles = StyleSheet.create({
     position: 'absolute', right: 16, bottom: 16, flexDirection: 'row', alignItems: 'center', gap: 6,
     borderRadius: radii.pill, paddingHorizontal: 18, paddingVertical: 13, elevation: 3,
   },
-  fabText: { color: '#fff', fontWeight: '700', fontSize: 13.5 },
+  fabText: { color: '#fff', fontWeight: '600', fontSize: 13.5 },
 });

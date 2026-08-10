@@ -166,13 +166,13 @@ export default function PartyDetailScreen() {
 const styles = StyleSheet.create({
   listContent: { padding: 16, paddingBottom: 40 },
   balanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  balanceLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  balanceValue: { fontSize: 24, fontWeight: '800', marginTop: 2 },
-  sectionLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  balanceLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
+  balanceValue: { fontSize: 24, fontWeight: '600', marginTop: 2 },
+  sectionLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 4 },
   entryRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
   entryLabel: { fontSize: 14, fontWeight: '600' },
   entryDate: { fontSize: 11, marginTop: 2 },
-  entryAmount: { fontSize: 13, fontWeight: '700' },
+  entryAmount: { fontSize: 13, fontWeight: '600' },
   entryBalance: { fontSize: 10, marginTop: 1 },
 });

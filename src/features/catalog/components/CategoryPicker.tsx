@@ -52,7 +52,7 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
             onPress={() => setDialogOpen(true)}
             style={[styles.chip, styles.newChip, { borderColor: c.primary }]}
           >
-            <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '700' }}>+ New</Text>
+            <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>+ New</Text>
           </Pressable>
         )}
       </View>
@@ -92,7 +92,7 @@ function Chip({ label, active, onPress, c }: { label: string; active: boolean; o
         { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider },
       ]}
     >
-      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }

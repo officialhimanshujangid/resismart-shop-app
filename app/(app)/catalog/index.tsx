@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
+import { Hero, GlassStat } from '../../../src/components/Hero';
 import { useProducts, useProductCategories, ProductCard, UsageMeterBar } from '../../../src/features/catalog';
 import type { Product } from '../../../src/features/catalog';
 
@@ -51,6 +52,23 @@ export default function CatalogListScreen() {
   }, [cap.atLimit]);
 
   const categories = categoriesQuery.data ?? [];
+  const activeCategoryCount = categories.filter((cat) => cat.isActive).length;
+
+  // Low-stock count across what is currently listed — mirrors the ProductCard's
+  // own `isLowStock` rule so the hero tile and the card badges never disagree.
+  const lowCount = useMemo(
+    () =>
+      rows.filter(
+        (p) => p.trackStock && (p.stockQty <= 0 || (typeof p.lowStockAt === 'number' && p.stockQty <= p.lowStockAt)),
+      ).length,
+    [rows],
+  );
+
+  const heroSubtitle = lowStockOnly
+    ? 'Showing items running low'
+    : q || categoryId
+      ? 'Showing your current filter'
+      : 'Your full product list';
 
   const chips = useMemo(
     () => [{ _id: undefined as string | undefined, name: 'All' }, ...categories.filter((cat) => cat.isActive)],
@@ -59,6 +77,17 @@ export default function CatalogListScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
+      <Hero
+        isDark={isDark}
+        rounded={false}
+        eyebrow="Catalog"
+        headline={{ value: String(rows.length), label: rows.length === 1 ? 'product' : 'products' }}
+        subtitle={heroSubtitle}
+      >
+        <GlassStat icon="alert-octagon-outline" label="Running low" value={String(lowCount)} />
+        <GlassStat icon="tag-outline" label="Categories" value={String(activeCategoryCount)} />
+      </Hero>
+
       <Searchbar
         placeholder="Search products, SKU or barcode"
         value={searchInput}
@@ -80,7 +109,7 @@ export default function CatalogListScreen() {
               onPress={() => setCategoryId(item._id)}
               style={[styles.chip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
             >
-              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '700' }}>{item.name}</Text>
+              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{item.name}</Text>
             </Pressable>
           );
         }}
@@ -94,7 +123,7 @@ export default function CatalogListScreen() {
             ]}
           >
             <MaterialCommunityIcons name="alert-outline" size={13} color={lowStockOnly ? '#fff' : c.textSecondary} />
-            <Text style={{ color: lowStockOnly ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '700', marginLeft: 4 }}>
+            <Text style={{ color: lowStockOnly ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600', marginLeft: 4 }}>
               Low stock
             </Text>
           </Pressable>
@@ -160,7 +189,7 @@ const styles = StyleSheet.create({
   listPad: { paddingBottom: 12 },
   emptyGrow: { flexGrow: 1, justifyContent: 'center' },
   emptyBox: { alignItems: 'center', gap: 6, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 15, fontWeight: '700', marginTop: 4 },
+  emptyTitle: { fontSize: 15, fontWeight: '600', marginTop: 4 },
   emptyBody: { fontSize: 13, textAlign: 'center' },
   footer: { borderTopWidth: StyleSheet.hairlineWidth, padding: 12, gap: 10 },
   meterWrap: {},
@@ -169,10 +198,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1.5, borderRadius: radii.card, paddingVertical: 12, paddingHorizontal: 16,
   },
-  scanBtnText: { fontWeight: '700', fontSize: 13.5 },
+  scanBtnText: { fontWeight: '600', fontSize: 13.5 },
   createBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderRadius: radii.card, paddingVertical: 12,
   },
-  createBtnText: { color: '#fff', fontWeight: '700', fontSize: 13.5 },
+  createBtnText: { color: '#fff', fontWeight: '600', fontSize: 13.5 },
 });

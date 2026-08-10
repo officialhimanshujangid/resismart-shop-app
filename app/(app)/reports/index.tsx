@@ -17,6 +17,7 @@ import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppButton } from '../../../src/components/AppButton';
 import { AppInput } from '../../../src/components/AppInput';
+import { Hero } from '../../../src/components/Hero';
 import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
 import { MiniBars, DonutRing, ProgressBar } from '../../../src/components/charts';
 
@@ -133,9 +134,7 @@ export default function ReportsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: c.textPrimary }]}>Reports</Text>
-      </View>
+      <Hero isDark={isDark} rounded={false} eyebrow="Business" title="Reports" />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
         <ChipRow c={c} value={key} options={REPORT_TABS} onChange={setKey} />
@@ -155,7 +154,7 @@ export default function ReportsScreen() {
                 ['This year', () => setRange({ from: `${new Date().getFullYear()}-01-01`, to: isoDate(new Date()) })],
               ] as const).map(([label, apply]) => (
                 <Pressable key={label} onPress={apply} style={[styles.presetChip, { borderColor: c.border }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: c.primary }}>{label}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: c.primary }}>{label}</Text>
                 </Pressable>
               ))}
             </View>
@@ -182,7 +181,7 @@ export default function ReportsScreen() {
           )
         ) : exportOnly ? (
           <Card c={c}>
-            <Text style={{ color: c.textPrimary, fontWeight: '700' }}>
+            <Text style={{ color: c.textPrimary, fontWeight: '600' }}>
               {key === 'gstr1' ? 'GSTR-1 — outward supplies' : 'GSTR-3B — summary return'}
             </Text>
             <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 19 }}>
@@ -317,7 +316,7 @@ function InsightsBody({ c, board }: { c: ReturnType<typeof themeColors>; board: 
                 <Text style={{ color: c.textSecondary, fontSize: 12, flex: 1 }} numberOfLines={1}>
                   {r.label}
                 </Text>
-                <Text style={{ color: c.textPrimary, fontSize: 12, fontWeight: '700' }}>
+                <Text style={{ color: c.textPrimary, fontSize: 12, fontWeight: '600' }}>
                   {formatPaise(r.value, { showDecimals: false })}
                 </Text>
               </View>
@@ -354,7 +353,7 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
                   </Text>
                   <Text style={{ color: c.textSecondary, fontSize: 11 }}>{row.typeLabel} · {row.status}</Text>
                 </View>
-                <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 13 }}>{formatPaise(row.grandPaise)}</Text>
+                <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(row.grandPaise)}</Text>
               </View>
             ))}
             {r.rows.length > 50 && <Text style={{ color: c.textDisabled, fontSize: 11, padding: 12 }}>+{r.rows.length - 50} more — export for the full list.</Text>}
@@ -381,7 +380,7 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
                   <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>{row.itemName}</Text>
                   <Text style={{ color: c.textSecondary, fontSize: 11 }}>{row.qtySold} {row.unit} sold{!row.costKnown ? ' · no cost on record' : ''}</Text>
                 </View>
-                <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 13 }}>{formatPaise(row.revenuePaise)}</Text>
+                <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(row.revenuePaise)}</Text>
               </View>
             ))}
           </Card>
@@ -410,7 +409,7 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
               {r.topByProfit.slice(0, 20).map((row, i) => (
                 <View key={row.key} style={[styles.docRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
                   <Text style={{ color: c.textPrimary, fontSize: 13, flex: 1 }} numberOfLines={1}>{row.itemName}</Text>
-                  <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 13 }}>{formatPaise(row.grossProfitPaise)}</Text>
+                  <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(row.grossProfitPaise)}</Text>
                 </View>
               ))}
             </Card>
@@ -430,7 +429,7 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
               <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>{row.name}</Text>
               <Text style={{ color: c.textSecondary, fontSize: 11 }}>Sold {formatPaise(row.salesPaise)} · Bought {formatPaise(row.purchasePaise)}</Text>
             </View>
-            <Text style={{ color: row.closingBalancePaise > 0 ? c.error : c.textSecondary, fontWeight: '700', fontSize: 13 }}>
+            <Text style={{ color: row.closingBalancePaise > 0 ? c.error : c.textSecondary, fontWeight: '600', fontSize: 13 }}>
               {formatPaise(Math.abs(row.closingBalancePaise))}
             </Text>
           </View>
@@ -456,8 +455,8 @@ function AgeingCard({ c, section, buckets }: { c: ReturnType<typeof themeColors>
   return (
     <Card c={c} style={{ padding: 0 }}>
       <View style={styles.docRow}>
-        <Text style={{ color: c.textSecondary, fontSize: 11, fontWeight: '700', flex: 1 }}>TOTAL</Text>
-        <Text style={{ color: c.textPrimary, fontWeight: '800', fontSize: 14 }}>{formatPaise(section.totals.netPaise)}</Text>
+        <Text style={{ color: c.textSecondary, fontSize: 11, fontWeight: '600', flex: 1 }}>TOTAL</Text>
+        <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 14 }}>{formatPaise(section.totals.netPaise)}</Text>
       </View>
       {section.rows.slice(0, 50).map((row, i) => (
         <View key={row.partyId} style={[styles.docRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
@@ -465,7 +464,7 @@ function AgeingCard({ c, section, buckets }: { c: ReturnType<typeof themeColors>
             <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>{row.name}</Text>
             <Text style={{ color: c.textSecondary, fontSize: 11 }}>Oldest {row.oldestDays}d · {buckets.map((b, bi) => `${b.label}: ${formatPaise(row.buckets[bi] ?? 0, { showDecimals: false })}`).join(' · ')}</Text>
           </View>
-          <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 13 }}>{formatPaise(row.netPaise)}</Text>
+          <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(row.netPaise)}</Text>
         </View>
       ))}
     </Card>
@@ -477,15 +476,13 @@ function SummaryLine({ c, label, value, bold, tone }: { c: ReturnType<typeof the
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
       <Text style={{ color: c.textSecondary, fontSize: 13 }}>{label}</Text>
-      <Text style={{ color, fontWeight: bold ? '800' : '700', fontSize: bold ? 16 : 13 }}>{value}</Text>
+      <Text style={{ color, fontWeight: bold ? '600' : '500', fontSize: bold ? 16 : 13 }}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
-  title: { fontSize: 22, fontWeight: '800' },
   content: { padding: 16, paddingBottom: 40, gap: 12 },
   periodRow: { flexDirection: 'row', gap: 10 },
   periodInput: { flex: 1 },

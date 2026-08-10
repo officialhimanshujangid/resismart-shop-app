@@ -33,6 +33,7 @@ export function AppButton({
       disabled={disabled || loading}
       icon={loading ? undefined : icon}
       loading={loading}
+      accessibilityLabel={label}
       contentStyle={[styles.content, fullWidth && styles.fullWidth]}
       labelStyle={[styles.label, labelStyle]}
       style={[styles.button, mode === 'contained' && styles.containedButton, style]}

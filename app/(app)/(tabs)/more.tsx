@@ -241,7 +241,7 @@ export default function MoreScreen() {
 
             {entitlements.awaitingRole && (
               <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-                <Text style={{ color: palette.coral[600], fontWeight: '700' }}>
+                <Text style={{ color: palette.coral[600], fontWeight: '600' }}>
                   You are on the staff list, but nobody has given you a role yet.
                 </Text>
                 <Text style={{ color: c.textSecondary, fontSize: 12 }}>
@@ -266,7 +266,7 @@ export default function MoreScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   headerBlock: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
-  title: { fontSize: 24, fontWeight: '800' },
+  title: { fontSize: 24, fontWeight: '600' },
   business: { fontSize: 13, marginTop: 2 },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingTop: 8, gap: 10 },

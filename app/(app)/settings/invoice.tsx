@@ -10,7 +10,7 @@ import { settingsApi, InvoiceTheme, INVOICE_THEMES } from '../../../src/api/sett
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
-import { ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 
 const THEME_LABEL: Record<InvoiceTheme, string> = {
   CLASSIC: 'Classic', MODERN: 'Modern', MINIMAL: 'Minimal', GST_DETAILED: 'GST Detailed',
@@ -117,51 +117,63 @@ export default function InvoiceSettingsScreen() {
 
   return (
     <Screen c={c} title="Invoice settings">
-      <SectionLabel c={c}>Look</SectionLabel>
-      <ChipRow c={c} value={theme} options={THEME_OPTIONS} onChange={setTheme} />
-      <AppInput label="Accent colour (#RRGGBB)" value={accentColor} onChangeText={setAccentColor} autoCapitalize="none" disabled={!canEdit} error={errors.accentColor} />
+      <Card c={c}>
+        <SectionLabel c={c}>Look</SectionLabel>
+        <ChipRow c={c} value={theme} options={THEME_OPTIONS} onChange={setTheme} />
+        <AppInput label="Accent colour (#RRGGBB)" value={accentColor} onChangeText={setAccentColor} autoCapitalize="none" disabled={!canEdit} error={errors.accentColor} />
+      </Card>
 
-      <SectionLabel c={c}>What prints</SectionLabel>
-      <ToggleRow c={c} label="HSN code" value={showHsn} onChange={setShowHsn} disabled={!canEdit} />
-      <ToggleRow c={c} label="Discount column" value={showDiscount} onChange={setShowDiscount} disabled={!canEdit} />
-      <ToggleRow c={c} label="Tax breakup (CGST/SGST/IGST)" value={showTaxBreakup} onChange={setShowTaxBreakup} disabled={!canEdit} />
-      <ToggleRow c={c} label="UPI QR code" value={showUpiQr} onChange={setShowUpiQr} disabled={!canEdit} />
-      <ToggleRow c={c} label="Signature" value={showSignature} onChange={setShowSignature} disabled={!canEdit} />
+      <Card c={c}>
+        <SectionLabel c={c}>What prints</SectionLabel>
+        <ToggleRow c={c} label="HSN code" value={showHsn} onChange={setShowHsn} disabled={!canEdit} />
+        <ToggleRow c={c} label="Discount column" value={showDiscount} onChange={setShowDiscount} disabled={!canEdit} />
+        <ToggleRow c={c} label="Tax breakup (CGST/SGST/IGST)" value={showTaxBreakup} onChange={setShowTaxBreakup} disabled={!canEdit} />
+        <ToggleRow c={c} label="UPI QR code" value={showUpiQr} onChange={setShowUpiQr} disabled={!canEdit} />
+        <ToggleRow c={c} label="Signature" value={showSignature} onChange={setShowSignature} disabled={!canEdit} />
+      </Card>
 
-      <SectionLabel c={c}>When an order is delivered</SectionLabel>
-      <ToggleRow
-        c={c}
-        label="Auto-raise invoice on delivery"
-        value={autoInvoiceOnDelivery}
-        onChange={setAutoInvoiceOnDelivery}
-        disabled={!canEdit}
-      />
-      <ToggleRow
-        c={c}
-        label="Auto-record COD payment on delivery"
-        value={autoReceiptOnCodDelivery}
-        onChange={setAutoReceiptOnCodDelivery}
-        disabled={!canEdit}
-      />
-      <Text style={{ color: c.textSecondary, fontSize: 11.5, lineHeight: 16, marginBottom: 8 }}>
-        On by default. Switch the first off to raise the tax invoice yourself instead of the moment a delivery is
-        marked done. Switch the second off if cash-on-delivery orders should NOT get an automatic receipt — e.g. a
-        running credit account you settle separately.
-      </Text>
+      <Card c={c}>
+        <SectionLabel c={c}>When an order is delivered</SectionLabel>
+        <ToggleRow
+          c={c}
+          label="Auto-raise invoice on delivery"
+          value={autoInvoiceOnDelivery}
+          onChange={setAutoInvoiceOnDelivery}
+          disabled={!canEdit}
+        />
+        <ToggleRow
+          c={c}
+          label="Auto-record COD payment on delivery"
+          value={autoReceiptOnCodDelivery}
+          onChange={setAutoReceiptOnCodDelivery}
+          disabled={!canEdit}
+        />
+        <Text style={{ color: c.textSecondary, fontSize: 11.5, lineHeight: 16 }}>
+          On by default. Switch the first off to raise the tax invoice yourself instead of the moment a delivery is
+          marked done. Switch the second off if cash-on-delivery orders should NOT get an automatic receipt — e.g. a
+          running credit account you settle separately.
+        </Text>
+      </Card>
 
-      <SectionLabel c={c}>Bank details</SectionLabel>
-      <AppInput label="Account name" value={bankName} onChangeText={setBankName} disabled={!canEdit} />
-      <AppInput label="Account number" value={acNo} onChangeText={setAcNo} disabled={!canEdit} />
-      <AppInput label="IFSC" value={ifsc} onChangeText={(v) => setIfsc(v.toUpperCase())} autoCapitalize="characters" disabled={!canEdit} />
-      <AppInput label="UPI ID (for the QR code)" value={upiId} onChangeText={setUpiId} autoCapitalize="none" disabled={!canEdit} error={errors.upiId} />
+      <Card c={c}>
+        <SectionLabel c={c}>Bank details</SectionLabel>
+        <AppInput label="Account name" value={bankName} onChangeText={setBankName} disabled={!canEdit} />
+        <AppInput label="Account number" value={acNo} onChangeText={setAcNo} disabled={!canEdit} />
+        <AppInput label="IFSC" value={ifsc} onChangeText={(v) => setIfsc(v.toUpperCase())} autoCapitalize="characters" disabled={!canEdit} />
+        <AppInput label="UPI ID (for the QR code)" value={upiId} onChangeText={setUpiId} autoCapitalize="none" disabled={!canEdit} error={errors.upiId} />
+      </Card>
 
-      <SectionLabel c={c}>Counter printer</SectionLabel>
-      <ChipRow c={c} value={thermalWidth} options={WIDTH_OPTIONS} onChange={setThermalWidth} />
-      <AppInput label="Copies per bill (1–5)" value={thermalCopies} onChangeText={setThermalCopies} keyboardType="numeric" disabled={!canEdit} />
+      <Card c={c}>
+        <SectionLabel c={c}>Counter printer</SectionLabel>
+        <ChipRow c={c} value={thermalWidth} options={WIDTH_OPTIONS} onChange={setThermalWidth} />
+        <AppInput label="Copies per bill (1–5)" value={thermalCopies} onChangeText={setThermalCopies} keyboardType="numeric" disabled={!canEdit} />
+      </Card>
 
-      <SectionLabel c={c}>On every document</SectionLabel>
-      <AppInput label="Terms" value={terms} onChangeText={setTerms} multiline disabled={!canEdit} />
-      <AppInput label="Notes" value={notes} onChangeText={setNotes} multiline disabled={!canEdit} />
+      <Card c={c}>
+        <SectionLabel c={c}>On every document</SectionLabel>
+        <AppInput label="Terms" value={terms} onChangeText={setTerms} multiline disabled={!canEdit} />
+        <AppInput label="Notes" value={notes} onChangeText={setNotes} multiline disabled={!canEdit} />
+      </Card>
 
       {canEdit && (
         <AppButton label="Save changes" onPress={onSave} loading={save.isPending} disabled={save.isPending} style={{ marginTop: 8 }} />

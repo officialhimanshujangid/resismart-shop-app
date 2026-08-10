@@ -44,7 +44,7 @@ export function Screen({
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <View style={styles.header}>
         {back ? (
-          <IconButton icon="chevron-left" size={26} onPress={() => router.back()} style={styles.backBtn} />
+          <IconButton icon="chevron-left" size={26} onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Back" />
         ) : (
           <View style={styles.backSpacer} />
         )}
@@ -84,7 +84,7 @@ export function ErrorBlock({ c, message, onRetry }: { c: ColorScheme; message: s
       <Text style={[styles.centerText, { color: c.textPrimary }]}>{message}</Text>
       {onRetry ? (
         <Pressable onPress={onRetry} style={[styles.retryBtn, { borderColor: c.primary }]}>
-          <Text style={{ color: c.primary, fontWeight: '700' }}>Try again</Text>
+          <Text style={{ color: c.primary, fontWeight: '600' }}>Try again</Text>
         </Pressable>
       ) : null}
     </View>
@@ -176,21 +176,21 @@ const styles = StyleSheet.create({
   backBtn: { margin: 0 },
   backSpacer: { width: 48 },
   headerText: { flex: 1, alignItems: 'center' },
-  title: { fontSize: 17, fontWeight: '800' },
+  title: { fontSize: 17, fontWeight: '600' },
   subtitle: { fontSize: 12, marginTop: 1 },
   body: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 40, gap: 12 },
   centerBlock: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 48, paddingHorizontal: 24 },
   centerText: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
-  emptyTitle: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  emptyTitle: { fontSize: 15, fontWeight: '600', textAlign: 'center' },
   retryBtn: { borderWidth: 1.5, borderRadius: radii.pill, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
-  sectionLabel: { fontSize: 12, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', marginTop: 8, marginBottom: -4 },
+  sectionLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', marginTop: 8, marginBottom: -4 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radii.card, padding: 14 },
   rowIcon: { width: 36, height: 36, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
-  rowTitle: { fontSize: 15, fontWeight: '700' },
+  rowTitle: { fontSize: 15, fontWeight: '600' },
   rowSubtitle: { fontSize: 12, marginTop: 2 },
   card: { borderRadius: radii.card, padding: 16, gap: 10 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderRadius: radii.pill, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1 },
-  chipText: { fontSize: 12, fontWeight: '700' },
+  chipText: { fontSize: 12, fontWeight: '600' },
 });

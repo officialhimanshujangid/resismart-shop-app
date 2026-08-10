@@ -56,7 +56,7 @@ export function ProgressBar({
           )}
           {/* Always a visible number when there's one to show — the fill's
               width was never the only signal, per the house accessibility rule. */}
-          <Text style={{ fontSize: 12, fontWeight: '700', color: c.textPrimary }} numberOfLines={1}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: c.textPrimary }} numberOfLines={1}>
             {shownValue}
           </Text>
         </View>

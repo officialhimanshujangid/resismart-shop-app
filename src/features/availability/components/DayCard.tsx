@@ -69,7 +69,7 @@ export function DayCard({
                       onPress={() => !disabled && onPatch({ slotMin: m })}
                       style={[styles.slotChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
                     >
-                      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 11, fontWeight: '700' }}>{m}m</Text>
+                      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 11, fontWeight: '600' }}>{m}m</Text>
                     </Pressable>
                   );
                 })}
@@ -120,18 +120,18 @@ export function DayCard({
 const styles = StyleSheet.create({
   card: { borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, marginBottom: 10, overflow: 'hidden' },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
-  dayName: { fontSize: 14.5, fontWeight: '700' },
+  dayName: { fontSize: 14.5, fontWeight: '600' },
   body: { paddingHorizontal: 14, paddingBottom: 12, gap: 4 },
   windowRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   timeField: { flex: 1, marginVertical: 2 },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6 },
-  linkText: { fontSize: 12.5, fontWeight: '700' },
+  linkText: { fontSize: 12.5, fontWeight: '600' },
   rowGap: { marginTop: 4 },
   half: { flex: 1 },
-  smallLabel: { fontSize: 11, fontWeight: '700', marginBottom: 4 },
+  smallLabel: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
   slotChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   slotChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   capacityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   stepper: { flexDirection: 'row', alignItems: 'center' },
-  capacityValue: { fontSize: 14, fontWeight: '800', minWidth: 20, textAlign: 'center' },
+  capacityValue: { fontSize: 14, fontWeight: '600', minWidth: 20, textAlign: 'center' },
 });

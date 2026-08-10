@@ -49,7 +49,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
           <MaterialCommunityIcons name="reply" size={14} color={c.textSecondary} style={{ marginTop: 2 }} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 13, color: c.textSecondary }}>
-              <Text style={{ fontWeight: '800', color: c.textPrimary }}>Your reply</Text>
+              <Text style={{ fontWeight: '600', color: c.textPrimary }}>Your reply</Text>
               {'  ·  '}{fmtReviewDate(existing.at)}{existing.byName ? ` · ${existing.byName}` : ''}
             </Text>
             <Text style={{ fontSize: 13, color: c.textPrimary, marginTop: 2 }}>{existing.text}</Text>
@@ -62,7 +62,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
               mode="text"
               icon="pencil"
               onPress={() => { setText(existing.text); setOpen(true); }}
-              labelStyle={{ fontSize: 12, fontWeight: '700' }}
+              labelStyle={{ fontSize: 12, fontWeight: '600' }}
               style={{ alignSelf: 'flex-start', marginTop: 2 }}
             >
               Edit reply
@@ -86,7 +86,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
         mode="text"
         icon="reply"
         onPress={() => setOpen(true)}
-        labelStyle={{ fontSize: 12, fontWeight: '700' }}
+        labelStyle={{ fontSize: 12, fontWeight: '600' }}
         style={{ alignSelf: 'flex-start', marginTop: 6 }}
       >
         Reply

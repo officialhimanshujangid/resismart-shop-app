@@ -11,6 +11,7 @@ import { boostApi, BoostPackage, BoostPackagesResponse, MyBoostsResponse } from 
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppButton } from '../../../src/components/AppButton';
+import { Hero } from '../../../src/components/Hero';
 import { Card, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
 
 /**
@@ -74,10 +75,13 @@ export default function PromotionScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: c.textPrimary }]}>Promotion</Text>
-        <Text style={[styles.subtitle, { color: c.textSecondary }]}>Appear above other businesses near you</Text>
-      </View>
+      <Hero
+        isDark={isDark}
+        rounded={false}
+        eyebrow="Grow"
+        title="Promotion"
+        subtitle="Appear above other businesses near you"
+      />
 
       {loading ? (
         <Loading c={c} />
@@ -115,7 +119,7 @@ function PromotionBody({
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       {!pkgData.boostAvailable && (
         <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-          <Text style={{ color: palette.coral[600], fontWeight: '700' }}>Not on your plan</Text>
+          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>Not on your plan</Text>
           <Text style={{ color: c.textSecondary, fontSize: 13 }}>{pkgData.message || 'Upgrade your plan to buy a boost.'}</Text>
         </Card>
       )}
@@ -124,11 +128,11 @@ function PromotionBody({
         <>
           <SectionLabel c={c}>Running now</SectionLabel>
           <Card c={c}>
-            <Text style={{ color: c.textPrimary, fontWeight: '800', fontSize: 16 }}>{boostData.current.package.label}</Text>
+            <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 16 }}>{boostData.current.package.label}</Text>
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
               {boostData.current.package.radiusKm} km radius{boostData.current.package.topPlacement ? ' · Top placement' : ''}
             </Text>
-            <Text style={{ color: c.primary, fontWeight: '700', fontSize: 13 }}>
+            <Text style={{ color: c.primary, fontWeight: '600', fontSize: 13 }}>
               {boostData.current.daysRemaining} day{boostData.current.daysRemaining === 1 ? '' : 's'} left
             </Text>
           </Card>
@@ -144,11 +148,11 @@ function PromotionBody({
         pkgData.packages.map((pkg) => (
           <Card key={pkg._id} c={c} style={styles.pkgCard}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 15 }}>{pkg.label}</Text>
+              <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 15 }}>{pkg.label}</Text>
               <Text style={{ color: c.textSecondary, fontSize: 12 }}>
                 {pkg.durationDays} days · {pkg.radiusKm} km{pkg.topPlacement ? ' · Top placement' : ''}
               </Text>
-              <Text style={{ color: c.primary, fontWeight: '800', fontSize: 16, marginTop: 4 }}>
+              <Text style={{ color: c.primary, fontWeight: '600', fontSize: 16, marginTop: 4 }}>
                 {pkg.pricePaise === 0 ? 'Free' : formatPaise(pkg.pricePaise)}
               </Text>
             </View>
@@ -175,7 +179,7 @@ function PromotionBody({
                 <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{b.package.label}</Text>
                 <Text style={{ color: c.textSecondary, fontSize: 11 }}>{new Date(b.purchasedAt).toLocaleDateString('en-IN')} · {b.status}</Text>
               </View>
-              <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 13 }}>{formatPaise(b.amountPaise)}</Text>
+              <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(b.amountPaise)}</Text>
             </View>
           ))}
         </Card>
@@ -188,9 +192,6 @@ function PromotionBody({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
-  title: { fontSize: 22, fontWeight: '800' },
-  subtitle: { fontSize: 13, marginTop: 2 },
   content: { padding: 16, paddingBottom: 40, gap: 10 },
   pkgCard: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   buyBtn: { minWidth: 84 },

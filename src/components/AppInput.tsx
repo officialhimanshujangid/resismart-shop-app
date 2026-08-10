@@ -67,6 +67,7 @@ export function AppInput({
               icon={isSecureVisible ? 'eye-off' : 'eye'}
               onPress={() => setIsSecureVisible((v) => !v)}
               color={Colors.textSecondary}
+              accessibilityLabel={isSecureVisible ? 'Hide password' : 'Show password'}
             />
           ) : undefined
         }

@@ -61,5 +61,5 @@ export function DraftStatusChip({ status, c }: { status: DraftSyncStatus; c: Col
 
 const styles = StyleSheet.create({
   chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radii.pill, alignSelf: 'flex-start' },
-  label: { fontSize: 12, fontWeight: '700' },
+  label: { fontSize: 12, fontWeight: '600' },
 });

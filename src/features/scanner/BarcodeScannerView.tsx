@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   permissionCard: {
     flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24,
   },
-  permissionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  permissionTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
   permissionBody: { color: '#D7DEEA', fontSize: 13, textAlign: 'center', lineHeight: 18 },
   manualArea: {
     borderTopWidth: StyleSheet.hairlineWidth,

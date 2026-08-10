@@ -308,10 +308,10 @@ export default function NewPaymentScreen() {
           elevation={0}
         >
           <View style={styles.totalsRow}>
-            <Text style={{ color: overAllocated ? c.error : c.textSecondary, fontWeight: '700', fontSize: 12 }}>
+            <Text style={{ color: overAllocated ? c.error : c.textSecondary, fontWeight: '600', fontSize: 12 }}>
               {overAllocated ? 'Allocated more than the payment' : 'Left on account'}
             </Text>
-            <Text style={{ color: overAllocated ? c.error : c.textPrimary, fontWeight: '800', fontSize: 13 }}>
+            <Text style={{ color: overAllocated ? c.error : c.textPrimary, fontWeight: '600', fontSize: 13 }}>
               {overAllocated ? formatPaise(allocatedPaise - amountPaise) : formatPaise(onAccountPaise)}
             </Text>
           </View>
@@ -346,13 +346,13 @@ export default function NewPaymentScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
-  topBarTitle: { fontSize: 16, fontWeight: '800' },
+  topBarTitle: { fontSize: 16, fontWeight: '600' },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
   card: { borderRadius: radii.card, padding: 14, gap: 10 },
-  cardTitle: { fontSize: 14, fontWeight: '700' },
+  cardTitle: { fontSize: 14, fontWeight: '600' },
   row2: { flexDirection: 'row', gap: 8 },
   selectedPartyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  selectedPartyName: { fontSize: 14, fontWeight: '700' },
+  selectedPartyName: { fontSize: 14, fontWeight: '600' },
   selectedPartyMeta: { fontSize: 12 },
   resultRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -361,13 +361,13 @@ const styles = StyleSheet.create({
   resultName: { fontSize: 13, fontWeight: '600' },
   resultMeta: { fontSize: 12 },
   docRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8, marginTop: 4 },
-  docNumber: { fontSize: 13, fontWeight: '700' },
+  docNumber: { fontSize: 13, fontWeight: '600' },
   docMeta: { fontSize: 11, marginTop: 2 },
   docAmountInput: { width: 96, height: 40 },
   totalsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   errorCard: { borderRadius: radii.card, padding: 12 },
   bottomBar: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth },
   deniedBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
-  deniedTitle: { fontSize: 16, fontWeight: '700' },
+  deniedTitle: { fontSize: 16, fontWeight: '600' },
   deniedBody: { fontSize: 13, textAlign: 'center' },
 });

@@ -1,6 +1,6 @@
 import React from 'react';
-import { Alert, FlatList, StyleSheet, useColorScheme, View } from 'react-native';
-import { FAB, IconButton, Text } from 'react-native-paper';
+import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
+import { Chip, FAB, IconButton, Text } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -9,7 +9,8 @@ import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { staffApi, PartnerStaffRow } from '../../../src/api/staff.api';
 import { apiErrorMessage } from '../../../src/api/axios';
-import { EmptyBlock, ErrorBlock, Loading, Row, Screen } from '../../../src/features/more/ui';
+import { Hero, GlassStat } from '../../../src/components/Hero';
+import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 
 function nameOf(row: PartnerStaffRow): string {
   return typeof row.userId === 'object' ? row.userId.name : 'Staff member';
@@ -57,24 +58,33 @@ export default function StaffListScreen() {
 
   const active = (list.data ?? []).filter((r) => r.isActive);
   const inactive = (list.data ?? []).filter((r) => !r.isActive);
+  const rolesInUse = new Set(active.map(roleNameOf).filter(Boolean)).size;
+  const bookingReady = active.filter((r) => r.canTakeBookings).length;
 
   const renderRow = (row: PartnerStaffRow) => (
-    <View key={row._id} style={[styles.card, { backgroundColor: c.surface }]}>
+    <View key={row._id} style={[styles.card, { backgroundColor: c.surface, opacity: row.isActive ? 1 : 0.7 }]}>
       <View style={{ flex: 1 }}>
         <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{nameOf(row)}</Text>
         <Text style={[styles.meta, { color: c.textSecondary }]} numberOfLines={1}>
           {row.designation}{contactOf(row) ? ` · ${contactOf(row)}` : ''}
         </Text>
         <View style={styles.badgeRow}>
-          <View style={[styles.badge, { backgroundColor: c.surfaceVariant }]}>
-            <Text style={{ fontSize: 11, color: c.textSecondary, fontWeight: '700' }}>
-              {roleNameOf(row) || 'No role assigned'}
-            </Text>
-          </View>
+          <Chip
+            compact
+            style={[styles.chip, { backgroundColor: c.surfaceVariant }]}
+            textStyle={[styles.chipText, { color: c.textSecondary }]}
+          >
+            {roleNameOf(row) || 'No role assigned'}
+          </Chip>
           {row.canTakeBookings && (
-            <View style={[styles.badge, { backgroundColor: palette.brand[50] }]}>
-              <Text style={{ fontSize: 11, color: palette.brand[600], fontWeight: '700' }}>Takes bookings</Text>
-            </View>
+            <Chip
+              compact
+              icon="calendar-check-outline"
+              style={[styles.chip, { backgroundColor: palette.brand[50] }]}
+              textStyle={[styles.chipText, { color: palette.brand[600] }]}
+            >
+              Takes bookings
+            </Chip>
           )}
         </View>
       </View>
@@ -99,7 +109,6 @@ export default function StaffListScreen() {
     <Screen
       c={c}
       title="Staff"
-      subtitle={cap.limit !== null ? `${cap.used} of ${cap.limit} ${cap.noun}` : undefined}
       right={canManage ? (
         <IconButton icon="shield-account-outline" size={22} onPress={() => router.push('/staff/roles')} />
       ) : undefined}
@@ -114,6 +123,20 @@ export default function StaffListScreen() {
         />
       ) : undefined}
     >
+      <Hero
+        isDark={isDark}
+        eyebrow="Your team"
+        headline={list.data ? { value: String(active.length), label: active.length === 1 ? 'person on the roster' : 'people on the roster' } : undefined}
+        subtitle={cap.limit !== null ? `${cap.used} of ${cap.limit} ${cap.noun} used` : 'Invite the people who work here and give them a role.'}
+      >
+        {list.data ? (
+          <>
+            <GlassStat icon="shield-account-outline" label="Roles in use" value={String(rolesInUse)} />
+            <GlassStat icon="calendar-check-outline" label="Take bookings" value={String(bookingReady)} />
+          </>
+        ) : null}
+      </Hero>
+
       {list.isPending ? (
         <Loading c={c} />
       ) : list.isError ? (
@@ -137,10 +160,11 @@ export default function StaffListScreen() {
 
 const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', borderRadius: radii.card, padding: 14, gap: 8 },
-  name: { fontSize: 15, fontWeight: '700' },
+  name: { fontSize: 15, fontWeight: '600' },
   meta: { fontSize: 12, marginTop: 2 },
-  badgeRow: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' },
-  badge: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 3 },
-  sectionLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginTop: 8 },
+  badgeRow: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
+  chip: { borderRadius: radii.pill },
+  chipText: { fontSize: 11, fontWeight: '600', marginVertical: 0 },
+  sectionLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', marginTop: 8 },
   fab: { position: 'absolute', right: 16, bottom: 20, borderRadius: radii.pill },
 });

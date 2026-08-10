@@ -136,10 +136,10 @@ export default function ProductDetailScreen() {
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.body}>
       {!product.isActive && (
         <View style={[styles.offSaleBanner, { backgroundColor: c.textDisabled + '22' }]}>
-          <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '700' }}>This product is off sale.</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>This product is off sale.</Text>
           {canManage && (
             <Pressable onPress={reactivate}>
-              <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '800' }}>Turn back on</Text>
+              <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>Turn back on</Text>
             </Pressable>
           )}
         </View>
@@ -147,7 +147,7 @@ export default function ProductDetailScreen() {
 
       <View style={[styles.stockCard, { backgroundColor: c.surface, borderColor: c.divider }]}>
         <View>
-          <Text style={[styles.stockLabel, { color: c.textSecondary }]}>ON HAND</Text>
+          <Text style={[styles.stockLabel, { color: c.textSecondary }]}>On hand</Text>
           <Text style={[styles.stockValue, { color: c.textPrimary }]}>
             {product.trackStock ? product.stockQty : 'Not tracked'}
           </Text>
@@ -157,7 +157,7 @@ export default function ProductDetailScreen() {
             onPress={() => setStockTarget({ productId: product._id, productName: product.name, currentQty: product.stockQty })}
             style={[styles.adjustBtn, { borderColor: c.primary }]}
           >
-            <Text style={{ color: c.primary, fontWeight: '700', fontSize: 12.5 }}>Adjust stock</Text>
+            <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>Adjust stock</Text>
           </Pressable>
         )}
       </View>
@@ -177,7 +177,7 @@ export default function ProductDetailScreen() {
         </View>
       </View>
 
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>UNIT</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Unit</Text>
       <View style={styles.unitRow}>
         {PRODUCT_UNITS.map((u) => {
           const active = u === unit;
@@ -187,13 +187,13 @@ export default function ProductDetailScreen() {
               onPress={() => canManage && setUnit(u)}
               style={[styles.unitChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
             >
-              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '700' }}>{u}</Text>
+              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{u}</Text>
             </Pressable>
           );
         })}
       </View>
 
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>CATEGORY</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Category</Text>
       <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={canManage} />
 
       <AppInput label="SKU (optional)" value={sku} onChangeText={setSku} autoCapitalize="characters" disabled={!canManage} />
@@ -255,13 +255,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 12,
   },
-  stockLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5 },
-  stockValue: { fontSize: 22, fontWeight: '800', marginTop: 2 },
+  stockLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2 },
+  stockValue: { fontSize: 22, fontWeight: '600', marginTop: 2 },
   adjustBtn: { borderWidth: 1.5, borderRadius: radii.card, paddingHorizontal: 14, paddingVertical: 9 },
   row2: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
   switchBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
-  sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 12, marginBottom: 6 },
+  sectionLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2, marginTop: 12, marginBottom: 6 },
   unitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
   unitChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   mrpNote: { fontSize: 11, textAlign: 'center', marginTop: 8 },

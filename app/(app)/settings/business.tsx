@@ -10,7 +10,7 @@ import { settingsApi, GstRegistrationType, GST_REGISTRATION_TYPES } from '../../
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
-import { ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 
 const REG_LABEL: Record<GstRegistrationType, string> = {
   REGULAR: 'Regular', COMPOSITION: 'Composition', UNREGISTERED: 'Unregistered', SEZ: 'SEZ', EXPORT: 'Export',
@@ -89,28 +89,37 @@ export default function BusinessSettingsScreen() {
 
   return (
     <Screen c={c} title="Business details">
-      <AppInput label="Business / legal name" value={businessName} onChangeText={setBusinessName} disabled={!canEdit} error={errors.businessName} />
-      <AppInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" disabled={!canEdit} />
-      <AppInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" disabled={!canEdit} />
-      <AppInput label="Billing address" value={billingAddress} onChangeText={setBillingAddress} multiline disabled={!canEdit} />
-      <View style={styles.row}>
-        <AppInput label="City" value={city} onChangeText={setCity} style={styles.half} disabled={!canEdit} />
-        <AppInput label="State" value={state} onChangeText={setState} style={styles.half} disabled={!canEdit} />
-      </View>
-      <AppInput label="Pincode" value={pincode} onChangeText={setPincode} keyboardType="numeric" disabled={!canEdit} />
+      <Card c={c}>
+        <SectionLabel c={c}>Business</SectionLabel>
+        <AppInput label="Business / legal name" value={businessName} onChangeText={setBusinessName} disabled={!canEdit} error={errors.businessName} />
+        <AppInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" disabled={!canEdit} />
+        <AppInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" disabled={!canEdit} />
+      </Card>
 
-      <SectionLabel c={c}>GST</SectionLabel>
-      <View style={styles.switchRow}>
-        <Text style={{ color: c.textPrimary, fontSize: 14 }}>Registered under GST</Text>
-        <Switch value={isGstRegistered} onValueChange={setIsGstRegistered} color={c.primary} disabled={!canEdit} />
-      </View>
-      {isGstRegistered && (
-        <>
-          <AppInput label="GSTIN" value={gstin} onChangeText={(v) => setGstin(v.toUpperCase())} autoCapitalize="characters" disabled={!canEdit} error={errors.gstin} />
-          <Text style={[styles.label, { color: c.textSecondary }]}>Registration type</Text>
-          <ChipRow c={c} value={registrationType} options={REG_OPTIONS} onChange={setRegistrationType} />
-        </>
-      )}
+      <Card c={c}>
+        <SectionLabel c={c}>Registered address</SectionLabel>
+        <AppInput label="Billing address" value={billingAddress} onChangeText={setBillingAddress} multiline disabled={!canEdit} />
+        <View style={styles.row}>
+          <AppInput label="City" value={city} onChangeText={setCity} style={styles.half} disabled={!canEdit} />
+          <AppInput label="State" value={state} onChangeText={setState} style={styles.half} disabled={!canEdit} />
+        </View>
+        <AppInput label="Pincode" value={pincode} onChangeText={setPincode} keyboardType="numeric" disabled={!canEdit} />
+      </Card>
+
+      <Card c={c}>
+        <SectionLabel c={c}>GST</SectionLabel>
+        <View style={styles.switchRow}>
+          <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '600' }}>Registered under GST</Text>
+          <Switch value={isGstRegistered} onValueChange={setIsGstRegistered} color={c.primary} disabled={!canEdit} />
+        </View>
+        {isGstRegistered && (
+          <>
+            <AppInput label="GSTIN" value={gstin} onChangeText={(v) => setGstin(v.toUpperCase())} autoCapitalize="characters" disabled={!canEdit} error={errors.gstin} />
+            <Text style={[styles.label, { color: c.textSecondary }]}>Registration type</Text>
+            <ChipRow c={c} value={registrationType} options={REG_OPTIONS} onChange={setRegistrationType} />
+          </>
+        )}
+      </Card>
 
       {canEdit && (
         <AppButton label="Save changes" onPress={onSave} loading={save.isPending} disabled={save.isPending} style={{ marginTop: 8 }} />
@@ -123,5 +132,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
-  label: { fontSize: 12, fontWeight: '700', marginTop: 4 },
+  label: { fontSize: 12, fontWeight: '600', marginTop: 4 },
 });

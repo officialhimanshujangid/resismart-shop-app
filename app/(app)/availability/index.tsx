@@ -217,7 +217,7 @@ export default function AvailabilityScreen() {
             ]}
           >
             <View style={styles.activeRow}>
-              <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '700' }}>
+              <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600' }}>
                 Available for an immediate job right now
               </Text>
               <Switch value={availableNow} onValueChange={setLiveAvailability} disabled={savingAvailableNow} />
@@ -238,7 +238,7 @@ export default function AvailabilityScreen() {
               onPress={() => mayManage && applyPreset(p)}
               style={[styles.presetChip, { borderColor: c.primary }]}
             >
-              <Text style={{ color: c.primary, fontSize: 12, fontWeight: '700' }}>{p.label}</Text>
+              <Text style={{ color: c.primary, fontSize: 12, fontWeight: '600' }}>{p.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -268,7 +268,7 @@ export default function AvailabilityScreen() {
           )}
           {draft.blackoutDates.map((dstr) => (
             <View key={dstr} style={[styles.blackoutChip, { backgroundColor: c.surfaceVariant }]}>
-              <Text style={{ color: c.textPrimary, fontSize: 11.5, fontWeight: '700' }}>{dstr}</Text>
+              <Text style={{ color: c.textPrimary, fontSize: 11.5, fontWeight: '600' }}>{dstr}</Text>
               {mayManage && (
                 <Pressable onPress={() => setDraft({ ...draft, blackoutDates: draft.blackoutDates.filter((x) => x !== dstr) })}>
                   <Text style={{ color: c.textSecondary, fontSize: 13, marginLeft: 6 }}>✕</Text>
@@ -296,7 +296,7 @@ export default function AvailabilityScreen() {
                 onPress={() => mayManage && setDraft({ ...draft, advanceBookingDays: choice.value })}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
-                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '700' }}>{choice.label}</Text>
+                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{choice.label}</Text>
               </Pressable>
             );
           })}
@@ -312,7 +312,7 @@ export default function AvailabilityScreen() {
                 onPress={() => mayManage && setDraft({ ...draft, cutoffMin: choice.value })}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
-                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '700' }}>{choice.label}</Text>
+                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{choice.label}</Text>
               </Pressable>
             );
           })}
@@ -331,7 +331,7 @@ export default function AvailabilityScreen() {
                 onPress={() => mayManage && setDraft({ ...draft, timezone: tz })}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
-                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '700' }}>{tz}</Text>
+                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{tz}</Text>
               </Pressable>
             );
           })}
@@ -342,7 +342,7 @@ export default function AvailabilityScreen() {
 
         <View style={[styles.activeBox, { backgroundColor: draft.isActive ? c.surfaceVariant : c.warning + '18', borderColor: draft.isActive ? c.divider : c.warning }]}>
           <View style={styles.activeRow}>
-            <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '700' }}>Taking bookings</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600' }}>Taking bookings</Text>
             <Switch value={draft.isActive} onValueChange={(v) => setDraft({ ...draft, isActive: v })} disabled={!mayManage} />
           </View>
           <Text style={[styles.hint, { color: c.textSecondary }]}>
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   body: { padding: 16, paddingBottom: 40, gap: 4 },
   intro: { fontSize: 12.5, lineHeight: 18, marginBottom: 10 },
-  sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 8 },
+  sectionLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6, marginBottom: 8 },
   hint: { fontSize: 11.5, lineHeight: 16, marginTop: 4, marginBottom: 8 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
   presetChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: 1.5 },

@@ -76,8 +76,8 @@ const styles = StyleSheet.create({
   tile: { flexBasis: '48%', flexGrow: 1, borderRadius: radii.card, padding: 14, gap: 6 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   iconWrap: { width: 24, height: 24, borderRadius: radii.xs, alignItems: 'center', justifyContent: 'center' },
-  label: { fontSize: 11, fontWeight: '700', flex: 1, textTransform: 'uppercase', letterSpacing: 0.3 },
-  value: { fontSize: 20, fontWeight: '800' },
+  label: { fontSize: 11, fontWeight: '600', flex: 1, textTransform: 'uppercase', letterSpacing: 0.3 },
+  value: { fontSize: 20, fontWeight: '600' },
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 24 },
-  delta: { fontSize: 11, fontWeight: '700', flex: 1 },
+  delta: { fontSize: 11, fontWeight: '600', flex: 1 },
 });

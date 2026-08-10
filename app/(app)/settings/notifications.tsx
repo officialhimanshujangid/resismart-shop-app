@@ -42,13 +42,13 @@ export default function WhatsAppSettingsScreen() {
     <Screen c={c} title="WhatsApp alerts">
       {!w.configured && (
         <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-          <Text style={{ color: palette.coral[600], fontWeight: '700' }}>Not wired up yet</Text>
+          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>Not wired up yet</Text>
           <Text style={{ color: c.textSecondary, fontSize: 13 }}>WhatsApp is not connected on this install. This switch will do nothing until it is.</Text>
         </Card>
       )}
       {w.configured && !w.available && (
         <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-          <Text style={{ color: palette.coral[600], fontWeight: '700' }}>Not on your plan</Text>
+          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>Not on your plan</Text>
           <Text style={{ color: c.textSecondary, fontSize: 13 }}>Upgrade your plan to receive alerts on WhatsApp.</Text>
         </Card>
       )}
@@ -61,7 +61,7 @@ export default function WhatsAppSettingsScreen() {
       <Card c={c}>
         <View style={styles.switchRow}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: c.textPrimary, fontSize: 15, fontWeight: '700' }}>Send me alerts on WhatsApp</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 15, fontWeight: '600' }}>Send me alerts on WhatsApp</Text>
             {w.phone && <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>To {w.phone}</Text>}
           </View>
           <Switch

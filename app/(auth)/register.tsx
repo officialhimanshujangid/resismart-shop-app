@@ -30,7 +30,7 @@ import {
 import { apiErrorMessage } from '../../src/api/axios';
 import { AppButton } from '../../src/components/AppButton';
 import { AppInput } from '../../src/components/AppInput';
-import { AppLogo } from '../../src/components/AppLogo';
+import { Hero } from '../../src/components/Hero';
 import { themeColors, radii, ColorScheme } from '../../src/constants/colors';
 import { qk } from '../../src/lib/queryKeys';
 import { useOnboardingStatus, resumeStep } from '../../src/hooks';
@@ -168,9 +168,13 @@ export default function RegisterScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.header}>
-            <AppLogo size="small" showTagline={false} />
-          </View>
+          <Hero
+            isDark={isDark}
+            variant="brand"
+            logoSize="small"
+            subtitle="Set up your business — saved as you go."
+            style={styles.brandHero}
+          />
 
           <StepRail current={step} c={c} onJump={(n) => isAuthenticated && n < step && setStep(n)} />
 
@@ -201,7 +205,7 @@ export default function RegisterScreen() {
           {step === 1 && !isAuthenticated && (
             <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.footerLink}>
               <Text style={{ color: c.textSecondary }}>
-                Already registered? <Text style={{ color: c.primary, fontWeight: '700' }}>Sign in</Text>
+                Already registered? <Text style={{ color: c.primary, fontWeight: '600' }}>Sign in</Text>
               </Text>
             </TouchableOpacity>
           )}
@@ -1102,17 +1106,17 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 22, paddingBottom: 48, gap: 8 },
-  header: { alignItems: 'center', marginBottom: 6 },
+  brandHero: { paddingVertical: 22, marginBottom: 10 },
   rail: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18, marginTop: 6 },
   railItem: { alignItems: 'center', gap: 6, flex: 1 },
   railDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  railNum: { fontSize: 12, fontWeight: '700' },
+  railNum: { fontSize: 12, fontWeight: '600' },
   railLabel: { fontSize: 11, fontWeight: '600' },
   step: { gap: 4 },
   heading: { marginBottom: 10, gap: 4 },
-  h1: { fontSize: 23, fontWeight: '800' },
+  h1: { fontSize: 23, fontWeight: '600' },
   h2: { fontSize: 14, lineHeight: 20 },
-  label: { fontSize: 14, fontWeight: '700', marginTop: 10, marginBottom: 6 },
+  label: { fontSize: 14, fontWeight: '600', marginTop: 10, marginBottom: 6 },
   note: { fontSize: 12.5, lineHeight: 18 },
   cards: { gap: 10, marginVertical: 6 },
   choiceCard: {
@@ -1124,7 +1128,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   choiceCardTall: { paddingVertical: 20 },
-  choiceTitle: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  choiceTitle: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
   pinCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1134,14 +1138,14 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     marginBottom: 8,
   },
-  pinTitle: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  pinTitle: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { marginBottom: 4 },
   divider: { marginVertical: 14 },
   spinner: { marginVertical: 16 },
   docRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1 },
   dayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: 1 },
-  dayName: { width: 42, fontSize: 14, fontWeight: '700' },
+  dayName: { width: 42, fontSize: 14, fontWeight: '600' },
   missing: { borderWidth: 1.5, borderRadius: radii.card, padding: 14, marginTop: 14 },
   footerLink: { alignSelf: 'center', paddingVertical: 14 },
 });

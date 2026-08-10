@@ -14,8 +14,9 @@ import { paymentsApi } from '../../../src/features/payments/payments.api';
 import {
   PAYMENT_MODE_LABEL, PaymentDirection, PaymentRecord, partyNameOf,
 } from '../../../src/features/payments/types';
-import { ChipRow, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
+import { ChipRow, EmptyBlock, ErrorBlock, Loading } from '../../../src/features/more/ui';
 import { toHref } from '../../../src/features/billing/routeHref';
+import { Hero, GlassStat } from '../../../src/components/Hero';
 
 /**
  * Payments, both directions — C1. `IN`/`OUT` are two tabs of the SAME model
@@ -95,24 +96,23 @@ export default function PaymentsScreen() {
   }
 
   return (
-    <Screen
-      title="Payments"
-      subtitle="Money in and out, allocated to what it settles"
-      c={c}
-      back={false}
-      scroll={false}
-      right={
-        canManage ? (
-          <IconButton
-            icon="plus"
-            mode="contained"
-            size={20}
-            onPress={() => router.push(toHref(`/(app)/payments/new?direction=${direction}`))}
-            accessibilityLabel="Record a payment"
+    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
+      <Hero
+        isDark={isDark}
+        eyebrow="Payments"
+        title="Money in & out"
+        subtitle="Every receipt and payment, allocated to what it settles."
+        style={styles.hero}
+      >
+        {query.data ? (
+          <GlassStat
+            icon={direction === 'IN' ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
+            label={direction === 'IN' ? 'Payments in' : 'Payments out'}
+            value={String(query.data.total)}
           />
-        ) : undefined
-      }
-    >
+        ) : null}
+      </Hero>
+
       <View style={styles.filterRow}>
         <ChipRow
           c={c}
@@ -123,6 +123,15 @@ export default function PaymentsScreen() {
             { key: 'OUT', label: 'Payments out' },
           ]}
         />
+        {canManage && (
+          <IconButton
+            icon="plus"
+            mode="contained"
+            size={20}
+            onPress={() => router.push(toHref(`/(app)/payments/new?direction=${direction}`))}
+            accessibilityLabel="Record a payment"
+          />
+        )}
       </View>
 
       {query.isPending ? (
@@ -163,7 +172,7 @@ export default function PaymentsScreen() {
       <Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3500}>
         {toast}
       </Snackbar>
-    </Screen>
+    </SafeAreaView>
   );
 }
 
@@ -219,21 +228,26 @@ function PaymentRow({
 /** Tiny inline glyph rather than pulling in another icon dependency for two arrows. */
 function IconButtonGlyph({ direction, color }: { direction: PaymentDirection; color: string }) {
   return (
-    <Text style={{ color, fontSize: 16, fontWeight: '900' }}>{direction === 'IN' ? '↓' : '↑'}</Text>
+    <Text style={{ color, fontSize: 16, fontWeight: '600' }}>{direction === 'IN' ? '↓' : '↑'}</Text>
   );
 }
 
 const styles = StyleSheet.create({
-  filterRow: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
+  root: { flex: 1 },
+  hero: { marginHorizontal: 16, marginTop: 8, marginBottom: 4 },
+  filterRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8,
+  },
   list: { padding: 16, paddingTop: 4, gap: 10, paddingBottom: 32 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radii.card, padding: 14 },
   rowIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  partyName: { fontSize: 14, fontWeight: '700' },
+  partyName: { fontSize: 14, fontWeight: '600' },
   meta: { fontSize: 12, marginTop: 2 },
-  onAccount: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  onAccount: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   rowRight: { alignItems: 'flex-end' },
-  amount: { fontSize: 15, fontWeight: '800' },
-  cancelledLabel: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  amount: { fontSize: 15, fontWeight: '600' },
+  cancelledLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   cancelBtn: { margin: 0, minWidth: 0 },
   cancelLabel: { fontSize: 11, marginVertical: 0, marginHorizontal: 4 },
 });

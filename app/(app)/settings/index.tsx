@@ -1,10 +1,10 @@
 import React from 'react';
-import { useColorScheme, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
 import { router } from 'expo-router';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
-import { Card, Row, Screen } from '../../../src/features/more/ui';
+import { Card, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
 
 export default function SettingsHubScreen() {
   const c = themeColors(useColorScheme() === 'dark');
@@ -22,8 +22,11 @@ export default function SettingsHubScreen() {
       ? 'Verified. Documents and status'
       : 'Documents and approval status';
 
+  const Divider = () => <View style={[styles.divider, { backgroundColor: c.divider }]} />;
+
   return (
     <Screen c={c} title="Settings" subtitle={level} back={false}>
+      <SectionLabel c={c}>Business</SectionLabel>
       <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
         <Row
           c={c}
@@ -32,7 +35,7 @@ export default function SettingsHubScreen() {
           subtitle="Legal name, GSTIN, registered address"
           onPress={() => router.push('/settings/business')}
         />
-        <View style={{ height: 1, opacity: 0.5 }} />
+        <Divider />
         <Row
           c={c}
           icon="receipt-text-outline"
@@ -40,7 +43,10 @@ export default function SettingsHubScreen() {
           subtitle="Theme, numbering, bank details, thermal printing"
           onPress={() => router.push('/settings/invoice')}
         />
-        <View style={{ height: 1, opacity: 0.5 }} />
+      </Card>
+
+      <SectionLabel c={c}>Getting found</SectionLabel>
+      <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
         {/* `serviceModes` had no editor after registration — see the screen's
             own note. It is the field discovery tests, so a partner without it
             is one no resident can be matched to. */}
@@ -51,7 +57,7 @@ export default function SettingsHubScreen() {
           subtitle="Customers come to you, you travel to them, or both"
           onPress={() => router.push('/settings/where-you-work')}
         />
-        <View style={{ height: 1, opacity: 0.5 }} />
+        <Divider />
         {/* Where the proprietor sends documents in and reads what ResiSmart
             decided. It had no entry anywhere: documents could only be attached
             inside the signup wizard, which a signed-in partner cannot get back
@@ -65,7 +71,10 @@ export default function SettingsHubScreen() {
           subtitle={verificationSubtitle}
           onPress={() => router.push('/settings/verification')}
         />
-        <View style={{ height: 1, opacity: 0.5 }} />
+      </Card>
+
+      <SectionLabel c={c}>Alerts & modules</SectionLabel>
+      <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
         <Row
           c={c}
           icon="whatsapp"
@@ -73,7 +82,7 @@ export default function SettingsHubScreen() {
           subtitle="Bookings, orders and plan alerts on WhatsApp"
           onPress={() => router.push('/settings/notifications')}
         />
-        <View style={{ height: 1, opacity: 0.5 }} />
+        <Divider />
         {/* C7 — see what this business uses and switch it off/on, matching
             web `settings/modules`. Reachable at READ (this hub's own gate),
             the screen itself requires SETTINGS FULL to change anything. */}
@@ -88,3 +97,7 @@ export default function SettingsHubScreen() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  divider: { height: StyleSheet.hairlineWidth, marginLeft: 62 },
+});

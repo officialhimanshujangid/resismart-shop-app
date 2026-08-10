@@ -15,13 +15,12 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAuth, LoginResult } from '../../src/context/AuthContext';
 import { ProfileInfo } from '../../src/api/auth.api';
 import { AppButton } from '../../src/components/AppButton';
 import { AppInput } from '../../src/components/AppInput';
-import { AppLogo } from '../../src/components/AppLogo';
+import { Hero } from '../../src/components/Hero';
 import { ContextPicker } from '../../src/components/ContextPicker';
 import { LoadingOverlay } from '../../src/components/LoadingOverlay';
 import { Colors } from '../../src/constants/colors';
@@ -146,18 +145,16 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <LinearGradient
-            colors={[Colors.gradientStart, Colors.gradientEnd, Colors.gradientAccent]}
-            locations={[0, 0.65, 1]}
-            style={styles.gradient}
-          >
-            <View style={styles.heroContent}>
-              <AppLogo size="large" showTagline />
-            </View>
-          </LinearGradient>
+          <Hero
+            isDark={false}
+            variant="brand"
+            logoSize="large"
+            rounded={false}
+            subtitle="Your bookings, orders and billing in one place."
+          />
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Welcome Back</Text>
+            <Text style={styles.cardTitle}>Welcome back</Text>
             <Text style={styles.cardSubtitle}>Sign in to your partner account</Text>
 
             <View style={styles.form}>
@@ -202,11 +199,11 @@ export default function LoginScreen() {
                 style={styles.forgotLink}
                 activeOpacity={0.7}
               >
-                <Text style={styles.forgotText}>Forgot Password?</Text>
+                <Text style={styles.forgotText}>Forgot password?</Text>
               </TouchableOpacity>
 
               <AppButton
-                label="Sign In"
+                label="Sign in"
                 onPress={handleSubmit(onSubmit)}
                 loading={isLoading}
                 icon="login"
@@ -282,8 +279,6 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
   flex: { flex: 1 },
-  gradient: { paddingTop: 40, paddingBottom: 40, justifyContent: 'center' },
-  heroContent: { alignItems: 'center', paddingVertical: 16 },
   scrollContent: { flexGrow: 1 },
   card: {
     flex: 1,
@@ -300,7 +295,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
   },
-  cardTitle: { fontSize: 26, fontWeight: '800', color: Colors.textPrimary, marginBottom: 4 },
+  cardTitle: { fontSize: 26, fontWeight: '600', color: Colors.textPrimary, marginBottom: 4 },
   cardSubtitle: { fontSize: 14, color: Colors.textSecondary, marginBottom: 28 },
   form: { gap: 4 },
   forgotLink: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 8, paddingVertical: 4 },
@@ -310,7 +305,7 @@ const styles = StyleSheet.create({
   otpText: { color: Colors.primary, fontWeight: '600', fontSize: 14 },
   footer: { marginTop: 20, alignItems: 'center' },
   footerText: { fontSize: 13, color: Colors.textSecondary, textAlign: 'center' },
-  footerLink: { color: Colors.primary, fontWeight: '700' },
+  footerLink: { color: Colors.primary, fontWeight: '600' },
   modal: {
     backgroundColor: Colors.surface,
     borderRadius: 24,
@@ -318,7 +313,7 @@ const styles = StyleSheet.create({
     padding: 24,
     gap: 12,
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
+  modalTitle: { fontSize: 20, fontWeight: '600', color: Colors.textPrimary },
   modalSubtitle: { fontSize: 14, color: Colors.textSecondary },
   divider: { marginVertical: 4 },
   snackError: { backgroundColor: Colors.error },

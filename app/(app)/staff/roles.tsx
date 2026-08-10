@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
-import { IconButton, Text } from 'react-native-paper';
+import { Chip, IconButton, Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { themeColors, radii, palette } from '../../../src/constants/colors';
@@ -120,11 +120,13 @@ export default function RolesScreen() {
                   subtitle={entry.description}
                   onPress={() => cycleLevel(entry)}
                   right={
-                    <View style={[styles.levelPill, { backgroundColor: level === 'NONE' ? c.surfaceVariant : palette.brand[50] }]}>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: level === 'NONE' ? c.textSecondary : palette.brand[600] }}>
-                        {LEVEL_LABEL[level]}
-                      </Text>
-                    </View>
+                    <Chip
+                      compact
+                      style={[styles.levelPill, { backgroundColor: level === 'NONE' ? c.surfaceVariant : palette.brand[50] }]}
+                      textStyle={{ fontSize: 11, fontWeight: '600', marginVertical: 0, color: level === 'NONE' ? c.textSecondary : palette.brand[600] }}
+                    >
+                      {LEVEL_LABEL[level]}
+                    </Chip>
                   }
                 />
                 {i < catalog.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
@@ -165,6 +167,6 @@ export default function RolesScreen() {
 }
 
 const styles = StyleSheet.create({
-  levelPill: { borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 4 },
+  levelPill: { borderRadius: radii.pill },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
 });

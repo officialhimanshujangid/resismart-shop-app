@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { Alert, Dimensions, RefreshControl, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { Button, Surface, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -11,7 +11,9 @@ import { themeColors, radii } from '../../../src/constants/colors';
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { qk } from '../../../src/lib/queryKeys';
-import { Kpi, findKpi, findSeries } from '../../../src/api/analytics.api';
+import { Kpi, findKpi, findSeries, formatKpiValue } from '../../../src/api/analytics.api';
+import { Hero, GlassStat } from '../../../src/components/Hero';
+import { MiniBars } from '../../../src/components/charts';
 
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
@@ -19,7 +21,6 @@ import { useBookingAction } from '../../../src/features/bookings/hooks';
 import { BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
 import { LIVE_STATUSES } from '../../../src/features/bookings/format';
 import { useLowStockProducts, usePendingOrders, useTodayAnalytics, useTodayBookings } from '../../../src/features/today/hooks';
-import { TodayKpiTile } from '../../../src/features/today/components/TodayKpiTile';
 
 /**
  * The screen a partner opens twenty times a day.
@@ -169,16 +170,68 @@ export default function TodayScreen() {
   const pendingOrders = ordersQuery.data?.data ?? [];
   const lowStock = lowStockQuery.data?.data ?? [];
 
+  // ── Hero content ─────────────────────────────────────────────────────────
+  // The business name is the hero's anchor and always renders — Today is the
+  // app's floor. The revenue-first headline and the glass tiles only appear
+  // once entitlements are settled and no banner is claiming the top of the
+  // screen, so a suspended or unverified partner never reads a stale total.
+  const businessName = profile?.tenantName ?? user?.name ?? 'Your business';
+  const showStats = ready && !banner && (showBookings || showOrders || showCatalog);
+  const showSale = showStats && (showBookings || showOrders);
+  const saleKpi = kpiOf('today_sale', "Today's sale", 'PAISE', 'UP');
+  const ordersKpi = kpiOf('today_orders', 'Orders today', 'COUNT', 'UP');
+  const pendingKpi = kpiOf('pending_decisions', 'Awaiting your decision', 'COUNT', 'DOWN');
+  const lowKpi = kpiOf('low_stock', 'Running low', 'COUNT', 'DOWN');
+  const kpiDelta = (k: Kpi): string | undefined =>
+    k.deltaPercent !== null
+      ? `${k.direction === 'UP' ? '▲' : k.direction === 'DOWN' ? '▼' : ''} ${Math.abs(k.deltaPercent).toFixed(1)}%`.trim()
+      : undefined;
+  const saleDelta = kpiDelta(saleKpi);
+  const heroSubtitle = showSale && saleDelta ? `${saleDelta} vs the day before` : undefined;
+  // Content padding (20×2) then card padding (18×2) — the width the trend chart
+  // has to draw into on a solid card below the hero.
+  const trendWidth = Dimensions.get('window').width - 40 - 36;
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <Text style={[styles.greeting, { color: c.textSecondary }]}>Today</Text>
-        <Text style={[styles.name, { color: c.textPrimary }]}>
-          {profile?.tenantName ?? user?.name ?? 'Your business'}
-        </Text>
+        <Hero
+          isDark={isDark}
+          eyebrow="Today"
+          title={businessName}
+          headline={showSale ? { value: formatKpiValue(saleKpi.value, saleKpi.unit), label: "today's sale" } : undefined}
+          subtitle={heroSubtitle}
+        >
+          {showStats ? (
+            <>
+              {showOrders && (
+                <GlassStat
+                  icon="package-variant-closed"
+                  label="Orders today"
+                  value={formatKpiValue(ordersKpi.value, ordersKpi.unit)}
+                  caption={kpiDelta(ordersKpi)}
+                />
+              )}
+              {(showBookings || showOrders) && (
+                <GlassStat
+                  icon="clock-alert-outline"
+                  label="To action"
+                  value={formatKpiValue(pendingKpi.value, pendingKpi.unit)}
+                />
+              )}
+              {showCatalog && (
+                <GlassStat
+                  icon="alert-octagon-outline"
+                  label="Running low"
+                  value={formatKpiValue(lowKpi.value, lowKpi.unit)}
+                />
+              )}
+            </>
+          ) : null}
+        </Hero>
 
         {banner && (
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
@@ -199,40 +252,24 @@ export default function TodayScreen() {
           </Surface>
         )}
 
-        {ready && !banner && (showBookings || showOrders || showCatalog) && (
-          <View style={styles.kpiGrid}>
-            {(showBookings || showOrders) && (
-              <TodayKpiTile
-                c={c}
-                icon="cash-multiple"
-                kpi={kpiOf('today_sale', "Today's sale", 'PAISE', 'UP')}
-                sparkline={salesSpark}
-              />
-            )}
-            {showOrders && (
-              <TodayKpiTile
-                c={c}
-                icon="package-variant-closed"
-                kpi={kpiOf('today_orders', 'Orders today', 'COUNT', 'UP')}
-                sparkline={salesSpark}
-                sparklineColor={c.secondary}
-              />
-            )}
-            {(showBookings || showOrders) && (
-              <TodayKpiTile
-                c={c}
-                icon="clock-alert-outline"
-                kpi={kpiOf('pending_decisions', 'Awaiting your decision', 'COUNT', 'DOWN')}
-              />
-            )}
-            {showCatalog && (
-              <TodayKpiTile
-                c={c}
-                icon="alert-octagon-outline"
-                kpi={kpiOf('low_stock', 'Running low', 'COUNT', 'DOWN')}
-              />
-            )}
-          </View>
+        {/* The 14-day sales trend, reusing the shared bar chart on a solid card
+            beneath the hero — the shape a proprietor reads as "how did each day
+            compare", left off the glass tiles which carry only today's figures. */}
+        {showSale && salesSpark.length > 0 && (
+          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Sales trend</Text>
+              <Text style={[styles.cardBody, { color: c.textSecondary }]}>Last 14 days</Text>
+            </View>
+            <MiniBars
+              c={c}
+              points={salesSpark}
+              width={trendWidth}
+              height={72}
+              valueFormatter={formatPaise}
+              label="Sales, last 14 days"
+            />
+          </Surface>
         )}
 
         {analyticsQuery.isError && (
@@ -346,19 +383,16 @@ export default function TodayScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { padding: 20, gap: 14, paddingBottom: 40 },
-  greeting: { fontSize: 13, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
-  name: { fontSize: 24, fontWeight: '800', marginBottom: 6 },
   card: { borderRadius: radii.card, padding: 18, gap: 6 },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { fontSize: 16, fontWeight: '700' },
+  cardTitle: { fontSize: 16, fontWeight: '600' },
   cardBody: { fontSize: 14, lineHeight: 20 },
   cardAction: { marginTop: 6, alignSelf: 'flex-start' },
-  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   errorHint: { fontSize: 12, marginTop: -6 },
   orderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  orderCode: { fontSize: 13, fontWeight: '700', flex: 1 },
+  orderCode: { fontSize: 13, fontWeight: '600', flex: 1 },
   orderMeta: { fontSize: 12, flex: 1.4 },
-  orderMoney: { fontSize: 13, fontWeight: '700' },
+  orderMoney: { fontSize: 13, fontWeight: '600' },
   section: { gap: 4 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
 });

@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, type Href } from 'expo-router';
 
 import { themeColors, radii } from '../../../src/constants/colors';
+import { Hero } from '../../../src/components/Hero';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
 import {
@@ -220,9 +221,7 @@ export default function OrdersScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <View style={styles.headerRow}>
-        <Text style={[styles.title, { color: c.textPrimary }]}>Orders</Text>
-      </View>
+      <Hero isDark={isDark} rounded={false} eyebrow="Manage" title="Orders" />
 
       <Searchbar
         placeholder="Search by order code"
@@ -349,19 +348,17 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  headerRow: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 2 },
-  title: { fontSize: 22, fontWeight: '800' },
-  search: { marginHorizontal: 14, marginTop: 8, borderRadius: radii.field },
+  search: { marginHorizontal: 14, marginTop: 12, borderRadius: radii.field },
   searchInput: { fontSize: 14 },
   chipRow: { paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth, marginRight: 8 },
-  chipLabel: { fontSize: 12.5, fontWeight: '700' },
+  chipLabel: { fontSize: 12.5, fontWeight: '600' },
   readOnlyBanner: { marginHorizontal: 14, marginBottom: 6, borderRadius: radii.sm, paddingVertical: 6, paddingHorizontal: 10 },
   readOnlyText: { fontSize: 11.5, fontWeight: '600' },
   listPad: { paddingBottom: 24 },
   emptyGrow: { flexGrow: 1, justifyContent: 'center' },
   emptyBox: { alignItems: 'center', gap: 4, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 15, fontWeight: '700' },
+  emptyTitle: { fontSize: 15, fontWeight: '600' },
   emptyBody: { fontSize: 13, textAlign: 'center' },
   footerSpinner: { marginVertical: 16 },
 });
