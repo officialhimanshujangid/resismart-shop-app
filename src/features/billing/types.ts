@@ -144,6 +144,27 @@ export interface DocumentPartySnapshot {
   placeOfSupply?: string;
 }
 
+/**
+ * The place-of-supply options — the same 37 names `GST_STATE_CODES` in
+ * `backend/src/utils/partner-tax.util.ts` recognises, and the same list the web
+ * client offers (`documents/shared.ts#GST_STATES`).
+ *
+ * This is not a cosmetic field. `isInterStateSupply` treats a BLANK place of
+ * supply as intra-state, so a document raised with nothing here is taxed
+ * CGST+SGST — correct for the counter sale it was defaulted for, and a filing
+ * error for a customer from another state. Names only, no codes: the server
+ * turns a name into the two-digit code that decides the split, and a second
+ * copy of that mapping here is a second answer to a tax question.
+ */
+export const GST_STATES = [
+  'Jammu and Kashmir', 'Himachal Pradesh', 'Punjab', 'Chandigarh', 'Uttarakhand', 'Haryana', 'Delhi',
+  'Rajasthan', 'Uttar Pradesh', 'Bihar', 'Sikkim', 'Arunachal Pradesh', 'Nagaland', 'Manipur', 'Mizoram',
+  'Tripura', 'Meghalaya', 'Assam', 'West Bengal', 'Jharkhand', 'Odisha', 'Chhattisgarh', 'Madhya Pradesh',
+  'Gujarat', 'Dadra and Nagar Haveli and Daman and Diu', 'Maharashtra', 'Karnataka', 'Goa', 'Lakshadweep',
+  'Kerala', 'Tamil Nadu', 'Puducherry', 'Andaman and Nicobar Islands', 'Telangana', 'Andhra Pradesh',
+  'Ladakh', 'Other Territory',
+] as const;
+
 /** One line as the server returns it — priced, taxed, totalled. Never sent back up wholesale; only qty/rate/etc. are re-sent. */
 export interface PartnerDocumentLine {
   itemId?: string;

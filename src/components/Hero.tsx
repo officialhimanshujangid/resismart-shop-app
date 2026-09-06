@@ -23,7 +23,10 @@ import { AppLogo } from './AppLogo';
  *     `GlassStat` tiles passed as `children`.
  *   - `brand` — the `AppLogo` mark plus a "· Partner" sub-name lockup and one
  *     short line, for the auth shell. Keeps the single ResiSmart logo; the app
- *     is distinguished by the lockup, never a new mark or hue.
+ *     is distinguished by the lockup, never a new mark or hue. `AppLogo` is the
+ *     wordmark ALONE and tints itself white for this gradient — see its header
+ *     for why the RS badge cannot sit here, and note that this pill is what
+ *     already says which app it is, so the mark must not repeat it.
  *
  * Theme-aware: the gradient ramp is taken from the palette's `gradient*` tokens
  * for the scheme in force, so it reads with contrast in light and dark alike.
@@ -100,7 +103,16 @@ export function Hero({
           ) : null}
           {headline ? (
             <View style={styles.headline}>
-              <Text style={styles.headlineValue} numberOfLines={1}>
+              {/* The revenue figure is the one thing on this screen that must
+                  never be cut off, and it is the thing most likely to be — a
+                  long rupee amount at a large system font scale. It shrinks to
+                  fit instead of truncating. */}
+              <Text
+                style={styles.headlineValue}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
                 {headline.value}
               </Text>
               {headline.label ? <Text style={styles.headlineLabel}>{headline.label}</Text> : null}
@@ -141,11 +153,14 @@ export function GlassStat({
             <MaterialCommunityIcons name={icon as never} size={14} color={ON_HERO} />
           </View>
         ) : null}
-        <Text style={styles.glassLabel} numberOfLines={1}>
+        {/* Two tiles share a row, so an uppercase micro-label has roughly ten
+            characters of space. Capped rather than allowed to scale into an
+            ellipsis that hides which figure this is. */}
+        <Text style={styles.glassLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
           {label}
         </Text>
       </View>
-      <Text style={styles.glassValue} numberOfLines={1}>
+      <Text style={styles.glassValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
         {value}
       </Text>
       {caption ? (

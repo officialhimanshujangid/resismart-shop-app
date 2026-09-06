@@ -1,15 +1,20 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { forgetGoogle } from '../lib/google';
 import {
   authApi,
   ProfileInfo,
   UserInfo,
   ResolvedContext,
+  LoginOtpRequestResponse,
+  OtpVia,
   isPartnerContext,
   toProfile,
 } from '../api/auth.api';
 import { normalizeLegacyProfile, clearSession, setSessionExpiredHandler, apiErrorMessage } from '../api/axios';
+import { notificationApi } from '../api/notification.api';
 import { storage } from '../utils/storage';
-import { STORAGE_KEYS } from '../constants/app';
+import { store } from '../lib/store';
+import { DEVICE_KEYS, SESSION_CACHE_KEYS, STORAGE_KEYS } from '../constants/app';
 import { resetQueryCache } from '../lib/queryClient';
 
 interface AuthState {
@@ -40,22 +45,112 @@ export interface LoginResult {
   error?: string;
 }
 
+/**
+ * What a login-code request tells the caller.
+ *
+ * `delivery` is present on every success, because the endpoint always answers
+ * with one — it is how the screen says "check your WhatsApp" rather than the old
+ * bare spinner, and how it knows which other transport to offer. It can never
+ * describe a failure; the endpoint refuses to, so that a delivery report cannot
+ * become an account-enumeration oracle.
+ */
+export interface LoginOtpResult {
+  success: boolean;
+  delivery?: LoginOtpRequestResponse;
+  error?: string;
+}
+
 interface AuthContextType extends AuthState {
   /** `identifier` is an email OR a phone number — the server takes either. */
   login: (identifier: string, password: string) => Promise<LoginResult>;
-  /** Send a one-time sign-in code. Deliberately vague about whether the account exists. */
-  requestLoginOtp: (identifier: string) => Promise<{ success: boolean; devCode?: string; error?: string }>;
+  /**
+   * Send a one-time sign-in code. Deliberately vague about whether the account
+   * exists, but NOT about which transport was used — `via` pins that transport
+   * for a retry, and the result carries what the server reported.
+   */
+  requestLoginOtp: (identifier: string, via?: OtpVia) => Promise<LoginOtpResult>;
   /** Verify a one-time sign-in code and open the session. */
   verifyLoginOtp: (identifier: string, code: string) => Promise<LoginResult>;
+  /** Open a session from a Google ID token. Creates nothing. */
+  loginWithGoogle: (idToken: string) => Promise<LoginResult>;
   /**
    * Pick one of several partner businesses. The first argument is the handle
    * from `LoginResult.userId`; `tenantId` + `role` identify the row that was
    * tapped. Kept at three arguments so `login.tsx` is untouched.
    */
   selectContext: (handle: string, tenantId: string, role: string) => Promise<void>;
-  /** Every partner business this session could switch to, for a "switch shop" menu. */
+  /**
+   * Every partner business this session could switch to — the "switch shop"
+   * menu's data, read by More's Account card.
+   *
+   * Populated by `applySession` AND by the cold-start rehydrate. The second half
+   * used to be missing, and the consequence was not subtle: the list arrives on
+   * the login and refresh responses, a restart replays neither, so after every
+   * app restart this was `[]` and a partner with two businesses had to sign out
+   * and back in to reach the other one. See the rehydrate effect.
+   */
   availableContexts: ResolvedContext[];
+  /**
+   * Switch the LIVE session to another of this person's businesses.
+   *
+   * Distinct from `selectContext`, which finishes a half-done sign-in held in
+   * `pending` and cannot be called once a session exists. This one addresses the
+   * stored refresh token instead, so it works from anywhere in the signed-in
+   * app. `contextId`, never the `tenantId` + `role` pair: somebody who is
+   * PARTNER_ADMIN of one shop and PARTNER_STAFF of another has two contexts that
+   * differ only by role, and a pair lookup returns whichever matched first.
+   *
+   * Rejects with a readable message; the caller shows it. On success everything
+   * is torn down and rebuilt through `applySession`, cache included.
+   */
+  switchToContext: (contextId: string) => Promise<void>;
   logout: () => Promise<void>;
+}
+
+/**
+ * How long sign-out will wait for the server to acknowledge the device before
+ * giving up on it. Short on purpose: `DELETE /notifications/devices` is a
+ * courtesy, and a partner standing in a dead spot must not be held in a session
+ * they have asked to leave while a request that cannot succeed runs its full
+ * ceiling (`api/axios.ts` allows a minute for a cold instance).
+ */
+const UNREGISTER_TIMEOUT_MS = 5_000;
+
+/**
+ * Take this device off the shop's push list, as part of signing out.
+ *
+ * Without it, `usePushRegistration` leaves a live token registered against the
+ * partner forever: a member of staff who signs out on their own phone keeps
+ * receiving that shop's order and booking alerts on it indefinitely, with no
+ * session left in the app to explain where they are coming from or to turn them
+ * off. That is a privacy failure, not a missing nicety.
+ *
+ * Three things it must not do, all of them reasons this is written the way it
+ * is rather than as a bare `await`:
+ *
+ *  - It must not run after `clearSession`. The endpoint is authenticated, so
+ *    the access token has to still be there when the request goes out.
+ *  - It must not block sign-out. Every failure is swallowed, and the wait is
+ *    bounded — a partner must always be able to sign out.
+ *  - It must not leave the local token behind. The stored token AND the scope
+ *    it was registered under are both cleared, so the next person to sign in on
+ *    this device re-registers instead of matching the cached pair in
+ *    `usePushRegistration` and skipping the POST.
+ */
+async function unregisterPushDevice(): Promise<void> {
+  const token = await store.get(DEVICE_KEYS.PUSH_TOKEN);
+  if (!token) return;
+  await Promise.race([
+    notificationApi.unregisterDevice(token).catch((error: unknown) => {
+      // The server may still hold the token. It is addressed by partner scope,
+      // so the worst case is alerts for a shop this person no longer has a
+      // session with — bad, but not a reason to trap them in that session.
+      console.warn('[push] unregister on sign-out failed:', error);
+    }),
+    new Promise<void>((resolve) => setTimeout(resolve, UNREGISTER_TIMEOUT_MS)),
+  ]);
+  await store.remove(DEVICE_KEYS.PUSH_TOKEN);
+  await store.remove(DEVICE_KEYS.PUSH_TOKEN_SCOPE);
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -98,7 +193,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // business's data for a frame. See `resetQueryCache`.
       resetQueryCache();
       pending.current = null;
-      setAvailableContexts(contexts.filter(isPartnerContext));
+      const partners = contexts.filter(isPartnerContext);
+      setAvailableContexts(partners);
+      /**
+       * Written to disk as well as to state, because state does not survive a
+       * cold start and this list has no other source at launch.
+       *
+       * AsyncStorage rather than SecureStore: this can be several businesses'
+       * worth of JSON and SecureStore's Android backend refuses anything over
+       * 2 KB — silently, in `storage.set`'s swallowed catch, which would make the
+       * switch menu empty for exactly the partners who need it most. Nothing
+       * secret goes here; see `SESSION_CACHE_KEYS`.
+       *
+       * Not awaited-on-failure: a write that fails costs an empty switch menu
+       * until the next sign-in, and must never cost the sign-in itself.
+       */
+      void store.setJson(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS, partners);
       setState((s) => ({
         isAuthenticated: true,
         isLoading: false,
@@ -172,6 +282,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applySession],
   );
 
+  /**
+   * Google, as a third way to prove the identity — never a way to create one.
+   *
+   * `consumeLogin` still applies the partner-only gate: an identity with no
+   * partner context is refused here exactly as it is on the password path, so a
+   * resident's Google account cannot open the shop app.
+   */
+  const loginWithGoogle = useCallback(
+    async (idToken: string): Promise<LoginResult> => {
+      try {
+        const { data } = await authApi.loginGoogle(idToken);
+        return await consumeLogin(data);
+      } catch (err) {
+        return {
+          success: false,
+          error: apiErrorMessage(err, 'Google sign-in failed. Please try again.'),
+        };
+      }
+    },
+    [consumeLogin],
+  );
+
   const login = useCallback(
     async (identifier: string, password: string): Promise<LoginResult> => {
       try {
@@ -200,14 +332,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [consumeLogin],
   );
 
-  const requestLoginOtp = useCallback(async (identifier: string) => {
-    try {
-      const { data } = await authApi.loginOtpRequest(identifier);
-      return { success: true, devCode: data.devCode };
-    } catch (err) {
-      return { success: false, error: apiErrorMessage(err, 'Could not send the code. Please try again.') };
-    }
-  }, []);
+  const requestLoginOtp = useCallback(
+    async (identifier: string, via: OtpVia = 'auto'): Promise<LoginOtpResult> => {
+      try {
+        const { data } = await authApi.loginOtpRequest(identifier, via);
+        // Forwarded whole. The screen needs the server's SENTENCE (it names the
+        // transport) and the transport itself (it decides which "try the other
+        // way" button to offer) — deriving either on the client would be the
+        // client guessing at delivery again, which is the bug being fixed.
+        return { success: true, delivery: data };
+      } catch (err) {
+        // No 502 branch: this endpoint answers 200 for everybody by design, so
+        // anything thrown here is a 429, a 400 or the network — never "we could
+        // not deliver". See `LoginOtpRequestResponse`.
+        return { success: false, error: apiErrorMessage(err, 'Could not send the code. Please try again.') };
+      }
+    },
+    [],
+  );
 
   const verifyLoginOtp = useCallback(
     async (identifier: string, code: string): Promise<LoginResult> => {
@@ -242,10 +384,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applySession],
   );
 
+  /**
+   * Move the live session to another of this person's businesses.
+   *
+   * `/auth/refresh-token` is the ONE endpoint that does this — "which business
+   * am I in" and "give me a fresh token" are the same operation server-side —
+   * so a switch is a refresh with a `contextId` on it, and it needs the stored
+   * refresh token rather than the `pending` handle a first sign-in uses.
+   *
+   * `applySession` does the rest, and the order inside it is what makes this
+   * safe: the query cache is cleared BEFORE `isAuthenticated`/`profile` flip, so
+   * nothing mounted can paint the previous business's bookings for a frame. That
+   * is gate 6, and it is the whole reason this is not a bare `setState`.
+   *
+   * The push token is re-registered by `usePushRegistration` on its own, off the
+   * changed `partnerId` — without that the partner would keep getting the first
+   * shop's alerts and none of the second's.
+   */
+  const switchToContext = useCallback(
+    async (contextId: string) => {
+      const refreshToken = await storage.get(STORAGE_KEYS.REFRESH_TOKEN);
+      if (!refreshToken) {
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+      try {
+        const { data } = await authApi.switchContext(refreshToken, contextId);
+        if (!isPartnerContext(data.activeContext)) {
+          throw new Error('That is not a partner business this app can open.');
+        }
+        await applySession(
+          data.token,
+          data.refreshToken,
+          data.activeContext,
+          data.availableContexts,
+          null, // the person has not changed — `applySession` keeps the held `user`
+        );
+      } catch (err) {
+        // Rethrown as a sentence rather than swallowed: the caller has a modal
+        // open and has to say why nothing happened. An axios error surfaced raw
+        // here would read "Request failed with status code 401" on a shop's till.
+        throw new Error(apiErrorMessage(err, 'Could not switch business. Please try again.'));
+      }
+    },
+    [applySession],
+  );
+
   const logout = useCallback(async () => {
     pending.current = null;
+    /**
+     * Clear Google's own cached account too, or the next tap signs the previous
+     * person back in with no chooser — on a shop's shared counter tablet that is
+     * one member of staff acting as another. Never throws.
+     */
+    await forgetGoogle();
+    await unregisterPushDevice();
     await clearSession(false); // we are the ones ending it — no need to be told
     resetQueryCache();
+    // `clearSession` only wipes the four SecureStore keys. The cached shop list
+    // lives in AsyncStorage and has to be removed by name, or the next person to
+    // sign in on this counter tablet reads the previous account's businesses.
+    await store.remove(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS);
     setAvailableContexts([]);
     setState({ isAuthenticated: false, isLoading: false, token: null, profile: null, user: null });
     // Deliberately no `router.replace`. `app/_layout.tsx` wraps the two route
@@ -270,6 +468,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const user = await storage.getObject<UserInfo>(STORAGE_KEYS.USER_INFO);
 
         if (token && profile) {
+          /**
+           * The shop list, restored with the rest of the session.
+           *
+           * This was the missing half of `availableContexts`. `applySession`
+           * populates it, and only `applySession` did — so it was correct for
+           * exactly as long as the process lived, and `[]` after every cold
+           * start. A partner with two businesses therefore found the "Switch
+           * business" row empty every morning, and signing out and back in was
+           * the only way to reach their second shop.
+           *
+           * Read from disk rather than re-fetched. The list only arrives on a
+           * login or a refresh response, and firing a refresh here to get it
+           * would rotate the refresh token on every launch — racing the axios
+           * interceptor, which does the same thing on the first 401. A cached
+           * list can be stale (a business added on the web will not appear until
+           * the next sign-in or switch, both of which rewrite it), and a stale
+           * menu is a far cheaper failure than a session that logs itself out.
+           *
+           * Filtered again on the way in: what is on disk was written by this
+           * build, but a value from an older one predates the partner-only rule.
+           */
+          const cached = await store.getJson<ResolvedContext[]>(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS);
+          if (Array.isArray(cached)) setAvailableContexts(cached.filter(isPartnerContext));
           setState({ isAuthenticated: true, isLoading: false, token, profile, user });
         } else {
           setState((s) => ({ ...s, isLoading: false }));
@@ -291,6 +512,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionExpiredHandler(() => {
       pending.current = null;
       resetQueryCache();
+      // Same reasoning as `logout` — the AsyncStorage copy is not covered by the
+      // interceptor's `clearSession`.
+      void store.remove(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS);
       setAvailableContexts([]);
       setState({ isAuthenticated: false, isLoading: false, token: null, profile: null, user: null });
     });
@@ -305,7 +529,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         requestLoginOtp,
         verifyLoginOtp,
+        loginWithGoogle,
         selectContext,
+        switchToContext,
         logout,
       }}
     >

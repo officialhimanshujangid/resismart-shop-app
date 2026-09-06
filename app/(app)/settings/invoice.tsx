@@ -3,7 +3,7 @@ import { Alert, StyleSheet, Switch, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { themeColors } from '../../../src/constants/colors';
+import { Colors, themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { settingsApi, InvoiceTheme, INVOICE_THEMES } from '../../../src/api/settings.api';
@@ -37,7 +37,25 @@ export default function InvoiceSettingsScreen() {
   const query = useQuery({ queryKey: qk.billing.settings(), queryFn: settingsApi.invoice.get });
 
   const [theme, setTheme] = useState<InvoiceTheme>('CLASSIC');
-  const [accentColor, setAccentColor] = useState('#1F6FEB');
+  /**
+   * `Colors.primary`, not `themeColors(isDark).primary`, and not a literal.
+   *
+   * This is not a colour this screen paints — it is the value posted to the
+   * server and printed on a PDF, on white paper, whatever scheme the phone is
+   * in. So it takes the LIGHT map deliberately; the dark twin (`brand[400]`) is
+   * tuned to be read on a dark surface and would print washed out.
+   *
+   * It was `#1F6FEB`, the retired brand blue. Note that this seed is HYGIENE
+   * rather than a fix: the screen renders `Loading` until `query` settles, and
+   * `accentColor` is `required` with `default: '#1F6FEB'` on
+   * `partner-invoice-settings.model.ts`, so what a brand-new partner actually
+   * sees is the SERVER's blue and this initial value is never painted. Changing
+   * the colour a new partner's first invoice prints in needs that model default
+   * moved to `#0E7C43` in a backend session — flagged, not fixable from here.
+   */
+  // `<string>` explicitly: `Colors` is `as const`, so the seed's type would
+  // otherwise narrow to the literal `'#0E7C43'` and refuse every edit.
+  const [accentColor, setAccentColor] = useState<string>(Colors.primary);
   const [terms, setTerms] = useState('');
   const [notes, setNotes] = useState('');
   const [bankName, setBankName] = useState('');
@@ -103,7 +121,7 @@ export default function InvoiceSettingsScreen() {
 
   const onSave = () => {
     const next: Record<string, string> = {};
-    if (!/^#[0-9a-fA-F]{6}$/.test(accentColor.trim())) next.accentColor = 'Use a #RRGGBB hex colour, e.g. #1F6FEB.';
+    if (!/^#[0-9a-fA-F]{6}$/.test(accentColor.trim())) next.accentColor = `Use a #RRGGBB hex colour, e.g. ${Colors.primary}.`;
     if (upiId.trim() && !/^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/.test(upiId.trim())) next.upiId = 'That does not look like a UPI ID (name@bank).';
     setErrors(next);
     if (Object.keys(next).length) return;
@@ -129,7 +147,31 @@ export default function InvoiceSettingsScreen() {
         <ToggleRow c={c} label="Discount column" value={showDiscount} onChange={setShowDiscount} disabled={!canEdit} />
         <ToggleRow c={c} label="Tax breakup (CGST/SGST/IGST)" value={showTaxBreakup} onChange={setShowTaxBreakup} disabled={!canEdit} />
         <ToggleRow c={c} label="UPI QR code" value={showUpiQr} onChange={setShowUpiQr} disabled={!canEdit} />
-        <ToggleRow c={c} label="Signature" value={showSignature} onChange={setShowSignature} disabled={!canEdit} />
+        <ToggleRow c={c} label="Signature line" value={showSignature} onChange={setShowSignature} disabled={!canEdit} />
+        {/*
+          RENAMED, and the note below it is the honest half.
+
+          The toggle was labelled "Signature", which reads as "print my
+          signature" — and a partner who switched it on and looked at the PDF
+          found a ruled line and the words "Authorised signatory", which is what
+          `partner-document-pdf.service.ts` actually draws. That is a useful
+          thing and it is not what the label promised.
+
+          THERE IS DELIBERATELY NO UPLOAD HERE. `logoUrl` and `signatureUrl` are
+          both on the payload and both reach the render model, and the PDF
+          service does nothing with the logo at all and prints the literal text
+          `[signature image]` where a signature image would go (its own comment
+          says the fetch-and-inline step was left to whoever wired issuance).
+          So shipping an upload today would not add a signature to anybody's
+          invoice — it would put the string "[signature image]" on bills handed
+          to customers, which is worse than the blank line they get now. The
+          uploader belongs in the same change as the backend fix; see this
+          phase's report for the two lines that need to happen first.
+        */}
+        <Text style={{ color: c.textSecondary, fontSize: 11.5, marginTop: -2 }}>
+          Prints a ruled line and “Authorised signatory” for signing by hand. Uploading a signature image or a
+          logo is not available yet.
+        </Text>
       </Card>
 
       <Card c={c}>

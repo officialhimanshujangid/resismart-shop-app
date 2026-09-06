@@ -98,6 +98,21 @@ export default function BusinessSettingsScreen() {
 
       <Card c={c}>
         <SectionLabel c={c}>Registered address</SectionLabel>
+        {/*
+          These three boxes are the trap on this screen.
+
+          They write `PartnerBusinessSettings` — the invoicing identity, the
+          address printed on a bill — and NOT the `Partner` document, whose own
+          city/state/pincode are what resident discovery and the onboarding
+          checklist read. The two screens show the same three labels, so a
+          partner told "add your city" filled these in, got a success toast and
+          watched the checklist not move. Naming the other screen is the cheapest
+          fix that is actually true.
+        */}
+        <Text style={{ color: c.textSecondary, marginBottom: 6, fontSize: 12.5, lineHeight: 18 }}>
+          This is the address on your invoices. The address residents search — and the map pin they are
+          measured against — is in Settings → Address &amp; map pin.
+        </Text>
         <AppInput label="Billing address" value={billingAddress} onChangeText={setBillingAddress} multiline disabled={!canEdit} />
         <View style={styles.row}>
           <AppInput label="City" value={city} onChangeText={setCity} style={styles.half} disabled={!canEdit} />

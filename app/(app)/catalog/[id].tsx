@@ -6,13 +6,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage } from '../../../src/api/axios';
+import { ErrorBlock } from '../../../src/features/more/ui';
 import { parseRupeesToPaise, paiseToInput, formatPaise } from '../../../src/lib/money';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { PRODUCT_UNITS, ProductUnit } from '../../../src/types/api-contract.generated';
 import {
   useProduct, useProductCategories, useUpdateProduct, useDeactivateProduct, useAdjustStock,
-  CategoryPicker, StockAdjustModal,
+  CategoryPicker, ProductImages, StockAdjustModal,
 } from '../../../src/features/catalog';
 import type { StockAdjustTarget } from '../../../src/features/catalog';
 
@@ -41,6 +42,7 @@ export default function ProductDetailScreen() {
   const [lowStockAt, setLowStockAt] = useState('');
   const [trackStock, setTrackStock] = useState(true);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
+  const [images, setImages] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [stockTarget, setStockTarget] = useState<StockAdjustTarget | null>(null);
 
@@ -59,6 +61,9 @@ export default function ProductDetailScreen() {
     setLowStockAt(p.lowStockAt !== undefined ? String(p.lowStockAt) : '');
     setTrackStock(p.trackStock);
     setCategoryId(p.categoryId?._id);
+    // `?? []` because a product created before photos existed has no `images`
+    // key at all, and `ProductImages` maps over this.
+    setImages(p.images ?? []);
   }, [productQuery.data]);
 
   const save = () => {
@@ -94,6 +99,12 @@ export default function ProductDetailScreen() {
         taxInclusive,
         lowStockAt: lowStockNum ?? null,
         trackStock,
+        // This screen omitted `images` entirely, so a product could never gain a
+        // photo after it was created — and, worse, `updateProductSchema` treats
+        // a missing key as "leave it alone", which meant the omission was silent
+        // rather than an error anybody would notice. Sent as a whole array,
+        // matching how the schema reads it: this IS the new list.
+        images,
         categoryId: categoryId ?? null,
       },
       { onError: (e: unknown) => Alert.alert('Could not save changes', apiErrorMessage(e)) },
@@ -122,7 +133,29 @@ export default function ProductDetailScreen() {
     updateProduct.mutate({ isActive: true }, { onError: (e: unknown) => Alert.alert('Could not do that', apiErrorMessage(e)) });
   };
 
-  if (productQuery.isLoading || !productQuery.data) {
+  /**
+   * `isLoading` goes false the moment the request settles — success OR failure
+   * — and `data` is undefined on failure, so the single `isLoading || !data`
+   * spinner this used to be had no way out of a failed load: the screen sat
+   * spinning under a back arrow with nothing to retry and nothing to read.
+   * `isPaused` is the same dead end reached from offline, where `onlineManager`
+   * (see `lib/queryClient.ts`) holds the request rather than firing it.
+   */
+  const loadError = productQuery.isError
+    ? apiErrorMessage(productQuery.error, 'Could not load this product.')
+    : productQuery.isPending && productQuery.isPaused
+      ? 'No connection. Check your network and try again.'
+      : null;
+
+  if (loadError) {
+    return (
+      <View style={[styles.center, { backgroundColor: c.background }]}>
+        <ErrorBlock c={c} message={loadError} onRetry={() => void productQuery.refetch()} />
+      </View>
+    );
+  }
+
+  if (!productQuery.data) {
     return (
       <View style={[styles.center, { backgroundColor: c.background }]}>
         <ActivityIndicator color={c.primary} />
@@ -142,6 +175,14 @@ export default function ProductDetailScreen() {
               <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>Turn back on</Text>
             </Pressable>
           )}
+        </View>
+      )}
+
+      {!canManage && (
+        <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
+          <Text style={[styles.readOnlyText, { color: c.textSecondary }]}>
+            View only — your role does not include managing the catalogue.
+          </Text>
         </View>
       )}
 
@@ -178,13 +219,18 @@ export default function ProductDetailScreen() {
       </View>
 
       <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Unit</Text>
-      <View style={styles.unitRow}>
+      {/* `disabled`, not an `onPress` that evaluates to `false`: every field
+          above already refuses a viewer visibly (`AppInput disabled`), and the
+          unit chips were the one control on this screen that took the tap and
+          did nothing with it. The banner at the top says why. */}
+      <View style={[styles.unitRow, !canManage && styles.readOnlyRow]}>
         {PRODUCT_UNITS.map((u) => {
           const active = u === unit;
           return (
             <Pressable
               key={u}
-              onPress={() => canManage && setUnit(u)}
+              onPress={() => setUnit(u)}
+              disabled={!canManage}
               style={[styles.unitChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
             >
               <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{u}</Text>
@@ -192,6 +238,13 @@ export default function ProductDetailScreen() {
           );
         })}
       </View>
+
+      {/* Uploaded immediately, saved with the form. Adding a photo and then
+          leaving without pressing Save leaves an orphan in the bucket and no
+          reference to it — the cheaper of the two failures, and the same trade
+          `ProductImages`'s remove path documents. */}
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Photos</Text>
+      <ProductImages value={images} onChange={setImages} c={c} canManage={canManage} />
 
       <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Category</Text>
       <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={canManage} />
@@ -264,5 +317,9 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2, marginTop: 12, marginBottom: 6 },
   unitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
   unitChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
+  /** Dims the row for a viewer while leaving the CHOSEN unit readable — it is still the answer they came to read. */
+  readOnlyRow: { opacity: 0.65 },
+  readOnlyBanner: { borderRadius: radii.sm, paddingVertical: 6, paddingHorizontal: 10, marginBottom: 10 },
+  readOnlyText: { fontSize: 11.5, fontWeight: '600' },
   mrpNote: { fontSize: 11, textAlign: 'center', marginTop: 8 },
 });

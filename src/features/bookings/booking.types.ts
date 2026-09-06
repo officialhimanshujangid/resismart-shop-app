@@ -34,6 +34,11 @@ export type BookingPaymentMode = typeof BOOKING_PAYMENT_MODES[number];
 export const BOOKING_VERBS = [
   'accept', 'reject', 'assign', 'reschedule', 'start', 'reach',
   'complete', 'noShow', 'cancel', 'invoice', 'markPaid', 'note',
+  // A self-transition on IN_PROGRESS, and the only thing in the build that can
+  // make a booking hold MORE of the diary than was agreed. `complete` never
+  // does — it only ever shrinks `occupiesUntil` — so an overrun is either
+  // claimed here, out loud, or the next job simply starts late.
+  'extend',
 ] as const;
 export type BookingVerb = typeof BOOKING_VERBS[number];
 
@@ -51,7 +56,11 @@ export const VERB_LABELS: Record<BookingVerb, string> = {
   invoice: 'Raise the bill',
   markPaid: 'Mark paid',
   note: 'Add a note',
+  extend: 'Need more time',
 };
+
+/** = `MAX_EXTEND_MIN` in `booking-transitions.ts`. A typo guard, not a business rule. */
+export const MAX_EXTEND_MIN = 120;
 
 // ------------------------------------------------------ backend/src/services/booking.service.ts
 export interface BookingAddress {
@@ -113,7 +122,30 @@ export interface PartnerBookingView {
   serviceId: string;
   serviceSnapshot: BookingServiceSnapshot;
   slotStart: string;
+  /**
+   * When the appointment was AGREED to finish. A promise, and it never moves
+   * except by `reschedule`.
+   */
   slotEnd: string;
+  /**
+   * What the diary is actually blocked for — a CLAIM, not a promise, and the
+   * field every occupancy query on the server reads.
+   *
+   * Equal to `slotEnd` for the whole life of an ordinary booking. The two come
+   * apart in two places: a job that finishes early SHRINKS this, handing the
+   * rest of the hour back to the next resident, and `extend` is the one verb
+   * that can grow it. Optional here because a response from a server that
+   * predates the field carries neither it nor `actual`; every reader falls back
+   * to `slotEnd`, which is what it is initialised to anyway.
+   */
+  occupiesUntil?: string;
+  /** When the work really started and stopped, once anybody has said. */
+  actual?: {
+    startedAt?: string;
+    endedAt?: string;
+    /** `endedAt - startedAt`, whole minutes. Absent on a job completed without a start. */
+    durationMin?: number;
+  };
   assignedStaffId?: string;
   /** Withheld while the customer is masked — see `customer.contactMasked`. */
   answers?: Record<string, unknown>;
@@ -134,6 +166,60 @@ export interface PartnerBookingView {
   customer: PartnerBookingCustomerView;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * One appointment standing in the way of a job that wants to run on.
+ *
+ * Arrives in two places and is the same shape in both: on
+ * `GET /:id/overrun` as `conflicts[]` (what is behind this job, whether or not
+ * it is currently in the way) and on a 409 `SLOT_TAKEN_AHEAD` from
+ * `POST /:id/extend` as `data.conflicts[]` (what refused it). `customerName` is
+ * masked by the same rule the booking serializer applies.
+ */
+export interface BookingConflictView {
+  id: string;
+  code: string;
+  serviceName: string;
+  slotStart: string;
+  slotEnd: string;
+  customerName: string;
+}
+
+/**
+ * `GET /partners/me/bookings/:id/overrun` — how a job is running against the
+ * hour it was sold, and what is behind it.
+ *
+ * A READ, deliberately separate from the `extend` verb, so the partner sees the
+ * choice BEFORE making it: "this is running over — add time, move what's next,
+ * or leave it" with the consequence already worked out, rather than discovering
+ * the conflict after pressing something. "Leave it" needs no endpoint — it is
+ * `complete`, which records the overrun truthfully and never takes time it was
+ * not given.
+ */
+export interface BookingOverrunView {
+  bookingId: string;
+  code: string;
+  status: BookingStatus;
+  slotStart: string;
+  slotEnd: string;
+  occupiesUntil: string;
+  /** The planned length, from the snapshot taken when the customer agreed. */
+  plannedMin: number;
+  actual?: PartnerBookingView['actual'];
+  /** Minutes past the agreed end RIGHT NOW — 0 while the job is still inside its hour. */
+  runningOverMin: number;
+  /** Minutes still to run before the agreed end. 0 once it is over. */
+  remainingMin: number;
+  /**
+   * The largest extension that would be accepted right now, capped at
+   * `MAX_EXTEND_MIN`. `0` means the time immediately behind is full, and
+   * `conflicts` says by what.
+   */
+  canExtendByMin: number;
+  conflicts: BookingConflictView[];
+  /** How many fit in one slot here — a salon with three chairs is not blocked by one job. */
+  capacity: number;
 }
 
 export interface PagedResult<T> {

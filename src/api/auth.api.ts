@@ -1,3 +1,5 @@
+import { isAxiosError } from 'axios';
+
 import { apiClient, StoredProfile } from './axios';
 import { TenantType, UserRole } from '../types/api-contract.generated';
 
@@ -86,12 +88,97 @@ export type OtpChannel = 'EMAIL' | 'PHONE';
  */
 export type OtpPurpose = 'LOGIN' | 'PARTNER_REGISTRATION' | 'GENERIC';
 
-export interface OtpRequestResponse {
+/**
+ * The transport a PHONE code may be asked for by name.
+ *
+ * `auto` walks the server's WhatsApp → SMS ladder; naming one pins it, which is
+ * what the "try the other way" buttons post. Ignored on EMAIL — the server
+ * treats a phone transport chosen for an inbox as a meaningless instruction
+ * rather than a client error, so nothing has to special-case it here.
+ */
+export type OtpAltVia = 'whatsapp' | 'sms';
+export type OtpVia = 'auto' | OtpAltVia;
+
+/** The transport a code actually went out on. `email` is never a `via`. */
+export type OtpDeliveredVia = OtpAltVia | 'email';
+
+/**
+ * The delivery report both request endpoints carry.
+ *
+ * `alternatives` is what the server will genuinely accept as a second attempt —
+ * it already excludes the rung that was just used and any rung that is not
+ * configured — so it can be rendered as buttons without further filtering.
+ *
+ * `whatsappAvailable` is a fact about the PLATFORM (is the token set, is the
+ * template approved), not about this user, which is why it is safe to print.
+ * It is `false` in production today while `resismart_otp` sits unapproved.
+ */
+export interface OtpDelivery {
+  deliveredVia: OtpDeliveredVia;
+  alternatives: OtpAltVia[];
+  whatsappAvailable: boolean;
+}
+
+/**
+ * `POST /auth/otp/request` — signup / contact verification.
+ *
+ * This endpoint REPORTS DELIVERY TRUTHFULLY: a 200 means something was actually
+ * accepted by a transport. Nothing delivered is a 502 carrying
+ * `OtpDeliveryFailure`, and the caller must NOT advance to a code screen on it.
+ */
+export interface OtpRequestResponse extends OtpDelivery {
   message: string;
   channel: OtpChannel;
   expiresInSec?: number;
-  /** Dev only — no SMS gateway is wired, so the phone code comes back inline. */
-  devCode?: string;
+}
+
+/**
+ * The 502 body of `POST /auth/otp/request` — the code was minted but no
+ * transport took it.
+ *
+ * The OTP row still exists and the server deliberately WAIVES the resend
+ * cooldown after a failed delivery, so `alternatives` can be tried immediately.
+ * That is the only reason listing them is worth anything.
+ */
+export interface OtpDeliveryFailure {
+  error: string;
+  channel: OtpChannel;
+  deliveredVia: null;
+  alternatives: OtpAltVia[];
+  whatsappAvailable: boolean;
+}
+
+/**
+ * `POST /auth/login/otp/request` — deliberately NOT the same contract.
+ *
+ * It answers 200 for everybody, and `deliveredVia` is the transport used OR
+ * MERELY INTENDED. It can never be null and it can never report a failure,
+ * because "we could not deliver" on an unauthenticated endpoint would say
+ * whether the account exists. Do not build failure UI on this response.
+ */
+export interface LoginOtpRequestResponse extends OtpDelivery {
+  message: string;
+  channel: OtpChannel;
+}
+
+/**
+ * The 502 delivery report, or `undefined` for any other failure.
+ *
+ * Kept beside the types it reads so no screen has to know the status code. Uses
+ * axios's NAMED `isAxiosError` rather than the default export's member, which is
+ * what the lint rule asks for everywhere else in this codebase.
+ */
+export function otpDeliveryFailure(error: unknown): OtpDeliveryFailure | undefined {
+  if (!isAxiosError(error) || error.response?.status !== 502) return undefined;
+  const body = error.response.data as Partial<OtpDeliveryFailure> | undefined;
+  if (!body || !Array.isArray(body.alternatives)) return undefined;
+  return {
+    error: body.error ?? 'We could not deliver the code right now.',
+    channel: body.channel ?? 'PHONE',
+    deliveredVia: null,
+    alternatives: body.alternatives,
+    whatsappAvailable: body.whatsappAvailable === true,
+  };
 }
 
 export interface OtpVerifyResponse {
@@ -120,9 +207,35 @@ export const authApi = {
   login: (identifier: string, password: string) =>
     apiClient.post<LoginResponse>('/auth/login', { identifier, password }),
 
-  /** Passwordless sign-in, step 1. Deliberately vague about whether the account exists. */
-  loginOtpRequest: (identifier: string) =>
-    apiClient.post<OtpRequestResponse & { devCode?: string }>('/auth/login/otp/request', { identifier }),
+  /**
+   * Passwordless sign-in, step 1. Deliberately vague about whether the account
+   * exists — see `LoginOtpRequestResponse` for what `deliveredVia` means here,
+   * which is NOT what it means on `otpRequest`.
+   *
+   * `via` pins the transport for a retry on the other rung. It is sent
+   * explicitly rather than left to the server's default so a re-request from the
+   * code screen cannot silently land back on the rung that just failed.
+   */
+  loginOtpRequest: (identifier: string, via: OtpVia = 'auto') =>
+    apiClient.post<LoginOtpRequestResponse>('/auth/login/otp/request', { identifier, via }),
+
+  /**
+   * Google sign-in. Returns the same session shape as the password and OTP
+   * routes — the server mints one kind of session however the identity was
+   * proved — so the caller consumes it identically.
+   */
+  loginGoogle: (idToken: string) =>
+    apiClient.post<LoginResponse>('/auth/login/google', { idToken }),
+
+  /**
+   * Google standing in for the emailed code during partner registration.
+   * Returns the same verification receipt `otpVerify` returns.
+   */
+  googleVerifyContact: (idToken: string) =>
+    apiClient.post<{ email: string; verificationToken: string; name?: string }>(
+      '/auth/google/verify-contact',
+      { idToken, purpose: 'PARTNER_REGISTRATION' },
+    ),
 
   /** Passwordless sign-in, step 2 — issues the session. */
   loginOtpVerify: (identifier: string, code: string) =>
@@ -136,9 +249,15 @@ export const authApi = {
   switchContext: (refreshToken: string, contextId: string) =>
     apiClient.post<RefreshResponse>('/auth/refresh-token', { refreshToken, contextId }),
 
-  /** Verification codes for registration (purpose-bound — see OtpPurpose). */
-  otpRequest: (channel: OtpChannel, target: string, purpose: OtpPurpose) =>
-    apiClient.post<OtpRequestResponse>('/auth/otp/request', { channel, target, purpose }),
+  /**
+   * Verification codes for registration (purpose-bound — see OtpPurpose).
+   *
+   * Rejects with a 502 when nothing was delivered; read it with
+   * `otpDeliveryFailure` and stay on the step. A caught error here is NOT a
+   * reason to show a code box.
+   */
+  otpRequest: (channel: OtpChannel, target: string, purpose: OtpPurpose, via: OtpVia = 'auto') =>
+    apiClient.post<OtpRequestResponse>('/auth/otp/request', { channel, target, purpose, via }),
 
   otpVerify: (channel: OtpChannel, target: string, purpose: OtpPurpose, code: string) =>
     apiClient.post<OtpVerifyResponse>('/auth/otp/verify', { channel, target, purpose, code }),

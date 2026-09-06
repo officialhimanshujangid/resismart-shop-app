@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { blockerFix, splitBlockers } from '../../../src/api/partner.api';
 import { themeColors, radii } from '../../../src/constants/colors';
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
@@ -18,7 +19,8 @@ import { MiniBars } from '../../../src/components/charts';
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction } from '../../../src/features/bookings/hooks';
-import { BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
+import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
+import { slotConflictsOf } from '../../../src/features/bookings/booking.api';
 import { LIVE_STATUSES } from '../../../src/features/bookings/format';
 import { useLowStockProducts, usePendingOrders, useTodayAnalytics, useTodayBookings } from '../../../src/features/today/hooks';
 
@@ -37,6 +39,29 @@ import { useLowStockProducts, usePendingOrders, useTodayAnalytics, useTodayBooki
  * partner who bought Bookings but not Orders gets a bookings timeline and
  * nothing else, rather than three empty cards.
  */
+
+/**
+ * The card above the dashboard, and whether it REPLACES the dashboard.
+ *
+ * `tone` is the field that decides that, and it had to exist the moment this
+ * screen grew a banner that is not a warning. Everything below used to be gated
+ * on `!banner`, which was right while every banner meant "something is wrong
+ * and the numbers under it would be misleading" — a suspension, an invisible
+ * shop. It is wrong for `info`: "you are live, we are still checking your
+ * documents" is the ordinary state of every partner in their first days, and
+ * blanking their takings, their diary and their pending orders for it would
+ * hide the whole app from everybody who has just signed up.
+ */
+interface TodayBanner {
+  title: string;
+  body: string;
+  /** A quieter second line — things costing the partner business without hiding them. */
+  note?: string;
+  /** `warning` takes over the screen; `info` sits above a dashboard that still draws. */
+  tone: 'warning' | 'info';
+  action?: string;
+  onAction?: () => void;
+}
 
 const CONFIRM_COPY: Partial<Record<BookingVerb, string>> = {
   accept: 'Accept this booking?',
@@ -57,14 +82,30 @@ export default function TodayScreen() {
   const showBookings = ready && hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ');
   const showOrders = ready && hasModule('ORDERS') && can('ORDERS_VIEW', 'READ');
   const showCatalog = ready && hasModule('CATALOG') && can('CATALOG_VIEW', 'READ');
+  /**
+   * Gate 3 on the board itself, and it is NOT covered by the three above.
+   *
+   * `analytics-partner-today.routes.ts` sits behind
+   * `requirePartnerPermission('REPORTS', 'READ')` — its own header explains why
+   * the MODULE gate would be wrong here and the PERMISSION gate is still
+   * required: the board answers with the day's takings, and takings are what
+   * `REPORTS` guards everywhere else in this app (`(tabs)/_layout.tsx`,
+   * `more.tsx`, `reports/_layout.tsx` all ask). Asking on module alone meant a
+   * staff member with `REPORTS: NONE` — a delivery hand, an assistant hired
+   * this morning — fired a 403 on every load and every pull-to-refresh and read
+   * "—" in every tile forever, with nothing on screen saying why.
+   */
+  const showReports = ready && can('REPORTS', 'READ');
 
   const bookingsQuery = useTodayBookings(showBookings);
   const ordersQuery = usePendingOrders(showOrders);
   const lowStockQuery = useLowStockProducts(showCatalog);
   // Not gated on any one module — see `analytics.api.ts`'s header. Only fired
-  // when at least one of the three tiles it feeds could show something; the
-  // "Nothing switched on yet" card below covers the all-false case.
-  const analyticsQuery = useTodayAnalytics(ready && (showBookings || showOrders || showCatalog));
+  // when at least one of the three tiles it feeds could show something AND this
+  // person may read the takings at all; the "Nothing switched on yet" card
+  // below covers the all-false case, and the KPI row simply does not draw for
+  // somebody without REPORTS.
+  const analyticsQuery = useTodayAnalytics(showReports && (showBookings || showOrders || showCatalog));
   const board = analyticsQuery.data;
   /** The 14-day trend both `today_sale` and `today_orders` draw from. */
   const salesSpark = findSeries(board, 'sales')?.points ?? [];
@@ -78,6 +119,8 @@ export default function TodayScreen() {
   const { act, pendingId, isPending } = useBookingAction();
 
   const [formTarget, setFormTarget] = useState<{ booking: PartnerBookingView; verb: BookingVerb } | null>(null);
+  /** The appointments the last submit was refused for — see `submitForm`. */
+  const [conflicts, setConflicts] = useState<BookingConflictView[]>([]);
 
   const runQuick = useCallback(
     (booking: PartnerBookingView, verb: BookingVerb) => {
@@ -95,9 +138,24 @@ export default function TodayScreen() {
   const submitForm = useCallback(
     (body: Record<string, unknown>) => {
       if (!formTarget) return;
+      setConflicts([]);
       act(formTarget.booking.id, formTarget.verb, body)
         .then(() => setFormTarget(null))
-        .catch((e) => Alert.alert('Could not do that', apiErrorMessage(e)));
+        .catch((e) => {
+          /**
+           * A refusal that NAMES the appointments in the way stays in the sheet.
+           *
+           * `extend` answers 409 `SLOT_TAKEN_AHEAD` carrying `data.conflicts[]`,
+           * and flattening that into "Could not do that" throws away the only
+           * part the partner can act on — they are standing in a flat with the
+           * job half done, and "Mrs Sharma at 3:30" is what tells them whether
+           * to ring, to move it, or to ask for ten minutes instead of thirty.
+           * The sheet stays open so the smaller number is one tap away.
+           */
+          const named = slotConflictsOf(e);
+          if (named.length) return setConflicts(named);
+          Alert.alert('Could not do that', apiErrorMessage(e));
+        });
     },
     [act, formTarget],
   );
@@ -107,11 +165,12 @@ export default function TodayScreen() {
     void queryClient.invalidateQueries({ queryKey: qk.today() });
   }, [queryClient]);
 
-  const banner = (() => {
+  const banner = ((): TodayBanner | null => {
     if (failed) {
       return {
         title: 'We could not check your access',
         body: 'You are signed in, but we cannot tell what this business has switched on. Everything else stays hidden until we can.',
+        tone: 'warning',
         action: 'Try again',
       };
     }
@@ -120,6 +179,7 @@ export default function TodayScreen() {
       return {
         title: 'This business is suspended',
         body: 'ResiSmart has paused this account. Contact support to have it looked at.',
+        tone: 'warning',
       };
     }
     /**
@@ -137,27 +197,98 @@ export default function TodayScreen() {
      * rather than re-worded, so the sentence a partner reads here is the one the
      * web panel shows and the one support will quote back to them.
      */
+    const { blocking, alsoCosting } = splitBlockers(visibility);
+
     if (visibility && !visibility.discoverable) {
-      const reasons = visibility.blockers
-        .filter((b) => b.code !== 'NO_CATEGORY')
-        .map((b) => b.message);
+      const reasons = blocking.map((b) => b.message);
+      /**
+       * The button goes to the FIRST BLOCKING blocker that has somewhere to go.
+       *
+       * `partnerVisibility` lists them in the order it checks them, so the first
+       * one with a destination is the first thing standing in the way that the
+       * partner can actually do something about. Sending a partner whose only
+       * problem is a missing map pin to the documents screen is a button that
+       * leads away from the fix — and the `href` the server sends is a WEB
+       * route, so it cannot be followed here; `blockerFix` is this app's answer
+       * to the same question.
+       *
+       * It was doing exactly that, and the filter above is why. `NOT_VERIFIED`
+       * arrives BEFORE `NO_LOCATION` in check order and `blockerFix` sends it to
+       * `/settings/verification`, so every partner with a missing pin was handed
+       * a button to the documents screen — the failure this comment already
+       * existed to prevent, reached because the list it picked from was the
+       * unfiltered one.
+       */
+      const fix = blocking.map((b) => blockerFix(b.code)).find(Boolean);
       return {
         title: 'Residents cannot find you yet',
         body: reasons.length
           ? `${reasons.join(' ')} Until this is sorted out, nobody can book or order from you.`
           : 'Your business is not appearing in Services & shops yet.',
-        action: 'Open verification',
-        onAction: () => router.push('/settings/verification'),
+        // The non-gating ones, under the heading that is true of them: they are
+        // costing this partner customers, not hiding them. Printing them in the
+        // list above put NOT_VERIFIED's "residents can find you and call you"
+        // directly beneath "residents cannot find you yet".
+        note: alsoCosting.length
+          ? `Also worth sorting out: ${alsoCosting.map((b) => b.message).join(' ')}`
+          : undefined,
+        tone: 'warning',
+        // Nothing to offer when every blocker is one only ResiSmart can lift —
+        // a suspension, or a profile sitting with a reviewer.
+        action: fix?.label,
+        onAction: fix ? () => router.push(fix.href) : undefined,
       };
     }
+    /**
+     * Ahead of the verification note below, deliberately: that one is about the
+     * BUSINESS and this one is about the person holding the phone. Somebody with
+     * no role has nothing to act on either way, but "nobody has said what you may
+     * do" is the sentence that explains the empty screen they are looking at.
+     */
     if (entitlements.awaitingRole) {
       return {
         title: 'Waiting for your permissions',
         body: 'You are on this business’s staff list, but nobody has said yet what you may do. Ask the owner to set your role.',
+        tone: 'warning',
       };
+    }
+    /**
+     * LIVE, AND NOT YET TRANSACTABLE — the ordinary state of a partner who has
+     * just submitted, and the one sentence this screen was never saying.
+     *
+     * They are `ACTIVE`, they are in every resident's list, their phone rings —
+     * and ResiSmart will not take a booking or an order for them until a
+     * reviewer has looked. `discoverable` is true throughout, so the branch
+     * above never fired and the Today screen said nothing at all while the
+     * partner waited for bookings that could not arrive.
+     *
+     * `NOT_VERIFIED`'s own message is what says it, rendered verbatim like every
+     * other blocker sentence — it is already written for this exact state and
+     * changes wording when the owner switches KYC off. No action button: there
+     * is genuinely nothing for them to do, and a button would imply otherwise.
+     */
+    if (visibility?.transactable === false) {
+      const waiting = alsoCosting.find((b) => b.code === 'NOT_VERIFIED');
+      if (waiting) {
+        return {
+          title: 'You are live — we are still checking your documents',
+          body: `${waiting.message} There is nothing for you to do; we will let you know as soon as it is done.`,
+          tone: 'info',
+        };
+      }
     }
     return null;
   })();
+
+  /**
+   * Is the banner one that should REPLACE the dashboard?
+   *
+   * Only a warning is. An `info` banner sits above a screen that still draws
+   * everything — see `TodayBanner`. Every `!banner` gate below reads this
+   * instead, so adding a calm banner never costs a working partner their
+   * numbers.
+   */
+  const blocked = banner !== null && banner.tone === 'warning';
 
   const todaysBookings = (bookingsQuery.data?.data ?? [])
     .slice()
@@ -176,7 +307,10 @@ export default function TodayScreen() {
   // once entitlements are settled and no banner is claiming the top of the
   // screen, so a suspended or unverified partner never reads a stale total.
   const businessName = profile?.tenantName ?? user?.name ?? 'Your business';
-  const showStats = ready && !banner && (showBookings || showOrders || showCatalog);
+  // `showReports` as well as the modules: the numbers behind these tiles come
+  // from an endpoint this person may not read, and a row of "—" that never
+  // fills in is worse than a hero with nothing under it.
+  const showStats = showReports && !blocked && (showBookings || showOrders || showCatalog);
   const showSale = showStats && (showBookings || showOrders);
   const saleKpi = kpiOf('today_sale', "Today's sale", 'PAISE', 'UP');
   const ordersKpi = kpiOf('today_orders', 'Orders today', 'COUNT', 'UP');
@@ -234,16 +368,33 @@ export default function TodayScreen() {
         </Hero>
 
         {banner && (
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+          <Surface
+            style={[
+              styles.card,
+              { backgroundColor: c.surface },
+              // The one visual difference between the two tones: an informational
+              // card is edged in the primary colour, a warning is left as the
+              // plain surface every other card on this screen uses. Nothing here
+              // is red — a partner waiting on a review has not done anything
+              // wrong, and colouring it as a fault would say they had.
+              banner.tone === 'info' && { borderLeftWidth: 3, borderLeftColor: c.primary },
+            ]}
+            elevation={1}
+          >
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{banner.title}</Text>
             <Text style={[styles.cardBody, { color: c.textSecondary }]}>{banner.body}</Text>
+            {/* The non-gating blockers, quieter and below the fold of the
+                sentence that matters — see `splitBlockers`. */}
+            {banner.note && (
+              <Text style={[styles.cardNote, { color: c.textDisabled }]}>{banner.note}</Text>
+            )}
             {/* `onAction` where the banner names one, `refresh` otherwise — the
                 only action this card had was "try again", which is the right
                 answer for a failed load and useless for "you have no map pin". */}
             {banner.action && (
               <Button
                 mode="contained"
-                onPress={'onAction' in banner && banner.onAction ? banner.onAction : refresh}
+                onPress={banner.onAction ?? refresh}
                 style={styles.cardAction}
               >
                 {banner.action}
@@ -278,7 +429,7 @@ export default function TodayScreen() {
           </Text>
         )}
 
-        {ready && !banner && showOrders && pendingOrders.length > 0 && (
+        {ready && !blocked && showOrders && pendingOrders.length > 0 && (
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <View style={styles.cardHeaderRow}>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
@@ -310,7 +461,7 @@ export default function TodayScreen() {
           </Surface>
         )}
 
-        {ready && !banner && showCatalog && lowStock.length > 0 && (
+        {ready && !blocked && showCatalog && lowStock.length > 0 && (
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
               Low stock ({lowStockQuery.data?.total ?? lowStock.length})
@@ -325,10 +476,15 @@ export default function TodayScreen() {
                 </Text>
               </View>
             ))}
+            {/* `/catalog`, not More. This dropped the partner on the module
+                menu and left them to find the catalogue themselves, from a card
+                that had just named five products running low. `/catalog` is a
+                real route — `more.tsx#destinationFor` navigates to the same
+                literal, and its header documents why. */}
             <Button
               mode="text"
               compact
-              onPress={() => router.push('/(app)/(tabs)/more')}
+              onPress={() => router.push('/catalog')}
               style={{ alignSelf: 'flex-start' }}
             >
               Manage catalogue
@@ -336,7 +492,7 @@ export default function TodayScreen() {
           </Surface>
         )}
 
-        {ready && !banner && showBookings && (
+        {ready && !blocked && showBookings && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Today&apos;s bookings</Text>
             {todaysBookings.length === 0 && !bookingsQuery.isLoading && (
@@ -357,7 +513,7 @@ export default function TodayScreen() {
           </View>
         )}
 
-        {ready && !banner && !showBookings && !showOrders && !showCatalog && (
+        {ready && !blocked && !showBookings && !showOrders && !showCatalog && (
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Nothing switched on yet</Text>
             <Text style={[styles.cardBody, { color: c.textSecondary }]}>
@@ -373,7 +529,8 @@ export default function TodayScreen() {
         booking={formTarget?.booking ?? null}
         isDark={isDark}
         submitting={isPending}
-        onDismiss={() => setFormTarget(null)}
+        conflicts={conflicts}
+        onDismiss={() => { setConflicts([]); setFormTarget(null); }}
         onSubmit={submitForm}
       />
     </SafeAreaView>
@@ -387,6 +544,7 @@ const styles = StyleSheet.create({
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontSize: 16, fontWeight: '600' },
   cardBody: { fontSize: 14, lineHeight: 20 },
+  cardNote: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   cardAction: { marginTop: 6, alignSelf: 'flex-start' },
   errorHint: { fontSize: 12, marginTop: -6 },
   orderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },

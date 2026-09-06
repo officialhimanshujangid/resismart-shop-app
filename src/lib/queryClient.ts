@@ -1,4 +1,5 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, onlineManager } from '@tanstack/react-query';
+import NetInfo from '@react-native-community/netinfo';
 import axios from 'axios';
 
 /**
@@ -18,6 +19,30 @@ import axios from 'axios';
  * failures and 5xx are worth trying again — which, on a shop's connection, is
  * most of what actually goes wrong.
  */
+/**
+ * Teach react-query what "offline" means on a phone.
+ *
+ * Its default detector listens for the browser's `online`/`offline` window
+ * events, which React Native does not have — so without this the library
+ * believes the device is permanently online. Two things follow from that
+ * belief, and both are wrong on a shop's connection: `refetchOnReconnect`
+ * below never fires, because as far as the library is concerned nothing ever
+ * reconnected; and every query mounted in a basement is dispatched into a dead
+ * radio and burns its retries before showing an error.
+ *
+ * `isInternetReachable` is `null` until the platform has decided, so an
+ * undecided answer falls back to `isConnected` rather than reading as offline —
+ * the same rule `features/billing/draftStore.ts` already applies to its own
+ * sync trigger, kept identical on purpose so the two cannot disagree about
+ * whether the phone is on the network.
+ */
+onlineManager.setEventListener((setOnline) =>
+  NetInfo.addEventListener((state) => {
+    const reachable = state.isInternetReachable;
+    setOnline(reachable === null ? state.isConnected !== false : reachable);
+  }),
+);
+
 const retryPolicy = (failureCount: number, error: unknown): boolean => {
   if (failureCount >= 2) return false;
   if (axios.isAxiosError(error)) {
@@ -46,6 +71,19 @@ export const queryClient = new QueryClient({
       // Never automatic. A create that is retried without an idempotency key is
       // how one tap becomes two invoices — see `withIdempotency` in api/axios.ts.
       retry: false,
+      /**
+       * Mutations still FIRE while `onlineManager` says we are offline, and
+       * fail the way they always have.
+       *
+       * Pausing is right for a query — nobody is waiting on a list — but a
+       * mutation is a button the partner just pressed. Under the default
+       * `'online'` mode, accepting a booking with no signal would neither
+       * succeed nor fail: it would sit paused with `isPending` true, so the
+       * button spins with no error and no way to tell that nothing was sent,
+       * until the network happens to return. A fast, honest "No connection" is
+       * the behaviour every screen here is already written against.
+       */
+      networkMode: 'offlineFirst',
     },
   },
 });

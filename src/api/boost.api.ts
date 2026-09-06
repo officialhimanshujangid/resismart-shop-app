@@ -18,7 +18,16 @@ import type { PartnerBoostStatus } from '../types/api-contract.generated';
  */
 
 export interface BoostPackage {
-  _id: string;
+  /**
+   * `id`, NOT `_id`. `sellablePackages()` in `partner-ad-setting.service.ts`
+   * serializes the subdocument id as `id`, so the `_id` this used to declare
+   * never existed on the wire: every checkout posted `{ packageId: undefined }`
+   * and the server's `packageId: objectId` validator answered 400 before a
+   * boost — free or paid — was ever created. The web client hit the identical
+   * bug and named it in `promotion/shared.ts`; this matches the wire shape, not
+   * the Mongoose convention the rest of this file's own documents use.
+   */
+  id: string;
   label: string;
   pricePaise: number;
   durationDays: number;
@@ -74,6 +83,22 @@ export type CheckoutBoostResponse =
       packageLabel: string;
     };
 
+/**
+ * What a radius actually buys, from `GET /partners/me/promotion/reach`.
+ *
+ * `effectiveRadiusKm` is the number a resident's default search really reaches
+ * — `visibilityCeilingKm` clamps the asked-for radius by the partner's own
+ * service modes and radius, so a 10 km package on a business that only serves
+ * 3 km reaches 3 km. Kept and shown, because a partner reading "8 societies"
+ * beside "10 km" deserves to know when the 10 is not the number that counted.
+ */
+export interface BoostReach {
+  radiusKm: number;
+  effectiveRadiusKm: number;
+  societyCount: number;
+  residentCount: number;
+}
+
 export interface VerifyBoostPayload {
   boostId: string;
   razorpay_order_id: string;
@@ -85,6 +110,27 @@ export const boostApi = {
   packages: () => apiClient.get<BoostPackagesResponse>('/partners/me/promotion/packages').then((r) => r.data),
 
   myBoosts: () => apiClient.get<MyBoostsResponse>('/partners/me/promotion/boosts').then((r) => r.data),
+
+  /**
+   * How many societies and residents this radius reaches from the shop's own
+   * pin. Answered by `partner-browse.controller.ts#promotionReach` — the same
+   * geo pipeline resident discovery runs, which is the whole point: a reach
+   * number computed a second way would promise a reach the boost does not
+   * deliver.
+   *
+   * There is deliberately no partner id to pass — the server reads it off the
+   * signed session, so this can only ever report the caller's own reach. Errors
+   * are left to the caller: a 409 `PARTNER_LOCATION_MISSING` (no map pin yet)
+   * has a next step, and a zero drawn in its place would read as "this package
+   * reaches nobody".
+   *
+   * Wrapped in `{ success, data }`, unlike the rest of this file — it lives on
+   * the browse controller, which uses the app-wide envelope.
+   */
+  reach: (radiusKm: number) =>
+    apiClient
+      .get<{ success: boolean; data: BoostReach }>('/partners/me/promotion/reach', { params: { radiusKm } })
+      .then((r) => r.data.data),
 
   status: (boostId: string) =>
     apiClient

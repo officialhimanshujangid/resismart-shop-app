@@ -12,10 +12,12 @@ import { qk } from '../lib/queryKeys';
  * again, everything typed after it is typed twice, and the second attempt is the
  * one where they give up.
  *
- * `partner.onboardingStep` is stored server-side and never moves backwards, so
- * the resume point survives a reinstall and follows the partner between devices.
- * Local state is never the authority here — it cannot be, because the answer has
- * to be right on a phone the wizard has never run on.
+ * Both halves of the answer are computed from the stored partner document —
+ * `onboardingStep` is the pointer, `missing[]` is what is actually still empty —
+ * so the resume point survives a reinstall and follows the partner between
+ * devices. Local state is never the authority here; it cannot be, because the
+ * answer has to be right on a phone the wizard has never run on. Which of the
+ * two `resumeStep` believes, and why, is spelled out on it below.
  */
 export function useOnboardingStatus(options?: { enabled?: boolean }) {
   const query = useQuery({
@@ -36,22 +38,28 @@ export function useOnboardingStatus(options?: { enabled?: boolean }) {
 }
 
 /**
- * The step to open, clamped into range.
+ * The step to open: the first one with something still missing, and step 5 when
+ * there is nothing.
  *
- * The server stores 1–5 and never decreases it, but the clamp is not
- * defensive noise: `submit-for-review` sets it to 5, and a rejected partner
- * comes back with a `missing[]` list whose FIRST gap is the screen they should
- * actually land on — being dropped on step 5 with a fault on step 2 is a dead
- * end for somebody who does not know the form.
+ * Read from `missing[]` rather than from `onboardingStep`, for EVERY status —
+ * the same rule the web wizard's `landingStep` applies, and it is the correct
+ * one. The stored pointer only says how far somebody got, not whether what they
+ * left behind is usable: `register-public` writes steps 1 and 2 with a
+ * placeholder address and a pointer of 1, so a partner whose only real gaps are
+ * the map pin and their categories was being dropped on step 1 to retype the
+ * business name they had just typed.
+ *
+ * This used to be first-gap for REJECTED only, guarded by a worry about
+ * retyping. That worry is already answered: every step prefills from
+ * `GET /partners/me/partner`, so a step opened early is a step already filled
+ * in, and the rail (see `register.tsx`) reaches all five once the account
+ * exists — nothing here is a one-way door.
  */
 export function resumeStep(status: OnboardingStatus | undefined): number {
   if (!status) return 1;
-  const firstGap = status.missing.length
-    ? Math.min(...status.missing.map((m) => m.step))
-    : undefined;
-  const saved = Math.min(5, Math.max(1, status.step || 1));
-  // A rejected profile is being corrected, so go where the correction is. A
-  // DRAFT is being filled in, so go where they left off.
-  if (status.verificationStatus === 'REJECTED' && firstGap) return firstGap;
-  return saved;
+  const gaps = status.missing.map((m) => m.step).filter((s) => s >= 1 && s <= 5);
+  // Nothing missing means there is nothing to send them back for — step 5 is
+  // where the submit button is.
+  if (!gaps.length) return 5;
+  return Math.min(...gaps);
 }

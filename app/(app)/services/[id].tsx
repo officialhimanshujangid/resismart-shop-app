@@ -7,6 +7,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage } from '../../../src/api/axios';
+import { ErrorBlock } from '../../../src/features/more/ui';
 import { partnerApi } from '../../../src/api/partner.api';
 import { qk } from '../../../src/lib/queryKeys';
 import {
@@ -60,7 +61,29 @@ export default function ServiceDetailScreen() {
     });
   };
 
-  if (serviceQuery.isLoading || !serviceQuery.data) {
+  /**
+   * The same shape as `catalog/[id].tsx`, and for the same reason: `isLoading`
+   * settles to false on failure as well as success and `data` stays undefined,
+   * so `isLoading || !data` was a spinner with no exit — a partner who tapped a
+   * service on a bad connection could only press back. `isPaused` covers
+   * offline, where `onlineManager` (see `lib/queryClient.ts`) holds the request
+   * rather than firing it into a dead radio.
+   */
+  const loadError = serviceQuery.isError
+    ? apiErrorMessage(serviceQuery.error, 'Could not load this service.')
+    : serviceQuery.isPending && serviceQuery.isPaused
+      ? 'No connection. Check your network and try again.'
+      : null;
+
+  if (loadError) {
+    return (
+      <View style={[styles.center, { backgroundColor: c.background }]}>
+        <ErrorBlock c={c} message={loadError} onRetry={() => void serviceQuery.refetch()} />
+      </View>
+    );
+  }
+
+  if (!serviceQuery.data) {
     return (
       <View style={[styles.center, { backgroundColor: c.background }]}>
         <ActivityIndicator color={c.primary} />

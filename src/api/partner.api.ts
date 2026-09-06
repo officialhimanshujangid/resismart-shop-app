@@ -1,3 +1,5 @@
+import type { Href } from 'expo-router';
+
 import { apiClient, ApiEnvelope, unwrap } from './axios';
 import {
   PartnerKind,
@@ -35,6 +37,22 @@ export interface PartnerPlan {
   isFreeTier: boolean;
   status: string;
   limits: Record<string, number>;
+  /**
+   * This is a TRIAL, and when it runs out.
+   *
+   * Both are sent by `partner-entitlement.service.ts` (its own comment: without
+   * them a trial is indistinguishable from a plan that was bought). They were
+   * missing from this interface, so `normalise()` in `usePartnerEntitlements`
+   * — which rebuilds `plan` field by field rather than spreading it — dropped
+   * them on the floor and no screen could have shown a deadline even if one had
+   * wanted to.
+   *
+   * Optional because a server that predates them sends neither, and because
+   * `trialEndsAt` is present only while `isTrial`. An ISO string over the wire,
+   * whatever the `Date` on the server says.
+   */
+  isTrial?: boolean;
+  trialEndsAt?: string;
 }
 
 /** One capability's live usage against its ceiling. */
@@ -60,11 +78,78 @@ export interface PartnerBusinessSummary {
 
 /** One thing standing between this business and being found by a resident. */
 export interface PartnerVisibilityBlocker {
-  code: 'NOT_ACTIVE' | 'NOT_VERIFIED' | 'NO_LOCATION' | 'NO_SERVICE_MODES' | 'NO_CATEGORY';
+  code: 'NOT_ACTIVE' | 'NOT_VERIFIED' | 'NO_LOCATION' | 'NO_SERVICE_MODES' | 'NO_CATEGORY' | 'NO_AVAILABILITY';
   /** Already in the proprietor's language — render it, do not re-word it. */
   message: string;
-  /** The web route that fixes it, when one exists. Mapped to a screen here. */
+  /**
+   * The route that fixes it, IN THE WEB PANEL — `/dashboard/partner-settings`
+   * and friends. Deliberately unused by this app: pushing a web pathname at
+   * expo-router is a navigation to a screen that does not exist. `blockerFix`
+   * below is the mobile answer to the same question, keyed off `code`.
+   */
   href?: string;
+  /**
+   * Does this one actually keep residents from finding the business, or is it
+   * merely holding it back?
+   *
+   * The server decides. This app used to answer the same question locally by
+   * listing the codes it thought were harmless, which is a second copy of a rule
+   * that lives on the server and drifts the moment a code is added — `NO_AVAILABILITY`
+   * is that moment. Optional because an older deployment does not send it; treat
+   * a missing value as blocking, since over-warning is the safer failure here.
+   */
+  blocksDiscovery?: boolean;
+}
+
+/**
+ * Where a blocker is actually fixed in THIS app.
+ *
+ * The server sends an `href` with most blockers and every one of them is a web
+ * route, so the app ignored the field and rendered the sentences with nothing to
+ * tap — a screen that names five problems and offers no way to any of them. The
+ * `code` is the stable half of the payload (its own comment says so), so the
+ * mapping is keyed off that.
+ *
+ * Two of the five have no destination, and that is the honest answer rather than
+ * a missing case:
+ *
+ *   NOT_ACTIVE   only ResiSmart can lift this — a suspension, or a profile that
+ *                is still with a reviewer. A partner who is REJECTED is held in
+ *                the wizard by `useOnboardingGate` and never reads this list.
+ *   NO_CATEGORY  there is no category editor in the app outside the signup
+ *                wizard, and the wizard refuses an ACTIVE partner
+ *                (`EDITABLE_ONBOARDING_STATUSES`), so it is reported and not
+ *                routed.
+ *
+ * It used to say NO_CATEGORY was "the one blocker that does not make anybody
+ * invisible". That is no longer true and never was a fact for this file to
+ * assert: there are three non-gating codes today (NO_CATEGORY, NO_AVAILABILITY
+ * and — since the gate split — NOT_VERIFIED), and which ones they are is the
+ * server's answer, carried on `blocksDiscovery`. See `splitBlockers` below.
+ */
+export interface BlockerFix {
+  href: Href;
+  /** Imperative, and short enough for a button. */
+  label: string;
+}
+
+export function blockerFix(code: PartnerVisibilityBlocker['code']): BlockerFix | undefined {
+  switch (code) {
+    case 'NOT_VERIFIED':
+      return { href: '/settings/verification', label: 'Send your documents in' };
+    case 'NO_LOCATION':
+      return { href: '/settings/address', label: 'Set your address and pin' };
+    case 'NO_SERVICE_MODES':
+      return { href: '/settings/where-you-work', label: 'Say where you work' };
+    case 'NO_AVAILABILITY':
+      // The wizard's opening hours are a marketing fact; the slot engine reads a
+      // separate schedule, and without it every Book tap answers 409. This app
+      // has that editor, so unlike the web the partner can fix it where they
+      // were told about it.
+      return { href: '/availability', label: 'Set your working hours' };
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -78,7 +163,51 @@ export interface PartnerVisibilityBlocker {
  */
 export interface PartnerVisibilityReport {
   discoverable: boolean;
+  /**
+   * Will ResiSmart take a booking, an order or boost money for this business?
+   *
+   * A SECOND boolean, not a refinement of the first, and the split is the whole
+   * point: since the gate moved, the ordinary state of a partner who has just
+   * submitted is discoverable and NOT transactable — residents find them and
+   * ring them, and nothing can be booked until a reviewer has looked. One
+   * boolean covering both would have to lie about one of them
+   * (`partner-browse.service.ts` says exactly that), and this app was reading
+   * only `discoverable`, so that sentence never reached the proprietor's phone
+   * at all: the Today banner and the Verification card both keyed off
+   * `!discoverable` and stayed silent for every partner in it.
+   *
+   * Read as `=== false` rather than `!transactable`, so a response that predates
+   * the field cannot manufacture a warning out of an absent one.
+   */
+  transactable: boolean;
   blockers: PartnerVisibilityBlocker[];
+}
+
+/**
+ * The blockers split into the two lists that are two different sentences.
+ *
+ * Keyed off `blocksDiscovery`, from the server, and kept HERE rather than in
+ * each screen because a copy per screen is precisely the thing this field was
+ * added to delete — `(tabs)/index.tsx` and `settings/verification.tsx` each
+ * carried `b.code !== 'NO_CATEGORY'`, which was wrong about `NO_AVAILABILITY`
+ * the day it landed and wrong about `NOT_VERIFIED` the day after. The mobile
+ * twin of the same split in `frontend/.../PartnerVisibilityAlert.tsx`.
+ *
+ * `!== false`, not `=== true`: a server that does not send the field at all is
+ * treated as blocking, because over-warning is the safer failure and it is the
+ * fallback the field's own note documents.
+ */
+export function splitBlockers(report: PartnerVisibilityReport | undefined): {
+  /** Residents genuinely cannot find the business until these clear. */
+  blocking: PartnerVisibilityBlocker[];
+  /** Findable, and still losing business. Quieter, and never a reason to hide the dashboard. */
+  alsoCosting: PartnerVisibilityBlocker[];
+} {
+  const all = report?.blockers ?? [];
+  return {
+    blocking: all.filter((b) => b.blocksDiscovery !== false),
+    alsoCosting: all.filter((b) => b.blocksDiscovery === false),
+  };
 }
 
 export interface PartnerEntitlementsPayload {
@@ -254,6 +383,13 @@ export interface MyPartner {
   serviceRadiusKm?: number;
   status: PartnerStatus;
   onboardingStep?: number;
+  /**
+   * The older, top-level twin of `verification.note` — still written by some
+   * rejection paths on the server (`partner.model.ts`). Read as a FALLBACK
+   * behind the note, exactly as the web wizard reads it, because a REJECTED
+   * partner with neither is being sent back to a form with no idea why.
+   */
+  rejectionReason?: string;
   verification?: { status: PartnerVerificationStatus; docs: PartnerKycDoc[]; note?: string };
   kyc?: { gstNumber?: string; panMasked?: string; licenseNumber?: string };
   timings?: { weekly: DayTiming[]; holidays?: string[] };
@@ -296,8 +432,34 @@ export const partnerApi = {
    *
    * `serviceRadiusKm` is required by the server exactly when `serviceModes`
    * includes AT_CUSTOMER, and REFUSED when it does not. Send accordingly.
+   *
+   * ── Why the address fields are here ───────────────────────────────────────
+   *
+   * This used to send `serviceModes` and `serviceRadiusKm` and nothing else,
+   * which left the map pin with no editor anywhere in the signed-in app: a
+   * partner whose GPS never fixed during registration, or whose pin is simply
+   * wrong, is invisible to every resident (`$geoNear`) with no screen able to
+   * change it. `updateMyPartner` already handles all of these — `name`,
+   * `address` and `contactNumber` by hand, `latitude`/`longitude` into the
+   * GeoJSON point, and city/state/pincode through `pickDetails` — so nothing on
+   * the server had to change.
+   *
+   * Two shapes worth knowing before calling it:
+   *
+   *   - LATITUDE AND LONGITUDE MOVE TOGETHER. The controller only writes the
+   *     point when both are present, so sending one is sending neither.
+   *   - AN EMPTY STRING CLEARS a city, state or pincode; omitting the key leaves
+   *     it alone. `name` and `address` have minimum lengths (2 and 5) and are
+   *     rejected empty, so they are omitted rather than blanked.
    */
   updateMe: (body: {
+    name?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    latitude?: number;
+    longitude?: number;
     serviceModes?: PartnerServiceMode[];
     serviceRadiusKm?: number;
   }) =>
@@ -426,4 +588,55 @@ export async function uploadKycFile(file: {
     timeout: 60_000, // a photographed licence over a shop's 3G is not a 30-second request
   });
   return data;
+}
+
+/**
+ * Upload a PUBLIC image and return the URL to store against the record.
+ *
+ * `POST /upload`, NOT `POST /upload/document` above, and the difference is the
+ * whole point rather than a detail:
+ *
+ *   - `/upload/document` writes to a PRIVATE prefix. Its URL is not fetchable
+ *     without a presigned download, which is right for a KYC licence and
+ *     catastrophic for a product photo — residents browse the catalogue from
+ *     another app entirely, and every picture would render as a broken image.
+ *   - `/upload` writes to `profile-images/`, which is world-readable, and
+ *     answers `{ imageUrl }` (not `{ url, key }` — the two endpoints do not
+ *     share a response shape).
+ *
+ * ── Why the returned URL is stored verbatim ───────────────────────────────
+ *
+ * `createProductSchema` validates `images[]` with `uploadedUrl()`, which parses
+ * the URL and checks its HOST against our own bucket — a hand-built path, a
+ * CDN alias, or anything from outside is rejected with "Attach a file uploaded
+ * through ResiSmart". So the only URL that can ever pass is the one this call
+ * hands back. Never construct one.
+ *
+ * The field name is `image`; `upload.single('image')` on the route reads that
+ * name and nothing else, and a mismatched name is a 400 saying "Please upload
+ * an image file" for a request that carried one. The server re-detects the mime
+ * type from the BYTES and ignores what is claimed here, so the value below is
+ * for the multipart part only.
+ *
+ * Rate-limited to 120 uploads per hour per user server-side. A shop
+ * photographing its shelves can reach that; the limiter's own message is
+ * readable and `apiErrorMessage` surfaces it.
+ */
+export async function uploadPublicImage(file: {
+  uri: string;
+  name: string;
+  mimeType: string;
+}): Promise<string> {
+  const form = new FormData();
+  const part = { uri: file.uri, name: file.name, type: file.mimeType } as unknown as Blob;
+  form.append('image', part);
+
+  const { data } = await apiClient.post<{ imageUrl: string }>('/upload', form, {
+    // Same two rules as `uploadKycFile`: axios must be left to write the
+    // multipart boundary, and a photograph over a shop's 3G is not a
+    // 30-second request.
+    headers: { 'Content-Type': undefined },
+    timeout: 60_000,
+  });
+  return data.imageUrl;
 }

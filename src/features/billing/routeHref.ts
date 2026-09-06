@@ -1,32 +1,34 @@
 import { Href } from 'expo-router';
 
 /**
- * A typed-route escape hatch for hrefs this screen builds at runtime
- * (`/billing/<documentId>`), NOT a suppression.
+ * OBSOLETE, and left in place only because removing its ~30 call sites is its
+ * own change. Do not add new ones.
  *
- * `experiments.typedRoutes` (app.json) generates `.expo/types/router.d.ts`
- * from the file system, and it is broken project-wide as of this build, not
- * something introduced by this feature — `npx tsc --noEmit` on a clean
- * checkout already fails the same way on templated pushes in files this
- * agent does not own: `app/(app)/catalog/create.tsx`, `catalog/index.tsx`
- * and `catalog/scan.tsx`. Inspecting `.expo/types/router.d.ts` directly
- * (regenerated fresh via `npx expo start` for this build, twice) shows why:
- * EVERY dynamic segment in the app, including `app/(app)/parties/[id].tsx`
- * which this agent never touched, is typed as the four literal characters
- * `[id]` rather than a parameterised segment — so no runtime id can ever
- * satisfy it — and the same generated union also contains entries like
- * `` `/../src/lib/store` `` — a plain non-route TypeScript module — meaning
- * the route-context scan used to build this file is not scoped to `app/`
- * the way it normally is. Both symptoms point at the generator, not at any
- * one route file, and neither is fixable from inside a screen this agent
- * owns — see `ownerDecisionsNeeded`.
+ * The reasoning this file used to carry was sound at the time and is worth
+ * keeping in view: `.expo/types/router.d.ts` was, on that build, being written
+ * with EVERY dynamic segment typed as the four literal characters `[id]` rather
+ * than a parameterised segment (so no runtime id could satisfy it), and its
+ * union even contained non-route modules like `` `/../src/lib/store` `` — the
+ * route scan was not scoped to `app/`. Against a declaration file in that state
+ * a runtime-built href genuinely could not be expressed, and asserting through
+ * the SDK's own `Href` was the honest way to say so.
  *
- * `Href` (not `any`, not `@ts-ignore`) is exported by `expo-router` for
- * exactly this: a string the CALLER knows is a valid path, asserted through
- * the SDK's own routing type rather than suppressed. `router.push`/`replace`
- * still reject anything that is not a `string | HrefObject` shape — a typo'd
- * object would still fail here — this only widens which STRINGS are
- * accepted.
+ * THAT IS FIXED. `scripts/generate-router-types.js` now regenerates the
+ * declaration file as a prerequisite of `npm run typecheck` (see its header for
+ * why the old file was untrustworthy), and the union it produces is correct:
+ * dynamic segments come out as `` `/billing/${Router.SingleRoutePart<T>}` ``,
+ * query strings and group prefixes are both covered, and nothing outside `app/`
+ * appears. Checked by pushing every literal and template currently wrapped in
+ * `toHref` — `/settings/plan`, `/notifications`, `/parties`, `/reviews`,
+ * `` `/(app)/billing/${id}` ``, `` `/(app)/payments/new?direction=${d}` `` and
+ * the rest — bare, with no cast: all of them compile.
+ *
+ * So every remaining `toHref(...)` is now a SUPPRESSION rather than an escape
+ * hatch. It costs the exact protection the generator script exists to provide:
+ * a route renamed or deleted breaks the build everywhere else in the app and
+ * silently becomes a dead tap behind this function. Unwrapping the call sites
+ * and deleting this file is a mechanical change that `tsc --noEmit` verifies in
+ * one run; it wants its own pass.
  */
 export function toHref(path: string): Href {
   return path as Href;

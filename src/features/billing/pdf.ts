@@ -2,6 +2,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 import { documentsApi } from './documents.api';
+import { platformBillingApi } from '../../api/billing.api';
 
 /**
  * Fetching and sharing a document's PDF — `GET /partners/me/documents/:id/pdf`
@@ -57,6 +58,52 @@ export async function shareDocumentPdf(id: string, label: string): Promise<void>
     throw new Error('Sharing is not available on this device.');
   }
   await Sharing.shareAsync(uri, {
+    mimeType: 'application/pdf',
+    dialogTitle: `Share ${label}`,
+  });
+}
+
+/**
+ * The same share sheet for a RESISMART subscription invoice — the receipt the
+ * partner gets from us, not the one they hand a customer.
+ *
+ * It lives beside `shareDocumentPdf` for the file plumbing (one cache
+ * directory, one `safeFileName`, one share sheet) and for nothing else: the
+ * fetch is a different shape entirely, and the difference is the reason this is
+ * a second function rather than a parameter on the first.
+ *
+ *   - `GET /billing/invoices/:id/download` returns a URL, not bytes. It is
+ *     either Razorpay's hosted invoice page or a five-minute presigned S3 link,
+ *     and both carry their own authorisation inside the URL.
+ *   - So the file is fetched with `File.downloadFileAsync`, NOT through
+ *     `apiClient`. `documentsApi.pdfBytes` goes through axios deliberately —
+ *     that endpoint is authenticated with our bearer token and needs the
+ *     refresh interceptor. Sending the same token to Razorpay's CDN would be
+ *     pointless at best.
+ *   - A `razorpayInvoiceUrl` is an HTML page, not a PDF. It is handed to the
+ *     share sheet with no mime type rather than being announced as a PDF it is
+ *     not; `settings/plan.tsx` opens those in the browser instead and only
+ *     calls this for invoices it knows carry a `customPdfUrl`.
+ *
+ * A 404 here ("No PDF available for this invoice") is a normal answer for a
+ * PENDING invoice, not a fault — the caller renders the server's own sentence.
+ */
+export async function sharePlatformInvoicePdf(id: string, label: string): Promise<void> {
+  const url = await platformBillingApi.invoiceDownloadUrl(id);
+
+  if (!INVOICE_DIR.exists) INVOICE_DIR.create({ intermediates: true, idempotent: true });
+
+  // Overwritten rather than appended-to: the same invoice shared twice must not
+  // leave `Invoice-1.pdf` beside `Invoice.pdf` in the cache.
+  const target = new File(INVOICE_DIR, safeFileName(label));
+  if (target.exists) target.delete();
+  const downloaded = await File.downloadFileAsync(url, target);
+
+  const available = await Sharing.isAvailableAsync();
+  if (!available) {
+    throw new Error('Sharing is not available on this device.');
+  }
+  await Sharing.shareAsync(downloaded.uri, {
     mimeType: 'application/pdf',
     dialogTitle: `Share ${label}`,
   });

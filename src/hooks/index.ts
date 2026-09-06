@@ -28,5 +28,7 @@ export type { CapacityView } from './usePlanUsage';
 export { useOnboardingStatus, resumeStep } from './useOnboardingStatus';
 export { useOnboardingGate } from './useOnboardingGate';
 export type { OnboardingGate } from './useOnboardingGate';
+export { useIsOnline } from './useIsOnline';
 export { usePushRegistration } from './usePushRegistration';
+export { useNotificationTaps } from './useNotificationTaps';
 export { useLiveEvents } from './useLiveEvents';

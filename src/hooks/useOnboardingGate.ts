@@ -29,7 +29,7 @@ import { usePartnerEntitlements } from './usePartnerEntitlements';
 export interface OnboardingGate {
   /** No answer yet. Show a splash rather than guessing — either guess flashes. */
   resolving: boolean;
-  /** Send them to `(auth)/register`, which resumes at the saved step. */
+  /** Hold them in `(auth)`, whose only screen for a signed-in partner is the wizard. */
   needsOnboarding: boolean;
 }
 

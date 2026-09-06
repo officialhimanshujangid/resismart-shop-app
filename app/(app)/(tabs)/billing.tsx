@@ -18,6 +18,8 @@ import { DocumentStatusChip } from '../../../src/features/billing/components/Sta
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import { toHref } from '../../../src/features/billing/routeHref';
 import { Hero, GlassStat } from '../../../src/components/Hero';
+import { ErrorBlock } from '../../../src/features/more/ui';
+import { apiErrorMessage } from '../../../src/api/axios';
 
 /**
  * Billing: the two-tap invoice, offline drafts and WhatsApp share
@@ -81,6 +83,22 @@ export default function BillingScreen() {
     void query.refetch();
     void syncPending();
   }, [query, syncPending]);
+
+  /**
+   * Why there are no bills, when there are no bills for a reason other than
+   * "none raised yet".
+   *
+   * `isPending` alone cannot tell a partner apart from a failed request, so a
+   * 500 or a dropped connection used to arrive as "No bills here yet" — a
+   * ledger reporting itself empty. `isPaused` covers the offline case, where
+   * `onlineManager` (see `lib/queryClient.ts`) deliberately holds the request
+   * rather than firing it into a dead radio.
+   */
+  const loadError = query.isError
+    ? apiErrorMessage(query.error, 'Could not load your bills.')
+    : query.isPending && query.isPaused
+      ? 'No connection. Check your network and try again.'
+      : null;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
@@ -157,7 +175,9 @@ export default function BillingScreen() {
         />
       </View>
 
-      {query.isPending ? (
+      {loadError ? (
+        <ErrorBlock c={c} message={loadError} onRetry={onRefresh} />
+      ) : query.isPending ? (
         <ActivityIndicator style={{ marginTop: 32 }} />
       ) : rows.length === 0 ? (
         <View style={styles.empty}>

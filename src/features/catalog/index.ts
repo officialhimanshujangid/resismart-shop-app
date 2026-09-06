@@ -1,6 +1,7 @@
 export {
   useProducts, useProduct, useProductCategories,
-  useCreateProduct, useUpdateProduct, useDeactivateProduct, useAdjustStock, useCreateCategory,
+  useCreateProduct, useUpdateProduct, useDeactivateProduct, useAdjustStock,
+  useCreateCategory, useUpdateCategory, useHideCategory,
 } from './hooks';
 export type { AdjustStockInput } from './hooks';
 export { catalogApi } from './api';
@@ -18,3 +19,4 @@ export { UsageMeterBar } from './components/UsageMeterBar';
 export { StockAdjustModal } from './components/StockAdjustModal';
 export type { StockAdjustTarget } from './components/StockAdjustModal';
 export { CategoryPicker } from './components/CategoryPicker';
+export { ProductImages, MAX_PRODUCT_IMAGES } from './components/ProductImages';

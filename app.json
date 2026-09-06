@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ResiSmart Shop",
+    "name": "RS Partner",
     "slug": "resismart-shop",
     "version": "1.0.0",
     "scheme": "resismart-shop",
@@ -20,7 +20,8 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundColor": "#0A4020"
+        "backgroundColor": "#0A4020",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.resismart.shop",
       "googleServicesFile": "./google-services.json",
@@ -56,24 +57,30 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "ResiSmart Shop uses your location to place your shop on the map so customers nearby can find it."
+          "locationWhenInUsePermission": "RS Partner uses your location to place your shop on the map so customers nearby can find it."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "ResiSmart Shop needs access to your photos so you can upload your GST certificate or licence for verification.",
-          "cameraPermission": false,
+          "photosPermission": "RS Partner needs access to your photos so you can add product pictures to your catalogue and upload your GST certificate or licence for verification.",
+          "cameraPermission": "RS Partner uses your camera to photograph products for your catalogue.",
           "microphonePermission": false
         }
       ],
       [
         "expo-notifications",
         {
-          "sounds": ["./assets/sounds/urgent.wav", "./assets/sounds/notification.wav"]
+          "icon": "./assets/notification-icon.png",
+          "color": "#0A4020",
+          "sounds": [
+            "./assets/sounds/urgent.wav",
+            "./assets/sounds/notification.wav"
+          ]
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true

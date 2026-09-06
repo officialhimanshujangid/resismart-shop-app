@@ -34,6 +34,15 @@ export const qk = {
     list: (filters?: Record<string, string | number | undefined>) =>
       ['bookings', 'list', filters ?? {}] as const,
     detail: (id: string) => ['bookings', 'detail', id] as const,
+    /**
+     * The clock on one job — `GET /:id/overrun`.
+     *
+     * A child of `bookings` on purpose: every verb already invalidates
+     * `qk.bookings.all()`, and react-query matches by PREFIX, so completing or
+     * extending a job refreshes its overrun picture without a second
+     * invalidation nobody would remember to add.
+     */
+    overrun: (id: string) => ['bookings', 'overrun', id] as const,
   },
 
   orders: {
@@ -60,6 +69,24 @@ export const qk = {
       ['billing', 'documents', filters ?? {}] as const,
     document: (id: string) => ['billing', 'document', id] as const,
     settings: () => ['billing', 'settings'] as const,
+  },
+
+  /**
+   * The subscription the PARTNER pays ResiSmart for — `/billing/my-subscription`
+   * and `/billing/invoices`.
+   *
+   * Deliberately NOT under `qk.billing` above. That branch is the partner's own
+   * invoicing vertical, and `useLiveEvents.keysForKind` invalidates the whole of
+   * it on any `BILL…`/`PAYMENT…` frame — which are notifications about the
+   * partner's customers paying the partner. Folding the plan in there would
+   * refetch the plan screen every time a customer settled a bill, and (worse)
+   * would make an unrelated cache eviction look like a billing bug. `PARTNER_PLAN_EXPIRY`
+   * is the frame that genuinely moves these, and it invalidates `entitlements()`.
+   */
+  plan: {
+    all: () => ['plan'] as const,
+    subscription: () => ['plan', 'subscription'] as const,
+    invoices: () => ['plan', 'invoices'] as const,
   },
 
   parties: {
@@ -121,6 +148,13 @@ export const qk = {
   staffList: () => ['staff', 'list'] as const,
   staffRoles: () => ['staff', 'roles'] as const,
   promotionBoosts: () => ['promotion', 'boosts'] as const,
+  /**
+   * Keyed by RADIUS, not by package: two packages that sell the same radius
+   * must show the same number, and fetching it once per card is how they would
+   * eventually disagree. Also a prefix-match child of `promotion()`, so the
+   * screen's own refresh still catches it.
+   */
+  promotionReach: (radiusKm: number) => ['promotion', 'reach', radiusKm] as const,
   businessSettings: () => ['settings', 'business'] as const,
   whatsappSettings: () => ['settings', 'whatsapp'] as const,
 } as const;

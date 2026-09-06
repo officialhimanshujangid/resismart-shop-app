@@ -21,7 +21,7 @@ import { estimateDraftTotalPaise } from '../../../src/features/billing/offlineDr
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import {
   BillingScreenDocumentType, DOCUMENT_TYPE_LABEL, DocumentDirection, DraftLineInput,
-  PartnerPartyRecord, SALES_DOCUMENT_TYPES, PURCHASE_DOCUMENT_TYPES, behaviourOf,
+  GST_STATES, PartnerPartyRecord, SALES_DOCUMENT_TYPES, PURCHASE_DOCUMENT_TYPES, behaviourOf,
 } from '../../../src/features/billing/types';
 import { toHref } from '../../../src/features/billing/routeHref';
 // Reached only when this screen was opened FROM a booking or an order — see
@@ -118,6 +118,18 @@ export default function NewInvoiceScreen() {
   const [partyMode, setPartyMode] = useState<'WALKIN' | 'SEARCH'>('WALKIN');
   const [walkinName, setWalkinName] = useState('');
   const [walkinPhone, setWalkinPhone] = useState('');
+  /**
+   * Place of supply for a walk-in, and the reason it is a field rather than an
+   * assumption.
+   *
+   * `isInterStateSupply` reads a blank as INTRA-state, so every walk-in bill
+   * raised on this phone was CGST+SGST whatever the customer said — right for
+   * the counter sale it was built for, wrong and unfixable for anybody from
+   * another state. Empty is still the default, because the counter sale is
+   * still the common case; what changed is that it is now a choice.
+   */
+  const [walkinState, setWalkinState] = useState('');
+  const [statePickerOpen, setStatePickerOpen] = useState(false);
   const [selectedParty, setSelectedParty] = useState<PartnerPartyRecord | null>(null);
   const [partyQuery, setPartyQuery] = useState('');
   const debouncedPartyQuery = useDebouncedValue(partyQuery, 300);
@@ -345,6 +357,10 @@ export default function NewInvoiceScreen() {
           // partner cannot see the reason for.
           name: walkinName.trim() || 'Walk-in customer',
           phone: walkinPhone.trim() || undefined,
+          // Left off entirely when unset rather than sent as '': the server
+          // reads a blank as intra-state anyway, and an empty string on the
+          // document is a stated answer where there was only a default.
+          placeOfSupply: walkinState || undefined,
         };
 
     const plainLines: DraftLineInput[] = lines.map(({ key, ...rest }) => rest);
@@ -422,7 +438,7 @@ export default function NewInvoiceScreen() {
     // Still PENDING — genuinely offline. The bill is safe on-device; sync
     // happens automatically the moment the connection returns.
     router.replace('/(app)/billing/drafts');
-  }, [lines, selectedParty, walkinName, walkinPhone, docType, behaviour, addDraft, retryDraft,
+  }, [lines, selectedParty, walkinName, walkinPhone, walkinState, docType, behaviour, addDraft, retryDraft,
     sourceType, sourceId, jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned]);
 
   if (!canManage) {
@@ -487,26 +503,56 @@ export default function NewInvoiceScreen() {
               />
             )}
             {partyMode === 'WALKIN' ? (
-              <View style={styles.walkinRow}>
-                <TextInput
-                  mode="outlined"
-                  label="Name (optional)"
-                  value={walkinName}
-                  onChangeText={setWalkinName}
-                  placeholder="Walk-in customer"
-                  style={styles.walkinInput}
-                  outlineStyle={{ borderRadius: radii.field }}
-                />
-                <TextInput
-                  mode="outlined"
-                  label="Phone (optional)"
-                  value={walkinPhone}
-                  onChangeText={setWalkinPhone}
-                  keyboardType="phone-pad"
-                  style={styles.walkinInput}
-                  outlineStyle={{ borderRadius: radii.field }}
-                />
-              </View>
+              <>
+                <View style={styles.walkinRow}>
+                  <TextInput
+                    mode="outlined"
+                    label="Name (optional)"
+                    value={walkinName}
+                    onChangeText={setWalkinName}
+                    placeholder="Walk-in customer"
+                    style={styles.walkinInput}
+                    outlineStyle={{ borderRadius: radii.field }}
+                  />
+                  <TextInput
+                    mode="outlined"
+                    label="Phone (optional)"
+                    value={walkinPhone}
+                    onChangeText={setWalkinPhone}
+                    keyboardType="phone-pad"
+                    style={styles.walkinInput}
+                    outlineStyle={{ borderRadius: radii.field }}
+                  />
+                </View>
+                {/*
+                  The field that decides CGST+SGST versus IGST. Read-only and
+                  tapped rather than typed: the server matches the NAME against
+                  `GST_STATE_CODES`, and a typo that misses it is silently
+                  treated as no answer at all — which is the intra-state default
+                  this field exists to be able to overrule.
+                */}
+                <Pressable onPress={() => setStatePickerOpen(true)} accessibilityRole="button">
+                  <View pointerEvents="none">
+                    <TextInput
+                      mode="outlined"
+                      label="Place of supply (state)"
+                      value={walkinState}
+                      placeholder="Same state — CGST + SGST"
+                      editable={false}
+                      // Not `walkinInput`: that carries `flex: 1` for the
+                      // name/phone row, and this is a full-width block of its own.
+                      style={styles.stateInput}
+                      outlineStyle={{ borderRadius: radii.field }}
+                      right={<TextInput.Icon icon="chevron-down" />}
+                    />
+                  </View>
+                </Pressable>
+                <Text style={[styles.stateHint, { color: c.textSecondary }]}>
+                  {walkinState
+                    ? `Taxed for ${walkinState}. Out-of-state customers are charged IGST.`
+                    : 'Leave it blank for a counter sale in your own state. Set it when the customer is from elsewhere — it decides whether the bill charges CGST + SGST or IGST.'}
+                </Text>
+              </>
             ) : selectedParty ? (
               <View style={styles.selectedPartyRow}>
                 <View style={{ flex: 1 }}>
@@ -715,6 +761,46 @@ export default function NewInvoiceScreen() {
         </Modal>
       </Portal>
 
+      {/*
+        The place-of-supply list. A plain scrolling list of the 37 names the
+        server recognises, with "Same state" as the first row so clearing it is
+        as easy as setting it — the web picker's "Not set" option, said in the
+        words a shopkeeper would use.
+      */}
+      <Portal>
+        <Modal
+          visible={statePickerOpen}
+          onDismiss={() => setStatePickerOpen(false)}
+          contentContainerStyle={[styles.stateModal, { backgroundColor: c.surface }]}
+        >
+          <View style={styles.cardHeaderRow}>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Place of supply</Text>
+            <IconButton icon="close" onPress={() => setStatePickerOpen(false)} accessibilityLabel="Close" />
+          </View>
+          <ScrollView>
+            <Pressable
+              onPress={() => { setWalkinState(''); setStatePickerOpen(false); }}
+              style={[styles.stateRow, { borderBottomColor: c.divider }]}
+            >
+              <Text style={{ color: !walkinState ? c.primary : c.textPrimary, fontWeight: !walkinState ? '700' : '400' }}>
+                Same state as my business
+              </Text>
+            </Pressable>
+            {GST_STATES.map((s) => (
+              <Pressable
+                key={s}
+                onPress={() => { setWalkinState(s); setStatePickerOpen(false); }}
+                style={[styles.stateRow, { borderBottomColor: c.divider }]}
+              >
+                <Text style={{ color: walkinState === s ? c.primary : c.textPrimary, fontWeight: walkinState === s ? '700' : '400' }}>
+                  {s}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </Modal>
+      </Portal>
+
       <Snackbar visible={!!scanError} onDismiss={() => setScanError(null)} duration={3000}>
         {scanError}
       </Snackbar>
@@ -731,6 +817,10 @@ const styles = StyleSheet.create({
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontSize: 14, fontWeight: '600' },
   walkinRow: { flexDirection: 'row', gap: 8 },
+  stateInput: { backgroundColor: 'transparent' },
+  stateHint: { fontSize: 11.5, lineHeight: 16 },
+  stateModal: { margin: 20, borderRadius: radii.card, paddingHorizontal: 4, paddingBottom: 8, maxHeight: '75%' },
+  stateRow: { paddingVertical: 13, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth },
   walkinInput: { flex: 1, backgroundColor: 'transparent' },
   selectedPartyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   selectedPartyName: { fontSize: 14, fontWeight: '600' },

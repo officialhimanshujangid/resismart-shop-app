@@ -16,7 +16,7 @@ import {
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppButton } from '../../../src/components/AppButton';
-import { AppInput } from '../../../src/components/AppInput';
+import { DateField } from '../../../src/components/DateField';
 import { Hero } from '../../../src/components/Hero';
 import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
 import { MiniBars, DonutRing, ProgressBar } from '../../../src/components/charts';
@@ -63,6 +63,22 @@ function monthRange(monthsAgo: number): { from: string; to: string } {
   const first = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
   const last = monthsAgo === 0 ? now : new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 0);
   return { from: isoDate(first), to: isoDate(last) };
+}
+
+/**
+ * The April-start Indian financial year — the same range
+ * `currentFinancialYearRange` gives the web reports screen, and the same one
+ * `financial-year.util.ts` computes on the server.
+ *
+ * This control used to say "This year" and mean 1 January. Two people reading
+ * the same-named button on a phone and a laptop got two different periods, and
+ * the period is the whole of what a GST report says: a March invoice belongs to
+ * last year's return on one and this year's on the other. Named and computed
+ * like the web one so there is one answer to "this year" in the product.
+ */
+function financialYearRange(today = new Date()): { from: string; to: string } {
+  const startYear = today.getMonth() + 1 >= 4 ? today.getFullYear() : today.getFullYear() - 1;
+  return { from: isoDate(new Date(startYear, 3, 1)), to: isoDate(new Date(startYear + 1, 2, 31)) };
 }
 
 export default function ReportsScreen() {
@@ -139,19 +155,45 @@ export default function ReportsScreen() {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
         <ChipRow c={c} value={key} options={REPORT_TABS} onChange={setKey} />
 
+        {/*
+          `DateField`, not a raw `AppInput`. These three feed a GST period, and
+          a free-text box invites "1/4/25" and "31-03-2026" — neither of which
+          is the "YYYY-MM-DD" the server parses, and neither of which said so.
+          The picker can only emit the format that works, which is why there is
+          no validation here to write: the invalid states stopped existing.
+        */}
         {key === 'outstanding' ? (
-          <AppInput label="As of (YYYY-MM-DD)" value={asOf} onChangeText={setAsOf} />
+          <DateField label="As of" value={asOf} onChangeText={setAsOf} mode="date" />
         ) : (
           <View style={{ gap: 8 }}>
             <View style={styles.periodRow}>
-              <AppInput label="From" value={range.from} onChangeText={(v) => setRange((r) => ({ ...r, from: v }))} style={styles.periodInput} />
-              <AppInput label="To" value={range.to} onChangeText={(v) => setRange((r) => ({ ...r, to: v }))} style={styles.periodInput} />
+              <DateField
+                label="From"
+                value={range.from}
+                onChangeText={(v) => setRange((r) => ({ ...r, from: v }))}
+                mode="date"
+                // The one ordering a picker cannot fix on its own: "to" before
+                // "from" is a range the server answers with nothing at all.
+                maximumDate={range.to ? new Date(`${range.to}T00:00:00`) : undefined}
+                style={styles.periodInput}
+              />
+              <DateField
+                label="To"
+                value={range.to}
+                onChangeText={(v) => setRange((r) => ({ ...r, to: v }))}
+                mode="date"
+                minimumDate={range.from ? new Date(`${range.from}T00:00:00`) : undefined}
+                style={styles.periodInput}
+              />
             </View>
             <View style={styles.presetRow}>
               {([
                 ['This month', () => setRange(monthRange(0))],
                 ['Last month', () => setRange(monthRange(1))],
-                ['This year', () => setRange({ from: `${new Date().getFullYear()}-01-01`, to: isoDate(new Date()) })],
+                // "This financial year", spelled out. The old "This year" meant
+                // the calendar year here and the April-start FY on the web —
+                // see `financialYearRange`.
+                ['This financial year', () => setRange(financialYearRange())],
               ] as const).map(([label, apply]) => (
                 <Pressable key={label} onPress={apply} style={[styles.presetChip, { borderColor: c.border }]}>
                   <Text style={{ fontSize: 12, fontWeight: '600', color: c.primary }}>{label}</Text>
@@ -240,7 +282,12 @@ function InsightsBody({ c, board }: { c: ReturnType<typeof themeColors>; board: 
   const ageingTotal = ageingRows.reduce((sum, r) => sum + r.value, 0);
   // 0-30 → green, 90+ → red — the same "closer to due, closer to danger"
   // reading `AgeingCard` below gives with plain text; here it is colour.
-  const AGEING_COLORS = [c.success, c.primary, c.warning, c.error];
+  //
+  // The second band is `info`, not `primary`. Now that the brand ramp is green
+  // (see `constants/colors.ts`), a `primary` slice sat next to a `success` slice
+  // would be two greens in the same legend and the band would stop being
+  // readable. `info` is a real blue and is not used anywhere else in this chart.
+  const AGEING_COLORS = [c.success, c.info, c.warning, c.error];
 
   return (
     <>

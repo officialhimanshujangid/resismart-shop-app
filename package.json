@@ -8,6 +8,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
+    "@react-native-google-signin/google-signin": "^16.1.5",
     "@tanstack/react-query": "^5.101.4",
     "axios": "^1.7.9",
     "expo": "~54.0.0",
@@ -49,6 +50,7 @@
     "babel-preset-expo": "~54.0.11",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0",
+    "sharp": "^0.35.4",
     "typescript": "~5.9.2"
   },
   "scripts": {
@@ -58,7 +60,8 @@
     "web": "expo start --web",
     "typecheck": "node scripts/generate-router-types.js && tsc --noEmit",
     "routes:generate": "node scripts/generate-router-types.js",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "icons": "node scripts/generate-brand-assets.mjs"
   },
   "private": true
 }

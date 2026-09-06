@@ -1,9 +1,12 @@
 import React from 'react';
 import { useColorScheme } from 'react-native';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
+import { useNotifications } from '../../../src/features/notifications/hooks';
 import { themeColors } from '../../../src/constants/colors';
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -53,7 +56,38 @@ const tabIcon =
 export default function TabsLayout() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const insets = useSafeAreaInsets();
   const { ready, can, hasModule, menu } = usePartnerEntitlements();
+
+  /**
+   * Bills written offline that have not reached the server yet.
+   *
+   * On the tab rather than only inside Billing because an unsent invoice is
+   * exactly the thing a partner will not think to go and look for — it was
+   * "saved" as far as they saw. The engine that fills this runs app-wide from
+   * `(app)/_layout.tsx`, so the count is live whichever tab they are standing
+   * on. Reading the store costs one `useSyncExternalStore` subscription; there
+   * is no request behind it.
+   */
+  const { pendingCount } = useOfflineDrafts();
+
+  /**
+   * Unread alerts, on the tab that holds the inbox.
+   *
+   * On the TAB rather than only inside the inbox for the same reason the
+   * offline-draft count is: an alert that arrived while the phone was in a
+   * drawer is exactly the thing nobody thinks to go and look for. Until this
+   * phase there was no inbox at all, so anything not caught as a banner was
+   * simply lost.
+   *
+   * This is the one request the tab bar makes on its own. It is small, it is the
+   * same `qk.notifications()` cache the More row and the inbox read (react-query
+   * dedupes), and it is what finally gives the two existing invalidations —
+   * `useLiveEvents` on every SSE frame, `usePushRegistration` on every push
+   * received in the foreground — something to invalidate.
+   */
+  const notifications = useNotifications();
+  const unread = notifications.data?.unread ?? 0;
 
   const showBookings = hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ');
   const showOrders = hasModule('ORDERS') && can('ORDERS_VIEW', 'READ');
@@ -89,8 +123,13 @@ export default function TabsLayout() {
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: isDark ? 0.3 : 0.08,
           shadowRadius: 12,
-          height: 62,
-          paddingBottom: 8,
+          // A flat `height: 62` with `paddingBottom: 8` put the labels underneath
+          // the gesture bar on every phone with a bottom inset, and clipped them
+          // outright at a large system font scale. The bar is now 62dp of chrome
+          // PLUS whatever the device reserves at the bottom.
+          height: 62 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
+          paddingTop: 6,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
@@ -117,14 +156,22 @@ export default function TabsLayout() {
       <Tabs.Protected guard={showBilling}>
         <Tabs.Screen
           name="billing"
-          options={{ title: 'Billing', tabBarIcon: tabIcon('receipt') }}
+          options={{
+            title: 'Billing',
+            tabBarIcon: tabIcon('receipt'),
+            tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
+          }}
         />
       </Tabs.Protected>
 
       <Tabs.Protected guard={showMore}>
         <Tabs.Screen
           name="more"
-          options={{ title: 'More', tabBarIcon: tabIcon('dots-horizontal') }}
+          options={{
+            title: 'More',
+            tabBarIcon: tabIcon('dots-horizontal'),
+            tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined,
+          }}
         />
       </Tabs.Protected>
     </Tabs>

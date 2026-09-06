@@ -55,14 +55,20 @@ export interface PartnerInvoiceSettings {
    * (`settings?.autoInvoiceOnDelivery !== false`), so `undefined` here means
    * "on" too — mirror that with `!== false`, never `?? false`.
    *
-   * KNOWN GAP (flagged, not fixed here — out of this app's file-seam):
-   * `updateInvoiceSettingsSchema` (`backend/src/validators/partner-billing.validator.ts`)
-   * does not list either field, so a `PUT` carrying them is silently stripped
-   * by zod before the controller ever sees it — this screen's toggle will
-   * flip locally and revert on the next load until a backend session adds
-   * both fields to that schema (and the matching `if (body.x !== undefined)`
-   * lines in `updateInvoiceSettings`). GET already returns whatever is
-   * stored, so once the PUT gap is closed this needs no client change.
+   * This note used to carry a KNOWN GAP warning that a `PUT` carrying either
+   * field was silently stripped by zod, so the toggles "flip locally and revert".
+   * That gap is CLOSED and the warning is removed rather than left standing:
+   * `updateInvoiceSettingsSchema` now declares both
+   * (`backend/src/validators/partner-billing.validator.ts`), and
+   * `updateInvoiceSettings` applies both with the matching
+   * `if (body.x !== undefined)` lines
+   * (`backend/src/controllers/partner-billing-settings.controller.ts`). The
+   * reasoning it recorded was right at the time and is worth keeping in view —
+   * a field absent from that schema IS dropped before the controller sees it,
+   * with no error, which is why anything added to `UpdateInvoiceSettingsPayload`
+   * below has to be checked against it — but the specific claim about these two
+   * fields is no longer true, and a comment telling the next person a working
+   * feature is broken costs more than no comment at all.
    */
   autoInvoiceOnDelivery?: boolean;
   autoReceiptOnCodDelivery?: boolean;
@@ -85,7 +91,7 @@ export type UpdateInvoiceSettingsPayload = Partial<{
   showUpiQr: boolean;
   showSignature: boolean;
   thermal: Partial<InvoiceThermal>;
-  /** See the GAP note on `PartnerInvoiceSettings` — sent, but currently dropped server-side. */
+  /** Both accepted and applied server-side — see the note on `PartnerInvoiceSettings`. */
   autoInvoiceOnDelivery: boolean;
   autoReceiptOnCodDelivery: boolean;
 }>;

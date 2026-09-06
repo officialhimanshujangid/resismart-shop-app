@@ -26,21 +26,49 @@ interface StockAdjustModalProps {
   onSubmit: (input: { mode: StockAdjustMode; qty: number; reason: string; reasonCode: StockAdjustReasonCode }) => void;
 }
 
+/**
+ * The commonest reason for each mode, and the reason it FOLLOWS the mode.
+ *
+ * `PURCHASE` was set once when the dialog opened and never changed again, so
+ * "Remove 10 units" was filed as "new stock received" unless the partner
+ * happened to re-tap a chip nobody re-reads. A pre-picked wrong code is worse
+ * than none: it is the field an auditor uses to tell a write-off from a
+ * delivery, and it was confidently wrong on every decrease. Same three defaults
+ * the web dialog resets to (`catalog/products/StockDialog.tsx`).
+ */
+const DEFAULT_REASON: Record<StockAdjustMode, StockAdjustReasonCode> = {
+  INCREASE: 'PURCHASE',
+  DECREASE: 'DAMAGE',
+  SET: 'RECOUNT',
+};
+
 export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: StockAdjustModalProps) {
   const c = themeColors(useColorScheme() === 'dark');
   const [mode, setMode] = useState<StockAdjustMode>('INCREASE');
   const [qtyText, setQtyText] = useState('');
   const [reason, setReason] = useState('');
-  const [reasonCode, setReasonCode] = useState<StockAdjustReasonCode>('PURCHASE');
+  const [reasonCode, setReasonCode] = useState<StockAdjustReasonCode>(DEFAULT_REASON.INCREASE);
 
   React.useEffect(() => {
     if (target) {
       setMode('INCREASE');
       setQtyText('');
       setReason('');
-      setReasonCode('PURCHASE');
+      setReasonCode(DEFAULT_REASON.INCREASE);
     }
   }, [target]);
+
+  /**
+   * Switching mode re-picks the default, which DISCARDS a chip the partner
+   * chose by hand. That is the right trade: a deliberate reason picked under
+   * one mode ("Damaged") is rarely still right under another ("Set to"), and
+   * the chips are on screen the whole time — re-tapping one is a tap, while
+   * noticing a stale code from two modes ago is a habit nobody has.
+   */
+  const changeMode = (next: StockAdjustMode) => {
+    setMode(next);
+    setReasonCode(DEFAULT_REASON[next]);
+  };
 
   const qty = Number(qtyText);
   const qtyValid = qtyText.trim() !== '' && Number.isFinite(qty) && qty >= 0 && (mode === 'SET' || qty > 0);
@@ -63,7 +91,7 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
 
             <SegmentedButtons
               value={mode}
-              onValueChange={(v) => setMode(v as StockAdjustMode)}
+              onValueChange={(v) => changeMode(v as StockAdjustMode)}
               buttons={[
                 { value: 'INCREASE', label: 'Add' },
                 { value: 'DECREASE', label: 'Remove' },

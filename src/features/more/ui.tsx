@@ -6,6 +6,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { ColorScheme, radii } from '../../constants/colors';
+import { useIsOnline } from '../../hooks/useIsOnline';
 
 /**
  * Shared chrome for every screen under More — parties, staff, reports,
@@ -68,11 +69,26 @@ export function Screen({
   );
 }
 
+/**
+ * The shared "we are fetching" state.
+ *
+ * The offline label is not decoration. React Query now knows when the phone is
+ * off the network (`lib/queryClient.ts` wires `onlineManager` to NetInfo) and
+ * HOLDS a query rather than firing it into a dead radio — which is right, but
+ * it means a pending query in a basement never fails and never resolves, so
+ * every screen that renders this while offline would otherwise spin silently
+ * until the signal came back. The caller's own label is overridden rather than
+ * appended to: "Loading your payments…" is not what is happening, and the
+ * reason is the same on every screen.
+ */
 export function Loading({ c, label = 'Loading…' }: { c: ColorScheme; label?: string }) {
+  const online = useIsOnline();
   return (
     <View style={styles.centerBlock}>
       <ActivityIndicator size="large" color={c.primary} />
-      <Text style={[styles.centerText, { color: c.textSecondary }]}>{label}</Text>
+      <Text style={[styles.centerText, { color: c.textSecondary }]}>
+        {online ? label : 'No connection — waiting for the network…'}
+      </Text>
     </View>
   );
 }
@@ -145,10 +161,19 @@ export function Card({ c, children, style }: { c: ColorScheme; children: React.R
   return <View style={[styles.card, { backgroundColor: c.surface }, style]}>{children}</View>;
 }
 
-/** A pill toggle strip — used for period pickers, party-side tabs, report keys. */
+/**
+ * A pill toggle strip — used for period pickers, party-side tabs, report keys.
+ *
+ * `value` takes `''` as well as a key, and that widening is load-bearing rather
+ * than defensive: some of these strips ask a question the business may never
+ * have answered (`settings/where-you-work.tsx` is the one that does), and there
+ * is no key that honestly represents "nobody has said". `''` matches no `o.key`,
+ * so every chip renders inactive and the strip claims nothing. Every existing
+ * caller passes a real key and is unaffected — `T` still widens to `T | ''`.
+ */
 export function ChipRow<T extends string>({
   c, value, options, onChange,
-}: { c: ColorScheme; value: T; options: { key: T; label: string }[]; onChange: (v: T) => void }) {
+}: { c: ColorScheme; value: T | ''; options: { key: T; label: string }[]; onChange: (v: T) => void }) {
   return (
     <View style={styles.chipRow}>
       {options.map((o) => {

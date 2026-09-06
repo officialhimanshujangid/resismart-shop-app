@@ -1,15 +1,16 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { ActivityIndicator, Portal, Modal, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 
 import { themeColors, radii, palette } from '../../../src/constants/colors';
 import { usePartnerEntitlements, ModuleMenuEntry } from '../../../src/hooks';
 import { useAuth } from '../../../src/context/AuthContext';
 import { PartnerModule } from '../../../src/types/api-contract.generated';
 import { Card, Row, SectionLabel } from '../../../src/features/more/ui';
-import { toHref } from '../../../src/features/billing/routeHref';
+import { ContextPicker } from '../../../src/components/ContextPicker';
+import { useNotifications } from '../../../src/features/notifications/hooks';
 
 /**
  * The More tab: everything that is not a bottom tab.
@@ -95,21 +96,95 @@ function onLockedTap(entry: ModuleMenuEntry) {
     router.push(dest);
     return;
   }
-  // No in-app purchase flow for a base-plan module (Bookings/Catalogue/
-  // Orders/Invoicing) — that is a plan upgrade, not a one-off spend like a
-  // boost, and this build has no subscription-purchase screen. Say so rather
-  // than pretending a tap does something.
-  Alert.alert(
-    entry.label,
-    `${entry.blurb}\n\nYour current plan does not include this. Ask your ResiSmart contact to upgrade your plan to turn it on.`,
-  );
+  /**
+   * Everything else goes to the plan screen.
+   *
+   * This used to be a native alert ending "ask your ResiSmart contact to
+   * upgrade your plan". That sentence was defending the absence of an in-app
+   * PURCHASE flow, and that absence is still deliberate — a plan upgrade is a
+   * subscription, not a one-off spend like a boost, and this app does not run
+   * Razorpay (see `settings/plan.tsx`'s header). But it was doing a second job
+   * it was never entitled to do: it was also the app's only answer to "what
+   * plan am I on, and what would this cost", and it answered that with a phone
+   * call.
+   *
+   * `settings/plan.tsx` now answers it — current plan, status, renewal date,
+   * every module's ON/OFF/LOCKED state, usage against the ceilings, and a link
+   * to the web panel where the upgrade is actually bought. A LOCKED row is only
+   * ever drawn for somebody holding SETTINGS at FULL (`moduleMenuEntries`), so
+   * every partner who can reach this line can reach that screen.
+   */
+  router.push('/settings/plan');
 }
 
 export default function MoreScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { menu, ready, entitlements, can, hasModule } = usePartnerEntitlements();
-  const { user, profile, logout } = useAuth();
+  const { user, profile, logout, availableContexts, switchToContext } = useAuth();
+
+  /**
+   * The unread badge, and the query that finally READS `qk.notifications()`.
+   *
+   * That key was invalidated by `useLiveEvents` on every SSE frame and by
+   * `usePushRegistration` on every push received while the app is open, and no
+   * query had ever been registered under it — so both invalidations were no-ops.
+   * Mounting the inbox query here means the badge on this row is live whichever
+   * tab the partner is standing on, which is the point of putting it on a screen
+   * they pass through rather than only inside the inbox itself.
+   */
+  const notifications = useNotifications();
+  const unread = notifications.data?.unread ?? 0;
+
+  /**
+   * A partner with two businesses could not switch between them.
+   *
+   * `availableContexts` was exposed with the comment "for a 'switch shop' menu"
+   * and no screen read it. Signing out and back in was the only way across.
+   * `ContextPicker` is reused rather than replaced — it is the same list, in the
+   * same shape, that the sign-in flow already draws, and two pickers for one
+   * decision is how the two come to disagree about what a business looks like.
+   */
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  /**
+   * The businesses that are NOT the one already open. A picker whose first row
+   * is where you already are invites a tap that costs a full session swap, a
+   * cleared cache and a push re-registration, and lands you back on the screen
+   * you were on.
+   *
+   * Compared on `contextId` where the stored profile has one — that is the
+   * server's own unambiguous handle, and somebody who is PARTNER_ADMIN of one
+   * shop and PARTNER_STAFF of another has two contexts that a `tenantId`
+   * comparison cannot tell apart. `tenantId` is the fallback for a session
+   * persisted by a build that predates contexts.
+   */
+  const otherContexts = useMemo(
+    () =>
+      availableContexts.filter((ctx) =>
+        profile?.contextId ? ctx.contextId !== profile.contextId : ctx.tenantId !== profile?.tenantId,
+      ),
+    [availableContexts, profile?.contextId, profile?.tenantId],
+  );
+
+  const handleSwitch = useCallback(
+    (tenantId: string, role: string) => {
+      // Searched within `otherContexts`, not the whole list: the picker is only
+      // ever shown those rows, and looking in the full list could resolve a
+      // tenantId+role pair back to the context already open.
+      const chosen = otherContexts.find((ctx) => ctx.tenantId === tenantId && ctx.role === role);
+      if (!chosen) return;
+      setSwitching(true);
+      switchToContext(chosen.contextId)
+        .then(() => setSwitcherOpen(false))
+        .catch((e: unknown) =>
+          Alert.alert('Could not switch business', e instanceof Error ? e.message : 'Please try again.'),
+        )
+        .finally(() => setSwitching(false));
+    },
+    [otherContexts, switchToContext],
+  );
 
   const moduleRows = useMemo(
     () => menu.filter((e) => !(e.state === 'ON' && TAB_COVERED.has(e.module))),
@@ -136,29 +211,35 @@ export default function MoreScreen() {
    *     they are sub-screens of a module that IS tab-covered, so More is the
    *     only path in.
    *
-   * `toHref()` (not a bare string literal) for these three: `.expo/types/router.d.ts`
-   * is regenerated from the file system at typecheck time, and this file
-   * cannot know whether 1C's `services`/`availability` routes have been
-   * generated yet in a given build — see `routeHref.ts`'s header. Cast, not
-   * suppressed: `router.push`/`Href` still reject a malformed object.
+   * These eight were wrapped in `toHref()` rather than written as bare literals,
+   * on the reasoning that this file could not know whether 1C's
+   * `services`/`availability` routes had been generated yet in a given build.
+   * That is no longer true and the wrapper is gone from this file: since
+   * `scripts/generate-router-types.js` regenerates the declaration file as a
+   * PREREQUISITE of `npm run typecheck`, "not generated yet" is not a state a
+   * typecheck can be in. Leaving the cast on would have quietly cancelled the
+   * guarantee this header opens with — More is the only path into every one of
+   * these eight areas, so a rename that slipped past the compiler here is eight
+   * dead taps and no build failure. See `routeHref.ts` for the wrapper's other
+   * call sites, which want the same treatment in their own pass.
    */
   const businessRows = useMemo(() => {
-    const rows: { key: string; label: string; icon: string; blurb: string; href: ReturnType<typeof toHref>; visible: boolean }[] = [
+    const rows: { key: string; label: string; icon: string; blurb: string; href: Href; visible: boolean }[] = [
       // `/parties`, not `/parties/index`: expo-router strips the trailing
       // `/index` when it builds a route key, so the `/index` spelling these
       // four shipped with matched no route at all and every Business row was
       // a dead tap.
-      { key: 'CUSTOMERS', label: 'Parties', icon: 'account-group-outline', blurb: 'Customers, suppliers, and the ones who are both — with their running balance.', href: toHref('/parties'), visible: can('CUSTOMERS', 'READ') },
+      { key: 'CUSTOMERS', label: 'Parties', icon: 'account-group-outline', blurb: 'Customers, suppliers, and the ones who are both — with their running balance.', href: '/parties', visible: can('CUSTOMERS', 'READ') },
       // C7 — reviews reply. Same `CUSTOMERS` permission row Parties uses;
       // there is no dedicated review permission on the server (see
       // `features/reviews/api.ts`'s header).
-      { key: 'REVIEWS', label: 'Reviews', icon: 'star-outline', blurb: 'What residents said after a booking or an order, and your reply to it.', href: toHref('/reviews'), visible: can('CUSTOMERS', 'READ') },
-      { key: 'PAYMENTS', label: 'Payments', icon: 'cash-multiple', blurb: 'Money in against a sale, money out against a purchase — allocated to what it settles.', href: toHref('/payments'), visible: hasModule('INVOICING') && can('INVOICING_VIEW', 'READ') },
-      { key: 'SERVICES', label: 'Services', icon: 'clipboard-list-outline', blurb: 'The services you offer, and what each one costs.', href: toHref('/services'), visible: hasModule('BOOKINGS') && can('CATALOG_VIEW', 'READ') },
-      { key: 'AVAILABILITY', label: 'Availability', icon: 'clock-outline', blurb: 'Your working hours — no hours set, no booking can reach you.', href: toHref('/availability'), visible: hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ') },
-      { key: 'REPORTS', label: 'Reports', icon: 'chart-line', blurb: 'Sales, purchases, GST returns, outstanding and profit.', href: toHref('/reports'), visible: can('REPORTS', 'READ') },
-      { key: 'STAFF', label: 'Staff', icon: 'account-tie-outline', blurb: 'Who works here, their roles, and what each role may touch.', href: toHref('/staff'), visible: can('STAFF', 'READ') },
-      { key: 'SETTINGS', label: 'Settings', icon: 'cog-outline', blurb: 'Business details, how invoices look, and WhatsApp alerts.', href: toHref('/settings'), visible: can('SETTINGS', 'READ') },
+      { key: 'REVIEWS', label: 'Reviews', icon: 'star-outline', blurb: 'What residents said after a booking or an order, and your reply to it.', href: '/reviews', visible: can('CUSTOMERS', 'READ') },
+      { key: 'PAYMENTS', label: 'Payments', icon: 'cash-multiple', blurb: 'Money in against a sale, money out against a purchase — allocated to what it settles.', href: '/payments', visible: hasModule('INVOICING') && can('INVOICING_VIEW', 'READ') },
+      { key: 'SERVICES', label: 'Services', icon: 'clipboard-list-outline', blurb: 'The services you offer, and what each one costs.', href: '/services', visible: hasModule('BOOKINGS') && can('CATALOG_VIEW', 'READ') },
+      { key: 'AVAILABILITY', label: 'Availability', icon: 'clock-outline', blurb: 'Your working hours — no hours set, no booking can reach you.', href: '/availability', visible: hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ') },
+      { key: 'REPORTS', label: 'Reports', icon: 'chart-line', blurb: 'Sales, purchases, GST returns, outstanding and profit.', href: '/reports', visible: can('REPORTS', 'READ') },
+      { key: 'STAFF', label: 'Staff', icon: 'account-tie-outline', blurb: 'Who works here, their roles, and what each role may touch.', href: '/staff', visible: can('STAFF', 'READ') },
+      { key: 'SETTINGS', label: 'Settings', icon: 'cog-outline', blurb: 'Business details, how invoices look, and WhatsApp alerts.', href: '/settings', visible: can('SETTINGS', 'READ') },
     ];
     return rows.filter((row) => row.visible);
   }, [can, hasModule]);
@@ -254,11 +335,74 @@ export default function MoreScreen() {
             <Card c={c} style={styles.listCard}>
               <Row c={c} icon="account-circle-outline" title={user?.name || 'Your account'} subtitle={user?.phone || user?.email} />
               <View style={[styles.divider, { backgroundColor: c.divider }]} />
+              {/* Not gated on any permission: these are this PERSON's own
+                  messages, and `/notifications` is ungated server-side for
+                  exactly that reason — a permission check there could only stop
+                  somebody reading their own post. */}
+              <Row
+                c={c}
+                icon="bell-outline"
+                title="Alerts"
+                subtitle={unread > 0 ? `${unread} unread` : 'Bookings, orders and plan notices'}
+                right={
+                  unread > 0 ? (
+                    <View style={[styles.badge, { backgroundColor: c.secondary }]}>
+                      <Text style={[styles.badgeText, { color: c.textInverse }]}>
+                        {unread > 99 ? '99+' : String(unread)}
+                      </Text>
+                    </View>
+                  ) : undefined
+                }
+                onPress={() => router.push('/notifications')}
+              />
+              {otherContexts.length > 0 && (
+                <>
+                  <View style={[styles.divider, { backgroundColor: c.divider }]} />
+                  <Row
+                    c={c}
+                    icon="store-outline"
+                    title="Switch business"
+                    subtitle={`You also run ${otherContexts.length === 1 ? otherContexts[0].tenantName : `${otherContexts.length} other businesses`}`}
+                    onPress={() => setSwitcherOpen(true)}
+                  />
+                </>
+              )}
+              <View style={[styles.divider, { backgroundColor: c.divider }]} />
               <Row c={c} icon="logout" title="Sign out" onPress={handleSignOut} danger />
             </Card>
           </>
         )}
       </ScrollView>
+
+      <Portal>
+        <Modal
+          visible={switcherOpen}
+          onDismiss={() => { if (!switching) setSwitcherOpen(false); }}
+          contentContainerStyle={[styles.switcher, { backgroundColor: c.surface }]}
+        >
+          <Text style={[styles.switcherTitle, { color: c.textPrimary }]}>Switch business</Text>
+          <Text style={[styles.switcherBody, { color: c.textSecondary }]}>
+            Everything on screen is replaced with the business you pick — bookings, orders, customers and takings.
+          </Text>
+          {switching ? (
+            <ActivityIndicator color={c.primary} style={{ marginVertical: 24 }} />
+          ) : (
+            /* `ContextPicker` hands back the whole profile row it was given; only
+               `tenantId` + `role` identify which one was tapped, and
+               `switchToContext` resolves those back to the `contextId` the
+               refresh endpoint actually switches by. */
+            <ContextPicker
+              profiles={otherContexts.map((ctx) => ({
+                tenantType: ctx.tenantType,
+                tenantId: ctx.tenantId,
+                role: ctx.role,
+                tenantName: ctx.tenantName,
+              }))}
+              onSelect={(p) => handleSwitch(p.tenantId, p.role)}
+            />
+          )}
+        </Modal>
+      </Portal>
     </SafeAreaView>
   );
 }
@@ -272,4 +416,9 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 16, paddingTop: 8, gap: 10 },
   listCard: { padding: 0, overflow: 'hidden' },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 62 },
+  badge: { minWidth: 22, height: 22, borderRadius: radii.pill, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  switcher: { margin: 20, borderRadius: radii.sheet, padding: 20, gap: 12 },
+  switcherTitle: { fontSize: 18, fontWeight: '700' },
+  switcherBody: { fontSize: 12.5, lineHeight: 18 },
 });

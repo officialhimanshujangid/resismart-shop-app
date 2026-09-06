@@ -11,10 +11,28 @@ import { OrderStatusChip } from './OrderStatusChip';
 import { useOrderReturnEligibility, hasReturnableItems } from '../returnEligibility';
 import { themeColors, radii } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
+// The app's shared error state, from the same UI kit every settings and list
+// screen already draws — not a second, order-shaped way of saying "that failed".
+import { ErrorBlock } from '../../more/ui';
 
 interface OrderDetailModalProps {
   order: PartnerOrder | null;
   loading: boolean;
+  /**
+   * Why this order could not be shown, in the partner's words — null while
+   * there is nothing wrong.
+   *
+   * Threaded from `(tabs)/orders.tsx` rather than fetched here, because that
+   * screen owns the query. It has to exist at all because `loading` and `order`
+   * cannot describe a failure between them: both go false-y, which used to read
+   * as "there is nothing to show" and closed the sheet on the spot. A partner
+   * tapping an order then got no sheet, no message and no hint that anything
+   * had happened — the worst of the three outcomes, because it looks like the
+   * tap missed.
+   */
+  error: string | null;
+  /** Try the order again from inside the sheet, so a failure does not force the partner to close and re-tap. */
+  onRetry?: () => void;
   pending: boolean;
   /** Gate 3 (`ORDERS_MANAGE` FULL) — the same check `(tabs)/orders.tsx` applies before drawing any other action button; fail-closed for the return button too. */
   canManage: boolean;
@@ -24,9 +42,9 @@ interface OrderDetailModalProps {
   onRecordReturn: () => void;
 }
 
-export function OrderDetailModal({ order, loading, pending, canManage, onClose, onAction, onRecordReturn }: OrderDetailModalProps) {
+export function OrderDetailModal({ order, loading, error, onRetry, pending, canManage, onClose, onAction, onRecordReturn }: OrderDetailModalProps) {
   const c = themeColors(useColorScheme() === 'dark');
-  const visible = loading || Boolean(order);
+  const visible = loading || Boolean(order) || Boolean(error);
   const verbs = order ? filterKnownVerbs(order.allowedVerbs) : [];
 
   // M5 gate: an ISSUED order-sourced invoice must exist, and something must
@@ -50,9 +68,15 @@ export function OrderDetailModal({ order, loading, pending, canManage, onClose, 
           </Pressable>
         </View>
 
-        {loading || !order ? (
+        {loading ? (
           <View style={styles.loadingBox}>
             <ActivityIndicator color={c.primary} />
+          </View>
+        ) : !order ? (
+          // Reached only while `error` is set — `visible` is false otherwise, so
+          // there is no third state where the sheet is open with neither.
+          <View style={styles.loadingBox}>
+            <ErrorBlock c={c} message={error ?? 'Could not load that order.'} onRetry={onRetry} />
           </View>
         ) : (
           <>

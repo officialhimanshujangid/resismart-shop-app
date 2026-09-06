@@ -1,19 +1,37 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Chip, Text, TextInput } from 'react-native-paper';
-import { AssignableStaff, BookingVerb, PartnerBookingView } from '../booking.types';
-import { VERB_LABELS } from '../booking.types';
-import { useAssignableStaff } from '../hooks';
+import { AssignableStaff, BookingConflictView, BookingVerb, PartnerBookingView } from '../booking.types';
+import { MAX_EXTEND_MIN, VERB_LABELS } from '../booking.types';
+import { useAssignableStaff, useBookingOverrun } from '../hooks';
+import { formatMinutes, formatTime } from '../format';
 import { themeColors, radii } from '../../../constants/colors';
 
 /**
  * The one modal for every verb that needs MORE than a confirmation tap:
  * `reject` (a reason the customer reads), `assign` (a staff picker), `reschedule`
- * (a new slot) and `complete` on an AT_CUSTOMER job (the code the customer reads
- * out). One component rather than four, because they share the same sheet
- * chrome and the same "submit disabled until valid" shape, and four copies of
- * that shape is four places to fix the same bug.
+ * (a new slot), `complete` on an AT_CUSTOMER job (the code the customer reads
+ * out) and `extend` (how much longer, against what is booked behind). One
+ * component rather than five, because they share the same sheet chrome and the
+ * same "submit disabled until valid" shape, and five copies of that shape is
+ * five places to fix the same bug.
  */
+
+/**
+ * The bites of extra time worth offering, in minutes.
+ *
+ * Chips rather than a free text field for the same reason the reschedule picker
+ * is chips: this is typed one-handed by somebody standing in a customer's flat.
+ * `MAX_EXTEND_MIN` (120) is the server's ceiling and the largest chip here; the
+ * list is filtered again at render against `canExtendByMin`, so no chip on
+ * screen is one the server would refuse.
+ */
+const EXTEND_CHIPS = [10, 15, 20, 30, 45, 60, 90, MAX_EXTEND_MIN];
+
+/** One appointment in the way, said as a partner would say it to themselves. */
+function conflictLine(x: BookingConflictView): string {
+  return `${formatTime(x.slotStart)} · ${x.customerName} · ${x.serviceName} (${x.code})`;
+}
 
 interface Props {
   visible: boolean;
@@ -21,6 +39,16 @@ interface Props {
   booking: PartnerBookingView | null;
   isDark: boolean;
   submitting: boolean;
+  /**
+   * The appointments a refusal named, when the last submit was refused.
+   *
+   * Passed IN rather than caught here because the mutation lives with the
+   * caller. It is what turns a 409 `SLOT_TAKEN_AHEAD` from "Could not do that"
+   * into a list of people and times the partner can ring or move — the whole
+   * reason `BookingConflictError` carries a body at all. Shown in the sheet, not
+   * an alert, so the sheet stays open and a smaller number is one tap away.
+   */
+  conflicts?: BookingConflictView[];
   onDismiss: () => void;
   onSubmit: (body: Record<string, unknown>) => void;
 }
@@ -67,18 +95,30 @@ const dayLabel = (d: Date, idx: number) => {
   return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
 };
 
-export function BookingActionModal({ visible, verb, booking, isDark, submitting, onDismiss, onSubmit }: Props) {
+export function BookingActionModal({
+  visible, verb, booking, isDark, submitting, conflicts, onDismiss, onSubmit,
+}: Props) {
   const c = themeColors(isDark);
   const [reason, setReason] = useState('');
   const [otp, setOtp] = useState('');
   const [staffId, setStaffId] = useState<string | null>(null);
   const [dayIndex, setDayIndex] = useState(0);
   const [slot, setSlot] = useState<Date | null>(null);
+  const [minutes, setMinutes] = useState<number | null>(null);
 
   const days = useMemo(() => nextDays(14), []);
   const slots = useMemo(() => timeSlots(days[dayIndex] ?? new Date()), [days, dayIndex]);
 
   const staffQuery = useAssignableStaff(visible && verb === 'assign');
+  /**
+   * Asked only while the extend sheet is open, and asked FRESH every time.
+   *
+   * The partner is about to decide how much of their own diary to claim, and
+   * `canExtendByMin` is the number that decides whether that is even possible.
+   * A cached one is a wrong one — see `useBookingOverrun`.
+   */
+  const overrunQuery = useBookingOverrun(booking?.id, visible && verb === 'extend');
+  const overrun = overrunQuery.data;
 
   // Reset per-open so a dismissed reject does not prefill the next reject.
   React.useEffect(() => {
@@ -88,9 +128,34 @@ export function BookingActionModal({ visible, verb, booking, isDark, submitting,
     setStaffId(null);
     setDayIndex(0);
     setSlot(null);
+    setMinutes(null);
   }, [visible, verb, booking?.id]);
 
   if (!verb || !booking) return null;
+
+  /**
+   * The chips actually on offer.
+   *
+   * Clamped to `canExtendByMin`, which the server worked out by walking forward
+   * from the current claim to the moment the things already booked would fill
+   * the slot — NOT simply "the next booking", because with a capacity of three
+   * two appointments in the next hour still leave room to run into it. Offering
+   * a chip past that boundary would be offering a refusal.
+   *
+   * The boundary itself is offered too, when it is not already a chip. Without
+   * it a partner with eleven minutes of room would be shown "10 min" and no way
+   * to ask for the eleventh — and one with seven would be shown an empty row
+   * with nothing said, because the smallest chip is ten.
+   *
+   * Empty while the answer is still outstanding, so nothing is tappable before
+   * anybody knows what would be accepted.
+   */
+  const extendOptions = ((): number[] => {
+    if (!overrun) return [];
+    const room = overrun.canExtendByMin;
+    const fit = EXTEND_CHIPS.filter((m) => m <= room);
+    return fit.includes(room) || room <= 0 ? fit : [...fit, room];
+  })();
 
   const staffName = (s: AssignableStaff) => (typeof s.userId === 'string' ? s.designation : s.userId.name);
 
@@ -99,10 +164,16 @@ export function BookingActionModal({ visible, verb, booking, isDark, submitting,
     if (verb === 'assign') return Boolean(staffId);
     if (verb === 'reschedule') return Boolean(slot);
     if (verb === 'complete') return booking.mode !== 'AT_CUSTOMER' || /^\d{6}$/.test(otp);
+    if (verb === 'extend') return minutes !== null;
     return true;
   })();
 
   const submit = () => {
+    // `minutes` is a DELTA on the current claim and never an instant — see
+    // `bookingApi.extend`. `note` rides along where the partner typed one.
+    if (verb === 'extend') {
+      return onSubmit({ minutes, ...(reason.trim() ? { note: reason.trim() } : {}) });
+    }
     if (verb === 'reject') return onSubmit({ reason: reason.trim() });
     if (verb === 'assign') return onSubmit({ staffId });
     if (verb === 'reschedule') return onSubmit({ slotStart: slot?.toISOString() });
@@ -203,6 +274,111 @@ export function BookingActionModal({ visible, verb, booking, isDark, submitting,
                     </Chip>
                   ))}
                 </View>
+              </>
+            )}
+
+            {verb === 'extend' && (
+              <>
+                {/* Where the job actually is, before the partner is asked to
+                    decide anything. `getBookingOverrun` answers for any status,
+                    so this is never a guess made on the phone. */}
+                {overrunQuery.isPending && (
+                  <Text style={[styles.hint, { color: c.textSecondary }]}>
+                    Checking what is booked behind this one…
+                  </Text>
+                )}
+                {overrunQuery.isError && (
+                  <Text style={[styles.hint, { color: c.error }]}>
+                    We could not check what is behind this job, so we cannot say how much room there is.
+                  </Text>
+                )}
+                {overrun && (
+                  <Text style={[styles.hint, { color: overrun.runningOverMin > 0 ? c.warning : c.textSecondary }]}>
+                    {overrun.runningOverMin > 0
+                      ? `This job is ${formatMinutes(overrun.runningOverMin)} past its agreed end.`
+                      : `${formatMinutes(overrun.remainingMin)} left of the booked time.`}
+                    {' '}
+                    {overrun.capacity > 1
+                      ? `You can take ${overrun.capacity} at a time here.`
+                      : 'Your diary holds one job at a time here.'}
+                  </Text>
+                )}
+
+                {/* Nothing to offer, and the honest reason why. `reschedule` is
+                    the verb that moves what is behind — no second one was
+                    invented for it, so the sentence names it rather than
+                    offering a button that would be a duplicate of one already
+                    on the card. */}
+                {overrun && overrun.canExtendByMin === 0 ? (
+                  <Text style={[styles.hint, { color: c.warning }]}>
+                    There is no room to run on — the time behind this job is taken. Move what is next with
+                    “{VERB_LABELS.reschedule}”, or finish up and let it start late.
+                  </Text>
+                ) : (
+                  <>
+                    <Text style={[styles.hint, { color: c.textSecondary, marginTop: 10 }]}>
+                      How much longer?
+                      {overrun ? ` Up to ${formatMinutes(overrun.canExtendByMin)}.` : ''}
+                    </Text>
+                    <View style={styles.chipWrap}>
+                      {extendOptions.map((m) => (
+                        <Chip
+                          key={m}
+                          selected={minutes === m}
+                          onPress={() => setMinutes(m)}
+                          style={styles.chip}
+                        >
+                          {formatMinutes(m)}
+                        </Chip>
+                      ))}
+                    </View>
+                  </>
+                )}
+
+                {/* What is behind, named — whether or not it is currently in the
+                    way. A partner deciding to run twenty minutes over wants to
+                    know whose appointment they are eating into before they do
+                    it, not after. */}
+                {overrun && overrun.conflicts.length > 0 && (
+                  <>
+                    <Text style={[styles.hint, { color: c.textSecondary, marginTop: 10 }]}>
+                      Booked after this one:
+                    </Text>
+                    {overrun.conflicts.map((x) => (
+                      <Text key={x.id} style={[styles.hint, { color: c.textSecondary }]}>
+                        • {conflictLine(x)}
+                      </Text>
+                    ))}
+                  </>
+                )}
+
+                {/* The refusal, once there has been one. Names and times, not
+                    "Could not do that" — see the `conflicts` prop. */}
+                {conflicts && conflicts.length > 0 && (
+                  <>
+                    <Text style={[styles.hint, { color: c.error, marginTop: 10 }]}>
+                      That much would run into work already booked:
+                    </Text>
+                    {conflicts.map((x) => (
+                      <Text key={x.id} style={[styles.hint, { color: c.error }]}>
+                        • {conflictLine(x)}
+                      </Text>
+                    ))}
+                    <Text style={[styles.hint, { color: c.textSecondary }]}>
+                      Ask for less time, move those with “{VERB_LABELS.reschedule}”, or finish up and let
+                      the next one start late.
+                    </Text>
+                  </>
+                )}
+
+                <TextInput
+                  mode="outlined"
+                  label="Why (optional — your team sees this)"
+                  value={reason}
+                  onChangeText={setReason}
+                  multiline
+                  style={styles.input}
+                />
               </>
             )}
 

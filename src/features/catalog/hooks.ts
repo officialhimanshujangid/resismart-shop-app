@@ -91,3 +91,32 @@ export function useCreateCategory() {
     },
   });
 }
+
+/**
+ * Rename / reorder / restore a category.
+ *
+ * Invalidates the whole `catalog` branch, not just `categories()`: the product
+ * list and every product detail carry a POPULATED `categoryId: { _id, name }`,
+ * so a rename leaves the old name printed on every card until those refetch.
+ */
+export function useUpdateCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; sortOrder?: number; isActive?: boolean }) =>
+      catalogApi.updateCategory(id, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.catalog.all() });
+    },
+  });
+}
+
+/** Hide a category. Soft — the products in it stay on sale; see the API header. */
+export function useHideCategory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => catalogApi.removeCategory(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.catalog.all() });
+    },
+  });
+}

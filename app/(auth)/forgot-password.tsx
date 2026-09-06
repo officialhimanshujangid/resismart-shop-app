@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
+  useColorScheme,
 } from 'react-native';
 import { Text, Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,17 +17,21 @@ import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { authApi } from '../../src/api/auth.api';
+import { apiErrorMessage } from '../../src/api/axios';
 import { AppButton } from '../../src/components/AppButton';
 import { AppInput } from '../../src/components/AppInput';
 import { Hero } from '../../src/components/Hero';
-import { Colors } from '../../src/constants/colors';
+import { themeColors } from '../../src/constants/colors';
 
+/** Follows the system theme, for the reason spelled out at the top of `login.tsx`. */
 const schema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
 });
 type FormData = z.infer<typeof schema>;
 
 export default function ForgotPasswordScreen() {
+  const isDark = useColorScheme() === 'dark';
+  const c = themeColors(isDark);
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; error: boolean }>({
@@ -46,29 +51,47 @@ export default function ForgotPasswordScreen() {
   const showSnack = (message: string, error = false) =>
     setSnackbar({ visible: true, message, error });
 
+  /**
+   * "Check your inbox" is only said when the server actually took the request.
+   *
+   * It used to be said on EVERY outcome — the catch set `submitted` too — so a
+   * partner on a dead connection watched a confident confirmation for an email
+   * that had never left the phone, and then waited for it. That is not the
+   * privacy behaviour it looks like: `forgotPassword` already answers 200 for an
+   * address it has never seen (see the controller's own note on not leaking
+   * whether an account exists), so ANY failure reaching this catch is a
+   * transport or server problem and can be reported as one without saying
+   * anything about the account.
+   *
+   * `email` alone is right here, unlike `login.tsx`: `forgotPasswordSchema` on
+   * the server takes `z.string().email()` and looks the user up by email only,
+   * so a mobile number genuinely has nothing to reset. A passwordless partner —
+   * which is every partner the wizard creates — wants the "sign in with a
+   * one-time code" link on the sign-in screen instead, not this screen.
+   */
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     try {
       await authApi.forgotPassword({ email: data.email });
       setSubmitted(true);
-    } catch {
-      setSubmitted(true);
+    } catch (err) {
+      showSnack(apiErrorMessage(err, 'We could not send that reset link. Please try again.'), true);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-            <MaterialCommunityIcons name="arrow-left" size={22} color={Colors.primary} />
-            <Text style={styles.backText}>Back to sign in</Text>
+            <MaterialCommunityIcons name="arrow-left" size={22} color={c.primary} />
+            <Text style={[styles.backText, { color: c.primary }]}>Back to sign in</Text>
           </TouchableOpacity>
 
           <Hero
-            isDark={false}
+            isDark={isDark}
             variant="brand"
             logoSize="medium"
             subtitle="We'll help you back into your account."
@@ -76,19 +99,23 @@ export default function ForgotPasswordScreen() {
           />
 
           <View style={styles.header}>
-            <Text style={styles.title}>Forgot password?</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: c.textPrimary }]}>Forgot password?</Text>
+            <Text style={[styles.subtitle, { color: c.textSecondary }]}>
               Enter your email and we'll send you a password reset link.
             </Text>
           </View>
 
           {submitted ? (
-            <View style={styles.successCard}>
-              <MaterialCommunityIcons name="email-check-outline" size={52} color={Colors.success} />
-              <Text style={styles.successTitle}>Check your inbox</Text>
-              <Text style={styles.successMessage}>
-                We've sent a password reset link to{' '}
-                <Text style={{ fontWeight: '600' }}>{getValues('email')}</Text>.{'\n\n'}
+            <View style={[styles.successCard, { backgroundColor: c.surface, shadowColor: c.shadow }]}>
+              <MaterialCommunityIcons name="email-check-outline" size={52} color={c.success} />
+              <Text style={[styles.successTitle, { color: c.textPrimary }]}>Check your inbox</Text>
+              {/* "If there is an account" — the server deliberately answers the
+                  same whether or not the address is one it knows, so promising a
+                  delivered email would be a promise this screen cannot keep. */}
+              <Text style={[styles.successMessage, { color: c.textSecondary }]}>
+                If there is an account for{' '}
+                <Text style={{ fontWeight: '600' }}>{getValues('email')}</Text>, a password reset link is on
+                its way.{'\n\n'}
                 The link will expire in 1 hour.
               </Text>
               <AppButton
@@ -99,7 +126,7 @@ export default function ForgotPasswordScreen() {
               />
             </View>
           ) : (
-            <View style={styles.formCard}>
+            <View style={[styles.formCard, { backgroundColor: c.surface, shadowColor: c.shadow }]}>
               <Controller
                 control={control}
                 name="email"
@@ -125,7 +152,10 @@ export default function ForgotPasswordScreen() {
                 style={styles.submitBtn}
               />
               <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.signInLink} activeOpacity={0.7}>
-                <Text style={styles.signInText}>Remember your password? Sign in</Text>
+                {/* `primary`, not `primaryLight` — `brand[400]` fails AA on white. */}
+                <Text style={[styles.signInText, { color: c.primary }]}>
+                  Remember your password? Sign in
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -136,7 +166,7 @@ export default function ForgotPasswordScreen() {
         visible={snackbar.visible}
         onDismiss={() => setSnackbar((s) => ({ ...s, visible: false }))}
         duration={5000}
-        style={snackbar.error ? styles.snackError : styles.snackSuccess}
+        style={{ backgroundColor: snackbar.error ? c.error : c.success }}
         action={{ label: 'OK', onPress: () => setSnackbar((s) => ({ ...s, visible: false })) }}
       >
         {snackbar.message}
@@ -145,29 +175,38 @@ export default function ForgotPasswordScreen() {
   );
 }
 
+/** Layout only — colours are applied at render. See the note in `login.tsx`. */
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.background },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingVertical: 16 },
+  root: { flex: 1 },
+  flex: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+  },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, marginBottom: 12 },
-  backText: { fontSize: 15, color: Colors.primary, fontWeight: '600' },
+  backText: { fontSize: 15, fontWeight: '600' },
   brandHero: { paddingVertical: 26, marginBottom: 24 },
   header: { alignItems: 'center', marginBottom: 32, gap: 12 },
-  title: { fontSize: 26, fontWeight: '600', color: Colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, paddingHorizontal: 16 },
+  title: { fontSize: 26, fontWeight: '600', textAlign: 'center' },
+  // No `paddingHorizontal` here: at a large font scale on a 360dp screen it was
+  // squeezing this sentence into a column narrow enough to break mid-word.
+  subtitle: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
   formCard: {
-    backgroundColor: Colors.surface, borderRadius: 20, padding: 24, gap: 8,
-    elevation: 2, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 12,
+    borderRadius: 20, padding: 20, gap: 8,
+    elevation: 2, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 12,
   },
   submitBtn: { marginTop: 8 },
   signInLink: { alignItems: 'center', paddingVertical: 12 },
-  signInText: { color: Colors.primaryLight, fontWeight: '600', fontSize: 14 },
+  signInText: { fontWeight: '600', fontSize: 14, textAlign: 'center' },
   successCard: {
-    backgroundColor: Colors.surface, borderRadius: 20, padding: 28, alignItems: 'center', gap: 16,
-    elevation: 2, shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 12,
+    borderRadius: 20, padding: 24, alignItems: 'center', gap: 16,
+    elevation: 2, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 12,
   },
-  successTitle: { fontSize: 22, fontWeight: '600', color: Colors.textPrimary },
-  successMessage: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  successTitle: { fontSize: 22, fontWeight: '600', textAlign: 'center' },
+  successMessage: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
   returnBtn: { marginTop: 8, width: '100%' },
-  snackError: { backgroundColor: Colors.error },
-  snackSuccess: { backgroundColor: Colors.success },
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList, useColorScheme, Pressable } from 'react-native';
+import { Alert, View, StyleSheet, FlatList, useColorScheme, Pressable } from 'react-native';
 import { Text, Searchbar, ActivityIndicator, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -9,6 +9,7 @@ import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { Hero, GlassStat } from '../../../src/components/Hero';
 import { apiErrorMessage } from '../../../src/api/axios';
+import { ErrorBlock } from '../../../src/features/more/ui';
 import {
   useServices, useWithdrawService, ServiceCard, ServiceUsageMeterBar,
 } from '../../../src/features/services';
@@ -56,16 +57,50 @@ export default function ServicesListScreen() {
       .filter((r) => !needle || r.name.toLowerCase().includes(needle) || (r.description || '').toLowerCase().includes(needle));
   }, [rows, tab, q]);
 
+  /**
+   * Why the price list is empty, when it is empty for a reason other than
+   * "nothing offered yet".
+   *
+   * `isLoading` goes false on failure too, so a 500 or a dropped connection
+   * used to arrive as "No services yet" and an invitation to add the first
+   * thing you sell — to a partner who has twenty. `isPaused` is the offline
+   * case: `onlineManager` (see `lib/queryClient.ts`) holds the request instead
+   * of firing it into a dead radio.
+   */
+  const loadError = servicesQuery.isError
+    ? apiErrorMessage(servicesQuery.error, 'Could not load your services.')
+    : servicesQuery.isPending && servicesQuery.isPaused
+      ? 'No connection. Check your network and try again.'
+      : null;
+
   const goCreate = () => {
     if (cap.atLimit) return;
     router.push('/services/create');
   };
 
-  const withdraw = (service: PartnerServiceRow) => {
-    withdrawService.mutate(service._id, {
-      onSuccess: (res) => setSnackbar(res.message || 'Taken off your list'),
-      onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
-    });
+  /**
+   * The same dialog `services/[id].tsx#confirmWithdraw` asks, word for word.
+   *
+   * "Stop offering" is a small label on a crowded list row and it used to fire
+   * on the first tap, taking a service off sale with nothing to undo it here —
+   * the detail screen and `catalog/[id].tsx` both confirm first, and the list is
+   * the place a mis-tap is MOST likely because the row itself is tappable.
+   */
+  const confirmWithdraw = (service: PartnerServiceRow) => {
+    Alert.alert(
+      `Stop offering "${service.name}"?`,
+      'Residents stop seeing it and it cannot be booked. Anything already booked keeps its own record of the name and price and goes ahead as agreed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Stop offering it', style: 'destructive',
+          onPress: () => withdrawService.mutate(service._id, {
+            onSuccess: (res) => setSnackbar(res.message || 'Taken off your list'),
+            onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
+          }),
+        },
+      ],
+    );
   };
 
   return (
@@ -119,13 +154,15 @@ export default function ServicesListScreen() {
             canManage={canManage}
             withdrawing={withdrawService.isPending && withdrawService.variables === item._id}
             onPress={() => router.push({ pathname: '/services/[id]', params: { id: item._id } })}
-            onWithdraw={() => withdraw(item)}
+            onWithdraw={() => confirmWithdraw(item)}
             c={c}
           />
         )}
         contentContainerStyle={shown.length === 0 ? styles.emptyGrow : styles.listPad}
         ListEmptyComponent={
-          servicesQuery.isLoading ? (
+          loadError ? (
+            <ErrorBlock c={c} message={loadError} onRetry={() => void servicesQuery.refetch()} />
+          ) : servicesQuery.isLoading ? (
             <ActivityIndicator color={c.primary} />
           ) : (
             <View style={styles.emptyBox}>

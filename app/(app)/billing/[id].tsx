@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import {
-  ActivityIndicator, Button, Dialog, Divider, IconButton, Menu, Portal, RadioButton, SegmentedButtons, Snackbar, Surface, Text, TextInput,
+  Button, Dialog, Divider, IconButton, Menu, Portal, RadioButton, SegmentedButtons, Snackbar, Surface, Text, TextInput,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,7 +19,9 @@ import { CONVERSION_TARGETS, DOCUMENT_TYPE_LABEL, PartnerDocumentType, behaviour
 import { DocumentStatusChip } from '../../../src/features/billing/components/StatusChip';
 import { toHref } from '../../../src/features/billing/routeHref';
 import { paymentsApi } from '../../../src/features/payments/payments.api';
+import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { PAYMENT_MODES, PAYMENT_MODE_LABEL, PaymentMode } from '../../../src/features/payments/types';
+import { Loading } from '../../../src/features/more/ui';
 
 /**
  * The channels `sendDocumentSchema` accepts server-side — `documentsApi.send`
@@ -48,7 +50,15 @@ type SendChannel = typeof SEND_CHANNELS[number]['key'];
  * `issue` on a previous app run (closed correctly — see `draftStore.ts`'s
  * header, `serverDraftId` makes the NEXT sync attempt call `issue`, never
  * `create`, on it) or, rarely, the one ambiguous-`create` gap that same file
- * documents. Either way this screen offers "Issue now" rather than hiding it.
+ * documents. Either way this screen shows it rather than hiding it, and offers
+ * BOTH ways out — "Issue now" and "Discard".
+ *
+ * The second one is new, and its absence was a genuine one-way door: "Issue
+ * now" used to be the only button, so the only way to be rid of a draft the
+ * partner did not want was to turn it into a numbered, immutable document and
+ * then cancel that with a reason on the record. Editing a draft is still not
+ * offered — see `handleDiscardDraft` and this phase's report for why delete and
+ * edit are not the same size of job.
  */
 export default function DocumentDetailScreen() {
   const isDark = useColorScheme() === 'dark';
@@ -64,7 +74,7 @@ export default function DocumentDetailScreen() {
     enabled: !!id,
   });
 
-  const [busy, setBusy] = useState<'share' | 'print' | 'issue' | 'cancel' | 'convert' | 'pay' | 'send' | null>(null);
+  const [busy, setBusy] = useState<'share' | 'print' | 'issue' | 'cancel' | 'convert' | 'pay' | 'send' | 'discard' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
@@ -131,6 +141,56 @@ export default function DocumentDetailScreen() {
     } finally {
       setBusy(null);
     }
+  }, [doc, queryClient, invalidate]);
+
+  /**
+   * Throw a DRAFT away.
+   *
+   * `DELETE /partners/me/documents/:id` has existed since the vertical was
+   * built and was called by nothing, so a server-side draft could be ISSUED and
+   * nothing else: a partner who found one of these — an interrupted sync, or the
+   * one ambiguous-`create` gap `draftStore.ts` documents — had exactly one
+   * button, and it turned a bill they did not want into a numbered, immutable
+   * legal document that then had to be CANCELLED with a reason. Issuing a
+   * mistake to get rid of it is a worse audit trail than never issuing it.
+   *
+   * The server refuses this on anything already issued (409), which is why the
+   * button only appears for a DRAFT and why nothing legal can be lost here — a
+   * DRAFT has no number and has never been given to a customer.
+   *
+   * `Alert` rather than the cancel dialog: cancelling asks for a reason that is
+   * recorded against a real document, and this has nothing to record.
+   */
+  const handleDiscardDraft = useCallback(() => {
+    if (!doc) return;
+    Alert.alert(
+      'Discard this draft?',
+      'It has no number and has never been sent to anyone, so nothing is lost. This cannot be undone.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy('discard');
+            try {
+              await documentsApi.remove(doc._id);
+              // Dropped from the cache as well as invalidated: the detail query
+              // for a deleted id would otherwise refetch into a 404 while this
+              // screen is still unwinding.
+              queryClient.removeQueries({ queryKey: qk.billing.document(doc._id) });
+              invalidate();
+              if (router.canGoBack()) router.back();
+              else router.replace('/(app)/(tabs)/billing');
+            } catch (e: unknown) {
+              setToast(apiErrorMessage(e, 'Could not discard this draft.'));
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    );
   }, [doc, queryClient, invalidate]);
 
   const handleCancel = useCallback(async () => {
@@ -203,6 +263,24 @@ export default function DocumentDetailScreen() {
    * raised) genuinely has nobody to attribute the payment to; `canRecordPayment`
    * below gates the button on that so this handler is never reached without one.
    */
+  /**
+   * The key AND the timestamp for the payment currently being entered.
+   *
+   * Both, because both have to be stable across a retry. `receivedAt` used to be
+   * `new Date().toISOString()` evaluated inside the request — which means a
+   * second attempt sends a different body, and the server's idempotency check
+   * hashes the body: a moving timestamp would turn every retry into a 422
+   * instead of a replay, and the key would be worse than useless. Frozen at the
+   * first attempt, dropped whenever the partner changes what they are recording.
+   *
+   * See `payments.api.ts#create` for why this is the caller's job and not the
+   * API helper's.
+   */
+  const payIntent = useRef<{ key: string; receivedAt: string } | null>(null);
+  useEffect(() => {
+    payIntent.current = null;
+  }, [doc?._id, payAmount, payMode, payReference, payOpen]);
+
   const handleRecordPayment = useCallback(async () => {
     if (!doc || !doc.partyId) return;
     const outstandingPaise = Math.max(0, doc.totals.grandPaise - doc.paidPaise);
@@ -218,16 +296,22 @@ export default function DocumentDetailScreen() {
     const behaviour = behaviourOf(doc.type);
     const direction = behaviour.settlement === 'NONE' ? 'IN' : behaviour.settlement;
     setBusy('pay');
+    if (!payIntent.current) {
+      payIntent.current = { key: newIdempotencyKey('pay'), receivedAt: new Date().toISOString() };
+    }
     try {
-      await paymentsApi.create({
-        partyId: doc.partyId,
-        direction,
-        mode: payMode,
-        amountPaise,
-        allocations: [{ documentId: doc._id, amountPaise }],
-        reference: payReference.trim() || undefined,
-        receivedAt: new Date().toISOString(),
-      });
+      await paymentsApi.create(
+        {
+          partyId: doc.partyId,
+          direction,
+          mode: payMode,
+          amountPaise,
+          allocations: [{ documentId: doc._id, amountPaise }],
+          reference: payReference.trim() || undefined,
+          receivedAt: payIntent.current.receivedAt,
+        },
+        payIntent.current.key,
+      );
       const fresh = await documentsApi.get(doc._id);
       queryClient.setQueryData(qk.billing.document(doc._id), fresh);
       invalidate();
@@ -242,10 +326,21 @@ export default function DocumentDetailScreen() {
     }
   }, [doc, payAmount, payMode, payReference, queryClient, invalidate]);
 
+  /*
+    `Loading` rather than a bare `ActivityIndicator`, for the reason
+    `(tabs)/billing.tsx` spells out on its own `isPaused` branch: with no signal
+    `onlineManager` HOLDS this query instead of firing it, so `isPending` stays
+    true and the spinner spins forever with nothing anywhere saying the phone is
+    off the network. The shared component reads the same flag the cache is acting
+    on and says "No connection — waiting for the network…" instead.
+  */
   if (query.isPending) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]}>
-        <ActivityIndicator style={{ marginTop: 40 }} />
+        <View style={styles.topBar}>
+          <IconButton icon="arrow-left" onPress={() => router.back()} />
+        </View>
+        <Loading c={c} label="Loading this document…" />
       </SafeAreaView>
     );
   }
@@ -386,9 +481,33 @@ export default function DocumentDetailScreen() {
 
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
         {isDraft && canManage ? (
-          <Button mode="contained" loading={busy === 'issue'} disabled={!!busy} onPress={handleIssue} style={styles.actionButton}>
-            Issue now
-          </Button>
+          /* Two ways out of a draft, not one. "Issue now" used to be the only
+             button on this bar, which made issuing the only way to make an
+             unwanted draft go away — and an issued document is numbered,
+             immutable and can then only be CANCELLED with a reason on the
+             record. See `handleDiscardDraft`. */
+          <View style={styles.actionRow}>
+            <Button
+              mode="outlined"
+              icon="delete-outline"
+              disabled={!!busy}
+              loading={busy === 'discard'}
+              onPress={handleDiscardDraft}
+              textColor={c.error}
+              style={[styles.actionButton, { flex: 1 }]}
+            >
+              Discard
+            </Button>
+            <Button
+              mode="contained"
+              loading={busy === 'issue'}
+              disabled={!!busy}
+              onPress={handleIssue}
+              style={[styles.actionButton, { flex: 1 }]}
+            >
+              Issue now
+            </Button>
+          </View>
         ) : (
           <View style={styles.actionRow}>
             <Button

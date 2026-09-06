@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   View,
   StyleSheet,
   ScrollView,
@@ -18,7 +19,13 @@ import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '../../src/context/AuthContext';
-import { authApi } from '../../src/api/auth.api';
+import {
+  authApi,
+  otpDeliveryFailure,
+  OtpAltVia,
+  OtpDeliveredVia,
+  OtpVia,
+} from '../../src/api/auth.api';
 import {
   partnerApi,
   uploadKycFile,
@@ -29,11 +36,14 @@ import {
 } from '../../src/api/partner.api';
 import { apiErrorMessage } from '../../src/api/axios';
 import { AppButton } from '../../src/components/AppButton';
+import { getGoogleIdToken, isGoogleAvailable, GoogleCancelled } from '../../src/lib/google';
 import { AppInput } from '../../src/components/AppInput';
 import { Hero } from '../../src/components/Hero';
+import { OtpDeliveryNotice } from '../../src/components/OtpDeliveryNotice';
 import { themeColors, radii, ColorScheme } from '../../src/constants/colors';
+import { parseCoords } from '../../src/lib/geo';
 import { qk } from '../../src/lib/queryKeys';
-import { useOnboardingStatus, resumeStep } from '../../src/hooks';
+import { useOnboardingStatus, resumeStep, useIsOnline } from '../../src/hooks';
 import {
   PARTNER_KINDS,
   PartnerKind,
@@ -57,14 +67,16 @@ import {
  * Resumable therefore means three things here, not one:
  *
  *   1. `GET /partners/me/onboarding-status` is read ON MOUNT and decides which
- *      step opens. The step lives on the partner DOCUMENT, so it survives a
- *      reinstall and follows the partner to another device.
+ *      step opens — the first one with something still MISSING (`resumeStep`).
+ *      Both halves of that answer are computed from the partner DOCUMENT, so it
+ *      survives a reinstall and follows the partner to another device.
  *   2. Every step is saved to the server the moment it is completed, not batched
  *      at the end. `saveOnboardingStep` advances `partner.onboardingStep` and
  *      never moves it backwards.
- *   3. A partner who signs in with an unfinished registration is routed BACK
- *      here rather than into the app — see `useOnboardingGate`, which the root
- *      layout applies.
+ *   3. A partner with an unfinished registration is held HERE rather than let
+ *      into the app, whether they are signing in or have just finished
+ *      registering. `useOnboardingGate` is what the root layout reads; the swap
+ *      out of the sign-in code screen and onto this one is `(auth)/_layout`.
  *
  * ── Step 4 ────────────────────────────────────────────────────────────────
  *
@@ -113,12 +125,23 @@ const defaultWeek = (): DayTiming[] =>
 export default function RegisterScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const queryClient = useQueryClient();
 
   const { status, loading: statusLoading } = useOnboardingStatus({ enabled: isAuthenticated });
+  /**
+   * Read here as well as inside the steps — same key, same cached response — for
+   * the one thing the onboarding status does not carry: the reviewer's note on a
+   * REJECTED profile. Being sent back to a form with no idea what was wrong with
+   * it is how a partner corrects the wrong field twice and gives up.
+   */
+  const { data: existing } = useQuery({
+    queryKey: qk.partner.me(),
+    queryFn: () => partnerApi.me(),
+    enabled: isAuthenticated,
+  });
   const [step, setStep] = useState<number>(1);
-  const [landed, setLanded] = useState(!isAuthenticated);
+  const [landed, setLanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [snack, setSnack] = useState<{ visible: boolean; message: string; error: boolean }>({
     visible: false,
@@ -131,17 +154,25 @@ export default function RegisterScreen() {
   );
 
   /**
-   * Land on the SAVED step, exactly once.
+   * Land on the resume step, exactly once per session.
    *
    * `landed` guards it because the status query refetches — without the guard,
    * a refetch triggered by finishing step 3 would yank the partner back to
    * whatever the server said a moment ago, mid-typing on step 4.
+   *
+   * It starts FALSE even when the screen mounts signed out, which it used to
+   * not. The session can open underneath this screen: step 1 pushes
+   * `verify-otp`, and when that code is verified `(auth)/_layout` drops the code
+   * screen and lands back HERE, on the same mounted component. Latching `landed`
+   * at mount left the partner who had just created their business sitting on
+   * step 1 with their own business name in front of them, one screen behind
+   * where the server already had them.
    */
   useEffect(() => {
-    if (landed || !status) return;
+    if (landed || !isAuthenticated || !status) return;
     setStep(resumeStep(status));
     setLanded(true);
-  }, [landed, status]);
+  }, [landed, isAuthenticated, status]);
 
   const refreshStatus = useCallback(
     (next: OnboardingStatus | undefined) => {
@@ -152,6 +183,51 @@ export default function RegisterScreen() {
   );
 
   const goNext = useCallback(() => setStep((s) => Math.min(5, s + 1)), []);
+
+  /**
+   * Every step is reachable once the business exists, in any order.
+   *
+   * The rail used to move backwards only, which reads as a safety rail and is
+   * not one: each step is saved on its own and the server validates each one
+   * independently, so there is no half-written state to protect. What it
+   * actually did was strand the partner whose `missing[]` names step 2 while
+   * they are standing on step 5. Same rule as the web wizard's
+   * `furthest = accountExists ? 5 : step`.
+   */
+  const furthest = isAuthenticated ? 5 : step;
+
+  /**
+   * What the reviewer asked for, when the profile came back.
+   *
+   * Same fallback chain as the web wizard: the verification note first, then the
+   * older top-level `rejectionReason`, then a sentence — because "REJECTED" with
+   * nothing beside it is the state this whole screen is meant to get somebody
+   * out of.
+   */
+  const partner = existing?.partner;
+  const rejectionNote =
+    partner?.status === 'REJECTED'
+      ? partner.verification?.note
+        || partner.rejectionReason
+        || 'Our team asked for a correction before this can go live.'
+      : '';
+
+  /**
+   * The way out. A signed-in partner mid-wizard is held in `(auth)` by the root
+   * layout, so there is no tab bar under this screen and no back gesture off it
+   * — signing out is the only exit, and until it was here the only one was
+   * killing the app.
+   */
+  const confirmSignOut = useCallback(() => {
+    Alert.alert(
+      'Sign out',
+      'Everything you have saved so far is kept. You can sign back in and carry on from here.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: () => { void logout(); } },
+      ],
+    );
+  }, [logout]);
 
   if (isAuthenticated && statusLoading && !landed) {
     return (
@@ -176,7 +252,19 @@ export default function RegisterScreen() {
             style={styles.brandHero}
           />
 
-          <StepRail current={step} c={c} onJump={(n) => isAuthenticated && n < step && setStep(n)} />
+          <StepRail current={step} furthest={furthest} c={c} onJump={setStep} />
+
+          {rejectionNote ? (
+            <View style={[styles.notice, { backgroundColor: c.surface, borderColor: c.warning }]}>
+              <MaterialCommunityIcons name="alert-outline" size={20} color={c.warning} />
+              <View style={styles.flex}>
+                <Text style={[styles.noticeTitle, { color: c.textPrimary }]}>Before we can approve this</Text>
+                {/* The reviewer's own words, not a paraphrase — this is the
+                    sentence support will quote back to them. */}
+                <Text style={[styles.note, { color: c.textSecondary }]}>{rejectionNote}</Text>
+              </View>
+            </View>
+          ) : null}
 
           {step === 1 && (
             <StepIdentity
@@ -200,7 +288,9 @@ export default function RegisterScreen() {
           {step === 4 && (
             <StepHow c={c} busy={busy} setBusy={setBusy} show={show} onSaved={(n) => { refreshStatus(n); goNext(); }} />
           )}
-          {step === 5 && <StepPapers c={c} busy={busy} setBusy={setBusy} show={show} onSaved={refreshStatus} />}
+          {step === 5 && (
+            <StepPapers c={c} busy={busy} setBusy={setBusy} show={show} onSaved={refreshStatus} onJump={setStep} />
+          )}
 
           {step === 1 && !isAuthenticated && (
             <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.footerLink}>
@@ -208,6 +298,24 @@ export default function RegisterScreen() {
                 Already registered? <Text style={{ color: c.primary, fontWeight: '600' }}>Sign in</Text>
               </Text>
             </TouchableOpacity>
+          )}
+
+          {/* The two ways off this screen, and they only exist once there is a
+              session — signed out, the "Sign in" link above is the way out and
+              step 1 is the only step. */}
+          {isAuthenticated && (
+            <View style={styles.exitRow}>
+              {step > 1 ? (
+                <TouchableOpacity onPress={() => setStep((s) => Math.max(1, s - 1))} style={styles.footerLink}>
+                  <Text style={{ color: c.primary, fontWeight: '600' }}>← Back a step</Text>
+                </TouchableOpacity>
+              ) : (
+                <View />
+              )}
+              <TouchableOpacity onPress={confirmSignOut} style={styles.footerLink}>
+                <Text style={{ color: c.textSecondary }}>Sign out</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -226,19 +334,35 @@ export default function RegisterScreen() {
 
 // ---------------------------------------------------------------- step chrome
 
-function StepRail({ current, c, onJump }: { current: number; c: ColorScheme; onJump: (n: number) => void }) {
+/**
+ * `furthest` is how far the partner may JUMP; `current` is where they are. The
+ * two are only the same before the account exists — see `furthest` in the screen
+ * above for why every step opens once it does.
+ */
+function StepRail({
+  current,
+  furthest,
+  c,
+  onJump,
+}: {
+  current: number;
+  furthest: number;
+  c: ColorScheme;
+  onJump: (n: number) => void;
+}) {
   return (
     <View style={styles.rail}>
       {STEPS.map((s) => {
         const done = s.n < current;
         const active = s.n === current;
+        const reachable = s.n <= furthest;
         return (
           <TouchableOpacity
             key={s.n}
             style={styles.railItem}
             onPress={() => onJump(s.n)}
-            disabled={!done}
-            activeOpacity={done ? 0.7 : 1}
+            disabled={!reachable}
+            activeOpacity={reachable ? 0.7 : 1}
           >
             <View
               style={[
@@ -255,7 +379,16 @@ function StepRail({ current, c, onJump }: { current: number; c: ColorScheme; onJ
                 <Text style={[styles.railNum, { color: active ? c.textInverse : c.textDisabled }]}>{s.n}</Text>
               )}
             </View>
-            <Text style={[styles.railLabel, { color: active ? c.textPrimary : c.textDisabled }]}>{s.label}</Text>
+            {/* Five labels sharing the width of the screen. Capped at 1.3× and
+                held to one line so a large system font scale shortens the word
+                rather than reflowing the rail into two ragged rows. */}
+            <Text
+              style={[styles.railLabel, { color: active ? c.textPrimary : c.textDisabled }]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.3}
+            >
+              {s.label}
+            </Text>
           </TouchableOpacity>
         );
       })}
@@ -281,6 +414,21 @@ function StepHeading({ c, title, blurb }: { c: ColorScheme; title: string; blurb
 }
 
 // ------------------------------------------------------------------- step 1
+
+/**
+ * The last thing `POST /auth/otp/request` said about the PHONE leg.
+ *
+ * `failure` is set from a 502 — the code was minted and nothing carried it. The
+ * two are mutually exclusive, and `failure` being set is what keeps the wizard
+ * on the form instead of showing a code box for a message that never went.
+ */
+interface PhoneDelivery {
+  message: string | null;
+  failure: string | null;
+  deliveredVia: OtpDeliveredVia | null;
+  alternatives: OtpAltVia[];
+  whatsappAvailable: boolean | null;
+}
 
 /**
  * Identity — and the only step that runs signed OUT.
@@ -317,10 +465,21 @@ function StepIdentity({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [sent, setSent] = useState(false);
+  /**
+   * The two legs are tracked SEPARATELY because they fail separately.
+   *
+   * They used to go out under one `Promise.all` and one `sent` flag, so a phone
+   * send that nobody could deliver threw away a perfectly good email code — and
+   * the retry then minted a second email code and walked into the rate limit on
+   * the leg that had been working. `sent` is now derived from both.
+   */
+  const [emailDelivery, setEmailDelivery] = useState<string | null>(null);
+  const [phoneDelivery, setPhoneDelivery] = useState<PhoneDelivery | null>(null);
+  const [sendingPhone, setSendingPhone] = useState<OtpVia | null>(null);
   const [emailCode, setEmailCode] = useState('');
   const [phoneCode, setPhoneCode] = useState('');
   const [tokens, setTokens] = useState<{ email?: string; phone?: string }>({});
+  const [googling, setGoogling] = useState(false);
 
   useEffect(() => {
     if (existing?.partner) setName((n) => n || existing.partner.name);
@@ -354,17 +513,129 @@ function StepIdentity({
     );
   }
 
-  const sendCodes = async () => {
+  /**
+   * Google standing in for the emailed code.
+   *
+   * The server returns the same verification receipt `otpVerify` returns, so it
+   * goes straight into `tokens.email` — and `createAccount` below already reads
+   * `tokens.email ?? await verify(...)`, so the email code step is simply skipped
+   * with no other change.
+   *
+   * The address comes back from the token rather than from this form: whichever
+   * account was actually signed into is the one Google vouched for.
+   *
+   * THE PHONE STILL NEEDS ITS CODE. A Google account says nothing about a phone
+   * number, and the shop's contact number is the one customers ring.
+   */
+  const verifyEmailWithGoogle = async () => {
+    if (googling) return;
+    setGoogling(true);
+    try {
+      const idToken = await getGoogleIdToken();
+      const res = await authApi.googleVerifyContact(idToken);
+      setEmail(res.data.email);
+      setTokens((t) => ({ ...t, email: res.data.verificationToken }));
+      show('Email verified with Google. Now verify your phone.');
+    } catch (e) {
+      if (e instanceof GoogleCancelled) return;
+      show(apiErrorMessage(e, (e as Error)?.message ?? 'Could not verify with Google.'), true);
+    } finally {
+      setGoogling(false);
+    }
+  };
+
+  /**
+   * The EMAIL leg. Reports its own outcome and swallows its own error, so the
+   * phone leg beside it is never cancelled by an inbox problem.
+   *
+   * A 502 here is the same "nothing was delivered" the phone can return; it
+   * carries the server's own sentence about the address, which `apiErrorMessage`
+   * prints verbatim. There is no alternative transport for an inbox, so there is
+   * nothing to offer beyond trying again.
+   */
+  const sendEmailCode = async (): Promise<boolean> => {
+    try {
+      const { data } = await authApi.otpRequest('EMAIL', email.trim(), 'PARTNER_REGISTRATION');
+      setEmailDelivery(data.message);
+      // The previous code is dead the moment a new one is minted — clearing the
+      // box stops a stale code being submitted against the fresh one.
+      setEmailCode('');
+      return true;
+    } catch (e) {
+      setEmailDelivery(null);
+      show(apiErrorMessage(e), true);
+      return false;
+    }
+  };
+
+  /**
+   * The PHONE leg, on a named transport or on the server's WhatsApp → SMS ladder.
+   *
+   * THE 502 IS THE POINT. It means the OTP row exists but no transport accepted
+   * the message, and it is the case that used to sail through as a 200 and drop
+   * the partner onto a code screen for a code that was never sent. Here it sets
+   * `failure`, which keeps `sent` false — the form stays up — and turns the
+   * server's `alternatives` into the buttons beside it. The resend cooldown is
+   * deliberately waived after a failed delivery, so those buttons work
+   * immediately; nothing here may gate them behind a timer.
+   */
+  const sendPhoneCode = async (via: OtpVia = 'auto'): Promise<boolean> => {
+    setSendingPhone(via);
+    try {
+      const { data } = await authApi.otpRequest('PHONE', phone.trim(), 'PARTNER_REGISTRATION', via);
+      setPhoneDelivery({
+        message: data.message,
+        failure: null,
+        deliveredVia: data.deliveredVia,
+        alternatives: data.alternatives,
+        whatsappAvailable: data.whatsappAvailable,
+      });
+      // Same reason as the email leg: a switch to the other transport mints a
+      // new code, so whatever was half-typed for the old one has to go.
+      setPhoneCode('');
+      return true;
+    } catch (e) {
+      const failed = otpDeliveryFailure(e);
+      if (failed) {
+        setPhoneDelivery({
+          message: null,
+          failure: failed.error,
+          deliveredVia: null,
+          alternatives: failed.alternatives,
+          whatsappAvailable: failed.whatsappAvailable,
+        });
+        return false;
+      }
+      // A 429, a 400 or the network — not a delivery report, so it does not get
+      // to claim one. Whatever was last known about delivery stays on screen.
+      show(apiErrorMessage(e), true);
+      return false;
+    } finally {
+      setSendingPhone(null);
+    }
+  };
+
+  /**
+   * Both legs. `resendAll` is the difference between "get me the code that did
+   * not arrive" and "send both again".
+   *
+   * A leg that already delivered is left alone by default: re-minting a code
+   * that arrived wastes a send and walks a WORKING transport into its own rate
+   * limit, which is how a half-failure turns into a whole one.
+   *
+   * Nothing is announced on success. Both legs now print the server's own
+   * sentence inline — a snackbar saying "codes sent" over the top of them would
+   * be this screen asserting a delivery a second time, in its own words.
+   */
+  const sendCodes = async (resendAll = false) => {
     setBusy(true);
     try {
+      // `Promise.all` is safe here only because both helpers resolve — neither
+      // throws — so one leg failing can no longer discard the other.
       await Promise.all([
-        authApi.otpRequest('EMAIL', email.trim(), 'PARTNER_REGISTRATION'),
-        authApi.otpRequest('PHONE', phone.trim(), 'PARTNER_REGISTRATION'),
+        resendAll || !emailDelivery ? sendEmailCode() : Promise.resolve(true),
+        resendAll || !phoneDelivery?.deliveredVia ? sendPhoneCode() : Promise.resolve(true),
       ]);
-      setSent(true);
-      show('Codes sent. Check your email and your phone.');
-    } catch (e) {
-      show(apiErrorMessage(e), true);
     } finally {
       setBusy(false);
     }
@@ -396,7 +667,7 @@ function StepIdentity({
 
       // The business exists but there is no session, and steps 2–5 need one.
       const otp = await requestLoginOtp(phone.trim());
-      if (!otp.success) {
+      if (!otp.success || !otp.delivery) {
         show('Your business is created. Please sign in to finish setting it up.', true);
         setTimeout(() => router.replace('/(auth)/login'), 2000);
         return;
@@ -406,7 +677,19 @@ function StepIdentity({
         params: {
           identifier: phone.trim(),
           reason: 'new-account',
-          ...(otp.devCode ? { devCode: otp.devCode } : {}),
+          // The delivery report travels with the navigation: the code screen has
+          // to name the transport, and it cannot ask again without sending a
+          // second code.
+          message: otp.delivery.message,
+          deliveredVia: otp.delivery.deliveredVia,
+          alternatives: otp.delivery.alternatives.join(','),
+          whatsappAvailable: otp.delivery.whatsappAvailable ? '1' : '0',
+          // The sign-in code is a LOGIN code, not a phone verification, and this
+          // address was just OTP-verified into the same identity — so if neither
+          // WhatsApp nor SMS reaches the handset, the inbox is a real way in.
+          // (Which is exactly why the phone VERIFICATION above offers no such
+          // thing: that step has to prove the number itself.)
+          email: email.trim(),
         },
       });
     } catch (e) {
@@ -418,6 +701,13 @@ function StepIdentity({
 
   const canSend =
     name.trim().length >= 2 && phone.trim().length >= 7 && /.+@.+\..+/.test(email) && password.length >= 6;
+
+  /**
+   * Both codes are genuinely out. DERIVED, never set by hand — the old boolean
+   * flag was flipped optimistically and that is precisely how a partner ended up
+   * typing into a code box for a message no transport had accepted.
+   */
+  const sent = !!emailDelivery && !!phoneDelivery?.deliveredVia;
 
   return (
     <View style={styles.step}>
@@ -454,12 +744,60 @@ function StepIdentity({
       />
 
       {!sent ? (
-        <AppButton label="Send verification codes" loading={busy} disabled={!canSend} onPress={sendCodes} />
+        <>
+          <AppButton
+            label="Send verification codes"
+            loading={busy}
+            disabled={!canSend || !!sendingPhone}
+            // Wrapped: Paper hands `onPress` a gesture event, which would arrive
+            // as a truthy `resendAll` and re-send a leg that already worked.
+            onPress={() => void sendCodes()}
+          />
+
+          {/*
+            Nothing to say until something has been attempted — and once
+            something has, this is the entire recovery: the server's own
+            sentence, and the transports it will still accept, as buttons.
+
+            NO `onUseEmail` HERE, deliberately. This step verifies a PHONE
+            NUMBER; an emailed code proves an inbox and cannot stand in for it.
+            The email beside it is a separate leg with its own code.
+          */}
+          {phoneDelivery || sendingPhone ? (
+            <OtpDeliveryNotice
+              c={c}
+              message={phoneDelivery?.message}
+              failure={phoneDelivery?.failure}
+              deliveredVia={phoneDelivery?.deliveredVia ?? null}
+              alternatives={phoneDelivery?.alternatives ?? []}
+              whatsappAvailable={phoneDelivery?.whatsappAvailable ?? null}
+              sending={sendingPhone}
+              onRetry={(via) => void sendPhoneCode(via)}
+            />
+          ) : null}
+
+          {/* Google verifies the EMAIL only, so it sits alongside the codes
+              rather than instead of them — the phone still needs its own. */}
+          {isGoogleAvailable() && !tokens.email ? (
+            <View style={{ marginTop: 12 }}>
+              <AppButton
+                label="Verify email with Google"
+                onPress={verifyEmailWithGoogle}
+                loading={googling}
+                icon="google"
+                mode="outlined"
+              />
+            </View>
+          ) : null}
+        </>
       ) : (
         <>
+          {/* The server's own sentence for the email leg, then ours for what
+              the two codes are FOR. The phone leg says where it went in the
+              notice below the boxes, next to the buttons that can move it. */}
+          <Text style={[styles.note, { color: c.textSecondary }]}>{emailDelivery}</Text>
           <Text style={[styles.note, { color: c.textSecondary }]}>
-            We sent a 6-digit code to each. Both are verified before the business is created — they both become
-            ways to sign in.
+            Both are verified before the business is created — they both become ways to sign in.
           </Text>
           <AppInput
             label="Code sent to your email"
@@ -481,8 +819,26 @@ function StepIdentity({
             disabled={emailCode.length !== 6 || phoneCode.length !== 6}
             onPress={createAccount}
           />
-          <TouchableOpacity onPress={sendCodes} disabled={busy} style={styles.footerLink}>
-            <Text style={{ color: c.primary, fontWeight: '600' }}>Send the codes again</Text>
+          {/* Under the code inputs, where somebody who is watching the wrong app
+              will look. Still no email fallback — see the note in the other
+              branch. */}
+          <OtpDeliveryNotice
+            c={c}
+            message={phoneDelivery?.message}
+            failure={phoneDelivery?.failure}
+            deliveredVia={phoneDelivery?.deliveredVia ?? null}
+            alternatives={phoneDelivery?.alternatives ?? []}
+            whatsappAvailable={phoneDelivery?.whatsappAvailable ?? null}
+            sending={sendingPhone}
+            onRetry={(via) => void sendPhoneCode(via)}
+          />
+
+          <TouchableOpacity
+            onPress={() => void sendCodes(true)}
+            disabled={busy || !!sendingPhone}
+            style={styles.footerLink}
+          >
+            <Text style={{ color: c.primary, fontWeight: '600' }}>Send both codes again</Text>
           </TouchableOpacity>
         </>
       )}
@@ -504,9 +860,14 @@ function StepIdentity({
  *
  * This captures the pin from GPS rather than from a draggable map: a real map
  * needs `react-native-maps`, an API key per platform and a dev build, which is a
- * shipping decision and not this agent's to take. The numbers stay visible and
- * editable so a shop whose GPS lands on the wrong side of the road can correct
- * it — see the report for what a proper pin would cost.
+ * shipping decision and not this agent's to take.
+ *
+ * So the two numbers are TYPEABLE, and that is not a nicety. They were rendered
+ * as text beside a comment claiming they were editable, which meant the only way
+ * past this step was a GPS fix — and a shop whose phone never fixes indoors, or
+ * who has denied location permission, or whose pin lands on the wrong side of
+ * the road, had no way to finish registering at all. It was the hardest trap in
+ * the flow and it was invisible, because the partner could see the numbers.
  */
 function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
   const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
@@ -515,8 +876,13 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [latText, setLatText] = useState('');
+  const [lngText, setLngText] = useState('');
   const [locating, setLocating] = useState(false);
+
+  // Shared with Settings → Address & map pin, which asks for the same pair and
+  // has to accept exactly what this does. See `lib/geo`.
+  const coords = useMemo(() => parseCoords(latText, lngText), [latText, lngText]);
 
   useEffect(() => {
     const p = existing?.partner;
@@ -527,7 +893,8 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
     setPincode((v) => v || p.pincode || '');
     const [lng, lat] = p.location?.coordinates ?? [];
     if (typeof lat === 'number' && typeof lng === 'number' && !(lat === 0 && lng === 0)) {
-      setCoords((v) => v ?? { lat, lng });
+      setLatText((v) => v || String(lat));
+      setLngText((v) => v || String(lng));
     }
   }, [existing]);
 
@@ -540,7 +907,10 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
         return;
       }
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
+      // Straight into the boxes, which are the source of truth — so a fix that
+      // lands next door can be nudged by hand instead of retaken.
+      setLatText(String(position.coords.latitude));
+      setLngText(String(position.coords.longitude));
 
       // Best-effort only. A failed reverse geocode must not block the step —
       // the partner can type the three fields, and the pin is what actually
@@ -565,13 +935,14 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
     }
   };
 
+  // `coords` is already null for out-of-range, half-typed and (0, 0), so there
+  // is nothing left to re-check about it here.
   const valid =
     address.trim().length >= 5 &&
     city.trim().length > 0 &&
     state.trim().length > 0 &&
     /^\d{6}$/.test(pincode.trim()) &&
-    coords !== null &&
-    !(coords.lat === 0 && coords.lng === 0);
+    coords !== null;
 
   return (
     <View style={styles.step}>
@@ -599,6 +970,36 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
         </View>
         {locating && <ActivityIndicator />}
       </TouchableOpacity>
+
+      {/* The same two numbers, by hand. Indoors a phone often never gets a fix,
+          and location permission can be refused outright — without these boxes
+          either one is the end of the registration. */}
+      <View style={styles.coordRow}>
+        {/* `numeric`, not `number-pad`: React Native maps it to a keyboard that
+            carries the decimal point AND the minus sign on both platforms, and a
+            coordinate needs both. */}
+        <AppInput
+          label="Latitude"
+          value={latText}
+          onChangeText={setLatText}
+          keyboardType="numeric"
+          style={styles.coordHalf}
+        />
+        <AppInput
+          label="Longitude"
+          value={lngText}
+          onChangeText={setLngText}
+          keyboardType="numeric"
+          style={styles.coordHalf}
+        />
+      </View>
+      <Text style={[styles.note, { color: c.textSecondary }]}>
+        {latText || lngText
+          ? coords
+            ? 'That is a valid point on the map.'
+            : 'Latitude is between -90 and 90, longitude between -180 and 180 — and (0, 0) is in the sea.'
+          : 'You can also read these off a maps app: hold your finger on your shop and copy the two numbers.'}
+      </Text>
 
       <AppInput label="Full address" value={address} onChangeText={setAddress} multiline leftIcon="map-outline" />
       <AppInput label="City" value={city} onChangeText={setCity} leftIcon="city-variant-outline" />
@@ -645,6 +1046,7 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
 // ------------------------------------------------------------------- step 3
 
 function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
+  const online = useIsOnline();
   const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
   const { data: categories, isPending } = useQuery({
     queryKey: qk.onboarding.categories(),
@@ -721,8 +1123,25 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
 
       <Divider style={styles.divider} />
       <Text style={[styles.label, { color: c.textPrimary }]}>Pick up to 10 categories</Text>
+      {/*
+        A bare spinner here was a dead end on the registration path.
+
+        Phase 3 wired `onlineManager` (`lib/queryClient.ts`), so with no signal
+        react-query PAUSES this query rather than firing it — `isPending` stays
+        true forever, no chips arrive, and "Save and continue" is
+        `disabled={picked.length === 0}` with nothing to pick. A partner could
+        not get past step 3 and was told nothing at all. The spinner now says why
+        it is spinning, on the same `onlineManager` flag the cache is acting on,
+        and the sentence below the button repeats it where the partner is
+        actually looking when nothing happens.
+      */}
       {isPending ? (
-        <ActivityIndicator style={styles.spinner} />
+        <View style={styles.spinner}>
+          <ActivityIndicator />
+          <Text style={[styles.note, { color: c.textSecondary, marginTop: 8, textAlign: 'center' }]}>
+            {online ? 'Loading the list…' : 'No connection — waiting for the network…'}
+          </Text>
+        </View>
       ) : (
         <View style={styles.chips}>
           {offered.map((cat) => (
@@ -731,6 +1150,12 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
             </Chip>
           ))}
         </View>
+      )}
+      {isPending && !online && (
+        <Text style={[styles.note, { color: c.textSecondary }]}>
+          We cannot load the list of work types without a connection. Nothing you have filled in is lost —
+          come back to this step once you are back on the network.
+        </Text>
       )}
 
       <AppButton
@@ -893,11 +1318,12 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
  *
  * The refusal from `submit-for-review` carries `missing[]`: every unfinished
  * item, named, with the step it belongs to. Those sentences are written for a
- * shop owner to act on and are rendered VERBATIM with a tap-through to the step
- * — "your profile is incomplete" is exactly the message this shape exists to
- * prevent.
+ * shop owner to act on and are rendered VERBATIM, each one a tap-through to the
+ * step that fixes it — "your profile is incomplete" is exactly the message this
+ * shape exists to prevent, and a list naming step 2 that cannot open step 2 is
+ * the same dead end in longer words.
  */
-function StepPapers({ c, busy, setBusy, show, onSaved }: StepProps) {
+function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { onJump: (n: number) => void }) {
   const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
   const queryClient = useQueryClient();
 
@@ -1063,7 +1489,9 @@ function StepPapers({ c, busy, setBusy, show, onSaved }: StepProps) {
       <Text style={[styles.label, { color: c.textPrimary }]}>Opening hours</Text>
       {week.map((day, i) => (
         <View key={day.day} style={[styles.dayRow, { borderColor: c.divider }]}>
-          <Text style={[styles.dayName, { color: c.textPrimary }]}>{DAY_NAMES[day.day]}</Text>
+          <Text style={[styles.dayName, { color: c.textPrimary }]} numberOfLines={1}>
+            {DAY_NAMES[day.day]}
+          </Text>
           <Text style={[styles.flex, { color: c.textSecondary }]}>
             {day.isOpen ? day.windows.map((w) => `${w.from}–${w.to}`).join(', ') || 'No hours set' : 'Closed'}
           </Text>
@@ -1087,11 +1515,18 @@ function StepPapers({ c, busy, setBusy, show, onSaved }: StepProps) {
 
       {missing.length > 0 && (
         <View style={[styles.missing, { backgroundColor: c.surface, borderColor: c.error }]}>
-          <Text style={[styles.label, { color: c.error }]}>Still needed</Text>
+          <Text style={[styles.label, { color: c.error }]}>Still needed — tap one to fix it</Text>
           {missing.map((m) => (
-            <Text key={`${m.step}-${m.field}`} style={{ color: c.textSecondary, marginTop: 4 }}>
-              • {m.message} <Text style={{ color: c.textDisabled }}>(step {m.step})</Text>
-            </Text>
+            <TouchableOpacity
+              key={`${m.step}-${m.field}`}
+              onPress={() => onJump(m.step)}
+              style={styles.missingRow}
+            >
+              <Text style={[styles.flex, { color: c.textSecondary }]}>
+                • {m.message} <Text style={{ color: c.primary, fontWeight: '600' }}>Step {m.step}</Text>
+              </Text>
+              <MaterialCommunityIcons name="chevron-right" size={18} color={c.textDisabled} />
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -1101,17 +1536,32 @@ function StepPapers({ c, busy, setBusy, show, onSaved }: StepProps) {
   );
 }
 
+/**
+ * Layout only; colours come from `themeColors(isDark)` at render.
+ *
+ * Sized for a 360dp screen at a large system font scale, not for the simulator:
+ * the page padding is 18 rather than 22, the wizard is capped so it does not
+ * stretch across a tablet, and nothing in a row is given a fixed width that its
+ * own text can outgrow (see `dayName`).
+ */
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 22, paddingBottom: 48, gap: 8 },
+  content: {
+    padding: 18,
+    paddingBottom: 48,
+    gap: 8,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+  },
   brandHero: { paddingVertical: 22, marginBottom: 10 },
   rail: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18, marginTop: 6 },
-  railItem: { alignItems: 'center', gap: 6, flex: 1 },
+  railItem: { alignItems: 'center', gap: 6, flex: 1, paddingHorizontal: 2 },
   railDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   railNum: { fontSize: 12, fontWeight: '600' },
-  railLabel: { fontSize: 11, fontWeight: '600' },
+  railLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   step: { gap: 4 },
   heading: { marginBottom: 10, gap: 4 },
   h1: { fontSize: 23, fontWeight: '600' },
@@ -1142,10 +1592,30 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { marginBottom: 4 },
   divider: { marginVertical: 14 },
-  spinner: { marginVertical: 16 },
+  spinner: { marginVertical: 16, alignItems: 'center' },
   docRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1 },
   dayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: 1 },
-  dayName: { width: 42, fontSize: 14, fontWeight: '600' },
+  // `minWidth`, not `width`: at a 1.5× font scale "Wed" needs about 50dp and a
+  // hard 42 clipped it to "We…" on every row of the opening-hours list.
+  dayName: { minWidth: 42, flexShrink: 0, fontSize: 14, fontWeight: '600' },
   missing: { borderWidth: 1.5, borderRadius: radii.card, padding: 14, marginTop: 14 },
+  missingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  // The reviewer's note, and the only block on this screen that is not part of
+  // a step — it sits under the rail and above whichever step is open.
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderWidth: 1.5,
+    borderRadius: radii.card,
+    padding: 14,
+    marginBottom: 12,
+  },
+  noticeTitle: { fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  coordRow: { flexDirection: 'row', gap: 10 },
+  coordHalf: { flex: 1 },
+  // Back on the left, sign out on the right, so neither can be hit while
+  // reaching for the other.
+  exitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   footerLink: { alignSelf: 'center', paddingVertical: 14 },
 });

@@ -10,7 +10,7 @@ import { parseRupeesToPaise, paiseToInput, formatPaise } from '../../../lib/mone
 import {
   ServiceFormInput, ServiceMode, ServicePriceType, PartnerServiceRow, PartnerCategoryLite,
   SERVICE_MODES, SERVICE_PRICE_TYPES, MODE_LABEL, PRICE_TYPE_LABEL, PRICE_TYPE_HINT,
-  MIN_DURATION_MIN, MAX_DURATION_MIN,
+  MIN_DURATION_MIN, MAX_DURATION_MIN, MIN_SERVICE_CAPACITY, MAX_SERVICE_CAPACITY,
 } from '../types';
 
 /**
@@ -34,6 +34,19 @@ interface Draft {
   price: string;
   priceType: ServicePriceType;
   durationMin: number;
+  /**
+   * Does this service have a resource of its own? The OPT-IN half of the
+   * capacity control — see `capacityPerSlotOverride` in `../types.ts`.
+   *
+   * Kept as its own boolean rather than reading "is `capacity` filled in",
+   * because the two answers are not the same: "use the day's number" has to be a
+   * state the partner can be IN, not merely a box they have left empty. Off is
+   * what the server means by an absent field, and it is the default for every
+   * new service.
+   */
+  dedicated: boolean;
+  /** Only sent while `dedicated`. A string because it is typed. */
+  capacity: string;
   modes: ServiceMode[];
   advance: string;
   visitCharge: string;
@@ -57,6 +70,11 @@ const draftFromRow = (row: PartnerServiceRow | null, fallbackModes: readonly Ser
   price: row && row.priceType !== 'QUOTE' ? paiseToInput(row.pricePaise) : '',
   priceType: row?.priceType ?? 'FIXED',
   durationMin: row?.durationMin ?? 60,
+  // `!= null` catches both shapes the server treats as "no override": the field
+  // absent on a service that never had one, and a stored `null` written by a
+  // previous edit that cleared it.
+  dedicated: row?.capacityPerSlotOverride != null,
+  capacity: row?.capacityPerSlotOverride != null ? String(row.capacityPerSlotOverride) : '1',
   modes: row?.modes?.length ? row.modes : (fallbackModes.length ? [fallbackModes[0]] : []),
   advance: row?.advancePaise ? paiseToInput(row.advancePaise) : '',
   visitCharge: row?.visitChargePaise ? paiseToInput(row.visitChargePaise) : '',
@@ -94,6 +112,9 @@ export function ServiceForm({
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
 
+  /** A category the service holds but the loaded list cannot name — see the chip row. */
+  const orphanCategory = Boolean(draft.categoryId) && !categories.some((cat) => cat._id === draft.categoryId);
+
   const quoted = draft.priceType === 'QUOTE';
   const travels = draft.modes.includes('AT_CUSTOMER');
 
@@ -104,6 +125,19 @@ export function ServiceForm({
   /** The business says it works nowhere — every service will be refused, whatever is typed. */
   const worksNowhere = allowedModes !== null && allowedModes.length === 0;
 
+  /**
+   * The override, as a number, or `null` when what is typed is not one.
+   *
+   * `null` is the INVALID marker here (the `problem` list below turns it into a
+   * sentence) and must not reach `submit`, where `null` means something quite
+   * different — "put this service back on the day's capacity".
+   */
+  const capacityValue = ((): number | null => {
+    if (!draft.dedicated) return null;
+    const n = Number(draft.capacity);
+    return Number.isInteger(n) && n >= MIN_SERVICE_CAPACITY && n <= MAX_SERVICE_CAPACITY ? n : null;
+  })();
+
   const problem = ((): string | null => {
     if (worksNowhere) return 'Set where your business works in Settings before you offer a service.';
     if (draft.name.trim().length < 2) return 'Give the service a name residents will recognise.';
@@ -112,6 +146,9 @@ export function ServiceForm({
     if (draft.visitCharge && visitPaise === null) return 'That visit charge is not an amount.';
     if (draft.durationMin < MIN_DURATION_MIN) return `A job has to be at least ${MIN_DURATION_MIN} minutes long.`;
     if (draft.durationMin > MAX_DURATION_MIN) return 'Longer than a working day is not a booking, it is a project.';
+    if (draft.dedicated && capacityValue === null) {
+      return `How many fit at once has to be a whole number between ${MIN_SERVICE_CAPACITY} and ${MAX_SERVICE_CAPACITY}.`;
+    }
     if (!draft.modes.length) return 'Say where this happens.';
     if (draft.priceType === 'FIXED' && (advancePaise || 0) > (pricePaise || 0)) {
       return 'The advance cannot be more than the price of the service.';
@@ -128,6 +165,25 @@ export function ServiceForm({
       pricePaise: pricePaise || 0,
       priceType: draft.priceType,
       durationMin: draft.durationMin,
+      /**
+       * Three outcomes, and the two "no override" ones are NOT the same request.
+       *
+       *   a number  — this service has its own resource.
+       *   `null`    — EDIT only: put it back on the day's capacity. The clear
+       *               signal `updatePartnerServiceSchema` adds `.nullable()`
+       *               for; without it there would be no way to undo an override
+       *               once set, since an omitted key on a patch means "leave it
+       *               alone".
+       *   omitted   — CREATE only. `createPartnerServiceSchema` is optional but
+       *               NOT nullable, so a `null` here is a 400. `undefined` is
+       *               dropped by `JSON.stringify` before it reaches the wire,
+       *               which is exactly the absent field the server reads as
+       *               "use the day's number".
+       *
+       * `initial` is the honest discriminator between the two — it is `null`
+       * precisely when this form is creating.
+       */
+      capacityPerSlotOverride: capacityValue ?? (initial ? null : undefined),
       modes: draft.modes,
       advancePaise: advancePaise || 0,
       // Sent as 0 rather than left stale when the job no longer travels.
@@ -141,6 +197,17 @@ export function ServiceForm({
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.body}>
+      {/* The same banner Orders and the availability editor use — this form has
+          no Save button for a viewer, so without it the screen just refuses
+          everything with no word about why. */}
+      {!canManage && (
+        <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
+          <Text style={[styles.readOnlyText, { color: c.textSecondary }]}>
+            View only — your role does not include managing your services.
+          </Text>
+        </View>
+      )}
+
       <AppInput
         label="What is it called?"
         placeholder="AC servicing, deep clean, haircut…"
@@ -158,26 +225,48 @@ export function ServiceForm({
         disabled={!canManage}
       />
 
-      {categories.length > 0 && (
-        <View>
-          <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>KIND OF WORK</Text>
-          <View style={styles.chipRow}>
-            <Chip label="Not set" active={!draft.categoryId} onPress={() => canManage && set('categoryId', '')} c={c} />
-            {categories.map((cat) => (
-              <Chip key={cat._id} label={cat.name} active={draft.categoryId === cat._id}
-                onPress={() => canManage && set('categoryId', cat._id)} c={c} />
-            ))}
-          </View>
+      {/*
+        Always drawn, never conditional on the list having arrived.
+        `/partner-categories/public` is a separate request from the service
+        itself, and hiding the whole control when it comes back empty took the
+        only way to CHANGE a category off the screen with nothing said — the
+        partner is left to conclude the field does not exist. Web's picker is
+        always there with a "Not set" option, and so is this one.
+
+        `orphanCategory` is the case that made hiding it look safe: a service
+        whose category is set but whose name we do not have. It gets its own
+        selected chip so the row can be honest — the current choice is still
+        the current choice, and "Not set" beside it is a deliberate clearing
+        rather than the only tappable option.
+      */}
+      <View>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>KIND OF WORK</Text>
+        <View style={styles.chipRow}>
+          <Chip label="Not set" active={!draft.categoryId} onPress={() => set('categoryId', '')} disabled={!canManage} c={c} />
+          {orphanCategory && <Chip label="Current setting" active onPress={() => {}} c={c} />}
+          {categories.map((cat) => (
+            <Chip key={cat._id} label={cat.name} active={draft.categoryId === cat._id}
+              onPress={() => set('categoryId', cat._id)} disabled={!canManage} c={c} />
+          ))}
         </View>
-      )}
+        {categories.length === 0 && (
+          <Text style={[styles.hint, { color: c.textSecondary }]}>
+            The list of work types is not available right now. Whatever this service is set to is kept unless
+            you change it here.
+          </Text>
+        )}
+      </View>
 
       <View>
         <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>HOW IT IS PRICED</Text>
         <SegmentedButtons
           value={draft.priceType}
-          onValueChange={(v) => canManage && set('priceType', v as ServicePriceType)}
+          onValueChange={(v) => set('priceType', v as ServicePriceType)}
           density="small"
-          buttons={SERVICE_PRICE_TYPES.map((t) => ({ value: t, label: PRICE_TYPE_LABEL[t] }))}
+          // Paper's own per-button `disabled`, so a viewer's tap is refused by
+          // the control rather than absorbed by the handler. Same reason as the
+          // `Chip`s above and the fields below.
+          buttons={SERVICE_PRICE_TYPES.map((t) => ({ value: t, label: PRICE_TYPE_LABEL[t], disabled: !canManage }))}
         />
         <Text style={[styles.hint, { color: c.textSecondary }]}>{PRICE_TYPE_HINT[draft.priceType]}</Text>
       </View>
@@ -198,7 +287,7 @@ export function ServiceForm({
         <View style={styles.chipRow}>
           {DURATION_CHIPS.map((m) => (
             <Chip key={m} label={durationLabel(m)} active={draft.durationMin === m}
-              onPress={() => canManage && set('durationMin', m)} c={c} />
+              onPress={() => set('durationMin', m)} disabled={!canManage} c={c} />
           ))}
         </View>
         <AppInput
@@ -211,6 +300,61 @@ export function ServiceForm({
         <Text style={[styles.hint, { color: c.textSecondary }]}>
           The time blocked out in your diary, so nobody else is booked on top.
         </Text>
+      </View>
+
+      {/*
+        HOW MANY AT ONCE — an opt-in, and the default is visibly "the day's".
+
+        The switch is off for every service until the partner says otherwise, and
+        that is the contract rather than a UI preference: an absent
+        `capacityPerSlotOverride` means "use the day's `capacityPerSlot`", so a
+        form that always posted a number would pin every service to one customer
+        at a time and quietly override the day capacity of every partner who had
+        set one. `submit` above is what keeps that promise on the wire.
+
+        The sentence under the switch is doing the real work. "5 chairs but one
+        massage room" is the entire reason the field exists and a bare number
+        does not convey it: an override is a DEDICATED RESOURCE, so this service
+        is counted against its own bookings only AND stops counting against the
+        shop's shared pool. Without that second half a partner would reasonably
+        read "1" as "three haircuts now make the empty massage room unbookable",
+        which is the opposite of what it does.
+      */}
+      <View>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>HOW MANY AT ONCE</Text>
+        <View style={styles.switchBox}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>
+              This one has its own space or kit
+            </Text>
+            <Text style={[styles.hint, { color: c.textSecondary }]}>
+              {draft.dedicated
+                ? 'Booked against its own resource, not your shop’s general capacity.'
+                : 'Off — it shares however many people your working hours allow at a time.'}
+            </Text>
+          </View>
+          <Switch
+            value={draft.dedicated}
+            onValueChange={(v) => { if (canManage) set('dedicated', v); }}
+            disabled={!canManage}
+          />
+        </View>
+        {draft.dedicated && (
+          <>
+            <AppInput
+              label="How many of these at the same time"
+              value={draft.capacity}
+              onChangeText={(v) => set('capacity', v.replace(/\D/g, '').slice(0, 3))}
+              keyboardType="numeric"
+              disabled={!canManage}
+            />
+            <Text style={[styles.hint, { color: c.textSecondary }]}>
+              Say you have five chairs and one massage room. Leave the haircuts off this switch so they use
+              the five, and set the massage to 1 — the room is counted on its own, and a busy shop floor
+              never makes it look full. Five chairs plus one room is six customers at once.
+            </Text>
+          </>
+        )}
       </View>
 
       <View>
@@ -233,7 +377,8 @@ export function ServiceForm({
                     key={m}
                     label={MODE_LABEL[m]}
                     active={on}
-                    onPress={() => canManage && set('modes', on ? draft.modes.filter((x) => x !== m) : [...draft.modes, m])}
+                    onPress={() => set('modes', on ? draft.modes.filter((x) => x !== m) : [...draft.modes, m])}
+                    disabled={!canManage}
                     c={c}
                   />
                 );
@@ -312,11 +457,26 @@ export function ServiceForm({
   );
 }
 
-function Chip({ label, active, onPress, c }: { label: string; active: boolean; onPress: () => void; c: ReturnType<typeof themeColors> }) {
+/**
+ * `disabled` rather than an `onPress` that quietly evaluates to `false`, which
+ * is what every caller here used to pass. A view-only staff member tapped a
+ * category or a duration and got nothing back — no change, no explanation —
+ * while the fields either side of these chips refused them visibly. The row is
+ * dimmed as a whole so the CHOSEN chip stays readable: it is still the answer
+ * they opened the screen to read.
+ */
+function Chip({ label, active, onPress, disabled, c }: {
+  label: string; active: boolean; onPress: () => void; disabled?: boolean; c: ReturnType<typeof themeColors>;
+}) {
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.chip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
+      disabled={disabled}
+      style={[
+        styles.chip,
+        disabled && styles.chipReadOnly,
+        { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider },
+      ]}
     >
       <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
     </Pressable>
@@ -328,6 +488,9 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6, marginTop: 12, marginBottom: 6 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
   chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
+  chipReadOnly: { opacity: 0.65 },
+  readOnlyBanner: { borderRadius: radii.sm, paddingVertical: 6, paddingHorizontal: 10, marginBottom: 10 },
+  readOnlyText: { fontSize: 11.5, fontWeight: '600' },
   hint: { fontSize: 11.5, marginTop: 4, lineHeight: 16 },
   lockBox: { flexDirection: 'row', gap: 8, borderRadius: radii.md, borderWidth: 1, padding: 12, alignItems: 'flex-start' },
   lockText: { fontSize: 12, flex: 1, lineHeight: 17 },

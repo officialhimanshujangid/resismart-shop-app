@@ -18,6 +18,7 @@ import {
 } from '../../../src/features/orders';
 import type { KnownOrderVerb, PartnerOrder, ReasonPromptTarget, OrderReturnResult } from '../../../src/features/orders';
 import { formatPaise } from '../../../src/lib/money';
+import { ErrorBlock } from '../../../src/features/more/ui';
 
 /**
  * This tab is only reachable when the gate says so: ORDERS_VIEW READ / module
@@ -28,14 +29,29 @@ import { formatPaise } from '../../../src/lib/money';
  * footer) is built conditionally on it.
  */
 
+/**
+ * Every one of `ORDER_STATUSES` reaches a chip, and that is the whole point.
+ *
+ * INVOICED and PAID appeared in NO filter here: `ACTIVE` stopped at
+ * OUT_FOR_DELIVERY and `CLOSED` listed only the three unhappy endings, so an
+ * order vanished from this screen the moment it was billed — the shop's own
+ * record of a sale, gone at exactly the step that makes it a sale. Both now sit
+ * under `CLOSED`, which is where the web board's "Finished" toggle puts them
+ * (`orders/shared.ts#CLOSED_STATUSES`).
+ *
+ * DELIVERED joins `ACTIVE` for the same reason it is a column on that board and
+ * not an outcome beside it: handed over but not yet billed is still a job with
+ * something left to do. It keeps its own chip for anybody who wants just that
+ * step.
+ */
 const STATUS_FILTER_MAP: Record<string, string | undefined> = {
-  ACTIVE: 'PLACED,ACCEPTED,PACKED,OUT_FOR_DELIVERY',
+  ACTIVE: 'PLACED,ACCEPTED,PACKED,OUT_FOR_DELIVERY,DELIVERED',
   PLACED: 'PLACED',
   ACCEPTED: 'ACCEPTED',
   PACKED: 'PACKED',
   OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
   DELIVERED: 'DELIVERED',
-  CLOSED: 'REJECTED,CANCELLED,RETURNED',
+  CLOSED: 'INVOICED,PAID,REJECTED,CANCELLED,RETURNED',
 };
 
 const FILTER_CHIPS: { key: keyof typeof STATUS_FILTER_MAP; label: string }[] = [
@@ -45,7 +61,9 @@ const FILTER_CHIPS: { key: keyof typeof STATUS_FILTER_MAP; label: string }[] = [
   { key: 'PACKED', label: 'Packed' },
   { key: 'OUT_FOR_DELIVERY', label: 'Out for delivery' },
   { key: 'DELIVERED', label: 'Delivered' },
-  { key: 'CLOSED', label: 'Closed' },
+  // "Finished", not "Closed" — it now holds billed and paid orders as well as
+  // the three that went wrong, and "Closed" reads as only the latter.
+  { key: 'CLOSED', label: 'Finished' },
 ];
 
 const PAGE_LIMIT = 20;
@@ -96,9 +114,44 @@ export default function OrdersScreen() {
     setPage((p) => p + 1);
   }, [query.isFetching, hasMore]);
 
+  /**
+   * Why the list is empty, when it is empty for a reason other than "no
+   * orders".
+   *
+   * `isLoading` goes false on failure as readily as on success, so without this
+   * a 500, a 403 or a dropped connection is reported as "No orders here" —
+   * a shop being told nothing needs its attention by a screen that never
+   * managed to ask. `isPaused` is the offline half of the same question:
+   * `onlineManager` (see `lib/queryClient.ts`) holds the request instead of
+   * firing it into a dead radio, which would otherwise be an unexplained
+   * spinner.
+   */
+  const loadError = query.isError
+    ? apiErrorMessage(query.error, 'Could not load your orders.')
+    : query.isPending && query.isPaused
+      ? 'No connection. Check your network and try again.'
+      : null;
+
   // ---- selection / detail sheet ----
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const detail = useOrder(selectedId ?? undefined);
+
+  /**
+   * The same question for the ONE order behind the detail sheet, and the sheet
+   * has to be told about it rather than working it out from `loading` and
+   * `order`: with both false-y it used to decide it should not be open at all,
+   * so tapping a row whose fetch had failed did nothing whatsoever — no sheet,
+   * no error, nothing to retry. Scoped to `selectedId` because `useOrder` is
+   * disabled without one, and a disabled query reads as permanently pending.
+   */
+  const detailError =
+    !selectedId
+      ? null
+      : detail.isError
+        ? apiErrorMessage(detail.error, 'Could not load that order.')
+        : detail.isPending && detail.isPaused
+          ? 'No connection. Check your network and try again.'
+          : null;
 
   // ---- transitions ----
   const transition = useOrderTransition();
@@ -295,7 +348,9 @@ export default function OrdersScreen() {
           ) : null
         }
         ListEmptyComponent={
-          query.isLoading ? (
+          loadError ? (
+            <ErrorBlock c={c} message={loadError} onRetry={() => void query.refetch()} />
+          ) : query.isLoading ? (
             <ActivityIndicator color={c.primary} />
           ) : (
             <View style={styles.emptyBox}>
@@ -313,6 +368,8 @@ export default function OrdersScreen() {
       <OrderDetailModal
         order={detail.data ?? null}
         loading={Boolean(selectedId) && detail.isLoading}
+        error={detailError}
+        onRetry={() => void detail.refetch()}
         pending={Boolean(selectedId) && pendingId === selectedId}
         canManage={canManage}
         onClose={() => setSelectedId(null)}

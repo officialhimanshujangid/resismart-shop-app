@@ -1,6 +1,11 @@
+// The NAMED export, not `axios.isAxiosError` — the same guard the rest of the
+// app uses, imported the way the linter asks for it.
+import { isAxiosError } from 'axios';
+
 import { apiClient, ApiEnvelope, unwrap } from '../../api/axios';
 import {
-  AssignableStaff, BookingVerb, PagedResult, PartnerBookingListFilters, PartnerBookingView,
+  AssignableStaff, BookingConflictView, BookingOverrunView, BookingVerb, PagedResult,
+  PartnerBookingListFilters, PartnerBookingView,
 } from './booking.types';
 
 /**
@@ -107,7 +112,57 @@ export const bookingApi = {
     apiClient
       .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/mark-paid`, body)
       .then((r) => unwrap(r.data)),
+
+  /**
+   * How this job is running against its plan, and what is booked behind it.
+   *
+   * A plain READ and the one booking endpoint that does not answer with a
+   * booking — it returns the partner's own diary arithmetic. Answers for any
+   * status: a finished job reports what it did, a live one reports where it is.
+   */
+  overrun: (id: string) =>
+    apiClient
+      .get<ApiEnvelope<BookingOverrunView>>(`/partners/me/bookings/${id}/overrun`)
+      .then((r) => unwrap(r.data)),
+
+  /**
+   * More time on a job that is running long.
+   *
+   * `minutes` is a DELTA on the current claim — how much longer, never an
+   * instant. That is deliberate on the server's side and it matters here more
+   * than anywhere: an absolute end computed on a phone is computed in the
+   * PHONE's timezone, and the whole slot engine is arithmetic in the partner's.
+   * A number of minutes is the same number of minutes everywhere.
+   *
+   * Refused with 409 `SLOT_TAKEN_AHEAD` when the time behind is genuinely
+   * taken, carrying the bookings in the way — see `slotConflictsOf`.
+   */
+  extend: (id: string, body: { minutes: number; note?: string }) =>
+    apiClient
+      .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/extend`, body)
+      .then((r) => unwrap(r.data)),
 };
+
+/**
+ * The appointments a refusal names, or `[]` when it named none.
+ *
+ * `apiErrorMessage` gives the sentence and `apiErrorCode` gives the token;
+ * neither can reach `data.conflicts`, which is the half of a `SLOT_TAKEN_AHEAD`
+ * that is actually useful — "you cannot have another twenty minutes" is a dead
+ * end, and "Mrs Sharma at 3:30, BK-0042" is something the partner can ring or
+ * move. `BookingConflictError` on the server exists to carry exactly this, so
+ * throwing it away in the client would waste the whole point of it.
+ *
+ * Defensive about the shape rather than trusting it: this is an error path, and
+ * a client that crashes while rendering a refusal turns a 409 into a blank
+ * screen.
+ */
+export function slotConflictsOf(error: unknown): BookingConflictView[] {
+  if (!isAxiosError(error)) return [];
+  const rows = (error.response?.data as { data?: { conflicts?: unknown } } | undefined)?.data?.conflicts;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r): r is BookingConflictView => Boolean(r) && typeof r === 'object');
+}
 
 /**
  * One function per verb, called through a single mutation — see `hooks.ts`.
@@ -135,6 +190,7 @@ export const bookingVerbCall: Record<
   // and never settled against the customer's balance.
   invoice: (id, body) => bookingApi.invoice(id, body),
   markPaid: (id, body) => bookingApi.markPaid(id, body),
+  extend: (id, body) => bookingApi.extend(id, body as { minutes: number; note?: string }),
 };
 
 /**

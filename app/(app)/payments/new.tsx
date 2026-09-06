@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
 import {
   ActivityIndicator, Button, Checkbox, Divider, SegmentedButtons, Snackbar, Surface, Text, TextInput,
@@ -15,6 +15,7 @@ import { partiesApi } from '../../../src/features/billing/parties.api';
 import { documentsApi } from '../../../src/features/billing/documents.api';
 import { PartnerDocumentRecord, PartnerPartyRecord } from '../../../src/features/billing/types';
 import { paymentsApi } from '../../../src/features/payments/payments.api';
+import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { toHref } from '../../../src/features/billing/routeHref';
 import {
   PAYMENT_MODES, PAYMENT_MODE_LABEL, PaymentDirection, PaymentMode, SETTLEABLE_TYPES, outstandingOf,
@@ -142,6 +143,43 @@ export default function NewPaymentScreen() {
 
   const canSave = !!party && amountPaise > 0 && !overAllocated;
 
+  /**
+   * One `Idempotency-Key` per payment the partner is entering, held across
+   * retries of THAT payment.
+   *
+   * Recording a payment twice records the money twice — two rows, the allocated
+   * document's `paidPaise` moved twice, the party's balance knocked down twice —
+   * and the double tap is not theoretical: Save disables itself while the
+   * request is in flight, and the cold-start timeout window (up to a minute, see
+   * `api/axios.ts`) re-enables it well before a sleeping server has answered.
+   * `partner-payment.routes.ts` has carried `idempotent('partner.payment.create')`
+   * all along and says in its own header that the client half is exactly this;
+   * `payments.api.ts` was posting bare, so nothing was ever protected.
+   *
+   * A REF, not state — nothing renders from it and re-rendering on a key change
+   * would be noise. Minted lazily at the first attempt rather than on mount, so
+   * an abandoned form burns nothing.
+   */
+  const intentKey = useRef<string | null>(null);
+
+  /**
+   * A change to what is being paid is a DIFFERENT payment, so it gets a new key.
+   *
+   * Reusing a key across two genuinely different bodies is a 422 from the
+   * server's request-hash check, not a silent replay — deliberately, so that a
+   * client bug is loud. Dropping the key here is how this screen stays on the
+   * right side of that: retrying the same figures replays, changing the figures
+   * creates.
+   *
+   * `alloc` is included by its serialised form rather than by identity: it is a
+   * new object on every keystroke in an allocation box, and the value is what
+   * decides whether this is the same payment.
+   */
+  const allocSignature = JSON.stringify(alloc);
+  useEffect(() => {
+    intentKey.current = null;
+  }, [party?._id, direction, mode, amountPaise, reference, receivedAt, allocSignature]);
+
   const handleSave = useCallback(async () => {
     if (!canSave || !party) return;
     setSaving(true);
@@ -150,17 +188,25 @@ export default function NewPaymentScreen() {
       const allocations = Object.entries(alloc)
         .map(([documentId, v]) => ({ documentId, amountPaise: parseRupeesToPaise(v) ?? 0 }))
         .filter((a) => a.amountPaise > 0);
-      await paymentsApi.create({
-        partyId: party._id,
-        direction,
-        mode,
-        amountPaise,
-        allocations,
-        reference: reference.trim() || undefined,
-        receivedAt: toIso(receivedAt),
-      });
+      if (!intentKey.current) intentKey.current = newIdempotencyKey('pay');
+      await paymentsApi.create(
+        {
+          partyId: party._id,
+          direction,
+          mode,
+          amountPaise,
+          allocations,
+          reference: reference.trim() || undefined,
+          receivedAt: toIso(receivedAt),
+        },
+        intentKey.current,
+      );
       router.replace(toHref(`/(app)/payments?direction=${direction}`));
     } catch (e: unknown) {
+      // The key is deliberately NOT cleared here. A failure is precisely when a
+      // retry happens, and a retry of the same payment must carry the same key —
+      // otherwise the second attempt after a timeout that actually landed is a
+      // second payment.
       setErrorMessage(apiErrorMessage(e, 'Could not record this payment.'));
     } finally {
       setSaving(false);

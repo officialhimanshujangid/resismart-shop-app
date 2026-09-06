@@ -198,6 +198,12 @@ function normalise(raw: PartnerEntitlementsPayload | undefined): PartnerEntitlem
       isFreeTier: raw.plan?.isFreeTier !== false,
       status: raw.plan?.status ?? 'unknown',
       limits,
+      // `=== true`, so a server that does not send the field reads as "not a
+      // trial" rather than as one with no deadline. `trialEndsAt` is carried
+      // through untouched — it is a date string, and the ONE thing this app
+      // must not do with a trial deadline is invent or round one.
+      isTrial: raw.plan?.isTrial === true,
+      trialEndsAt: raw.plan?.trialEndsAt,
     },
     modules,
     permissions: raw.permissions ?? {},

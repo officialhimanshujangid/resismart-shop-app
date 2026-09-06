@@ -1,5 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useSyncExternalStore } from 'react';
 
 import { draftStore } from './draftStore';
 import { AddDraftInput, InvoiceDraft } from './types';
@@ -7,8 +6,17 @@ import { AddDraftInput, InvoiceDraft } from './types';
 /**
  * The screen-facing handle onto `draftStore` — see that file for why the
  * actual state and sync loop are a module singleton and not local to this
- * hook. Every billing screen that mounts this gets the SAME drafts array and
- * the SAME "is a sync in flight" flag.
+ * hook. Every screen that mounts this gets the SAME drafts array and the SAME
+ * "is a sync in flight" flag.
+ *
+ * READ-ONLY as far as the engine is concerned: this hook no longer starts it.
+ * `draftStore.ensureInitialized()` used to live here, which meant the queue
+ * only came to life if a billing screen was opened — a partner who queued a
+ * bill offline, closed the app, came back on a good connection and spent the
+ * morning in Orders had an unsynced invoice that was neither visible nor
+ * sending. Startup now happens once per process in `app/(app)/_layout.tsx`,
+ * beside the push and SSE wiring, so the queue is running for a partner who
+ * never opens Billing at all.
  */
 export interface UseOfflineDrafts {
   drafts: InvoiceDraft[];
@@ -23,16 +31,7 @@ export interface UseOfflineDrafts {
 }
 
 export function useOfflineDrafts(): UseOfflineDrafts {
-  const queryClient = useQueryClient();
   const state = useSyncExternalStore(draftStore.subscribe, draftStore.getSnapshot);
-
-  useEffect(() => {
-    // Idempotent — see `ensureInitialized`. Whichever billing screen mounts
-    // first is the one that actually starts the engine; every screen after
-    // that just attaches to it.
-    draftStore.setQueryClient(queryClient);
-    draftStore.ensureInitialized();
-  }, [queryClient]);
 
   const pendingCount = state.drafts.filter((d) => d.status !== 'SYNCED').length;
 

@@ -119,10 +119,15 @@ export default function WhereYouWorkScreen() {
           Residents can only be matched to a business that has said this. It also decides which services you
           can offer — a job cannot happen somewhere you do not work.
         </Text>
+        {/* `choice` straight through, `''` included — see `choiceOf` above and
+            `ChipRow`'s own header. This used to fall back to `'AT_PARTNER'`,
+            which lit the first chip for a business that had never been asked
+            and so contradicted the "Nothing chosen yet" line directly beneath
+            it. The strip now shows nothing chosen, which is the truth. */}
         <ChipRow<ModeChoice>
           c={c}
           options={CHOICES}
-          value={(choice || 'AT_PARTNER') as ModeChoice}
+          value={choice}
           onChange={(k) => canEdit && setChoice(k)}
         />
         {!choice && (

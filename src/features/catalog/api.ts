@@ -68,4 +68,38 @@ export const catalogApi = {
 
   createCategory: (name: string) =>
     apiClient.post<ApiEnvelope<ProductCategory>>('/partners/me/product-categories', { name }).then((r) => unwrap(r.data)),
+
+  /**
+   * Rename a category, reorder it, or put a hidden one back.
+   *
+   * `PUT /product-categories/:id` has existed since the vertical was built and
+   * was called by nothing, so a typo'd aisle name was permanent — `CategoryPicker`
+   * said as much in its own header ("full folder management … is out of this
+   * build's scope"). `updateProductCategorySchema` takes exactly these three
+   * fields, all optional, so an omitted key means "leave it alone".
+   *
+   * A duplicate name is a 409 with a readable sentence, and the unique index is
+   * COLLATED — "Dairy" collides with "dairy". `apiErrorMessage` surfaces the
+   * server's own wording, which already says so.
+   */
+  updateCategory: (id: string, body: { name?: string; sortOrder?: number; isActive?: boolean }) =>
+    apiClient
+      .put<ApiEnvelope<ProductCategory>>(`/partners/me/product-categories/${id}`, body)
+      .then((r) => unwrap(r.data)),
+
+  /**
+   * Hide a category. SOFT, and it has to be — products point at the row by
+   * `_id`, and a hard delete would file every one of them under a folder that
+   * renders blank and can never be filtered for again. The controller says the
+   * same thing in its own header, and its success MESSAGE names how many
+   * products are in it, which is the thing the partner is about to wonder — so
+   * that message is read back rather than replaced with one of ours.
+   *
+   * Undone with `updateCategory(id, { isActive: true })`, which is why this
+   * pair is not a one-way door.
+   */
+  removeCategory: (id: string) =>
+    apiClient
+      .delete<{ success: boolean; message?: string }>(`/partners/me/product-categories/${id}`)
+      .then((r) => r.data),
 };

@@ -209,6 +209,22 @@ export default function AvailabilityScreen() {
           — this is what decides the times they are offered.
         </Text>
 
+        {/*
+          Says WHY nothing on this screen responds, in the words Orders already
+          uses (`(tabs)/orders.tsx`). Every chip below reads `mayManage` too, so
+          a viewer's tap is refused by the control itself rather than swallowed
+          by an `onPress` that quietly evaluates to `false` — which is what this
+          screen did, leaving a view-only staff member tapping a preset over and
+          over with nothing on screen to explain the silence.
+        */}
+        {!mayManage && (
+          <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
+            <Text style={[styles.readOnlyText, { color: c.textSecondary }]}>
+              View only — your role does not include managing bookings.
+            </Text>
+          </View>
+        )}
+
         {mayManage && meQuery.data && (
           <View
             style={[
@@ -231,14 +247,15 @@ export default function AvailabilityScreen() {
         )}
 
         <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>START FROM A COMMON WEEK</Text>
-        <View style={styles.chipRow}>
+        <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {PRESETS.map((p) => (
             <Pressable
               key={p.label}
-              onPress={() => mayManage && applyPreset(p)}
-              style={[styles.presetChip, { borderColor: c.primary }]}
+              onPress={() => applyPreset(p)}
+              disabled={!mayManage}
+              style={[styles.presetChip, { borderColor: mayManage ? c.primary : c.divider }]}
             >
-              <Text style={{ color: c.primary, fontSize: 12, fontWeight: '600' }}>{p.label}</Text>
+              <Text style={{ color: mayManage ? c.primary : c.textDisabled, fontSize: 12, fontWeight: '600' }}>{p.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -287,13 +304,14 @@ export default function AvailabilityScreen() {
         )}
 
         <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>HOW FAR AHEAD</Text>
-        <View style={styles.chipRow}>
+        <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {ADVANCE_CHOICES.map((choice) => {
             const active = draft.advanceBookingDays === choice.value;
             return (
               <Pressable
                 key={choice.value}
-                onPress={() => mayManage && setDraft({ ...draft, advanceBookingDays: choice.value })}
+                onPress={() => setDraft({ ...draft, advanceBookingDays: choice.value })}
+                disabled={!mayManage}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
                 <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{choice.label}</Text>
@@ -303,13 +321,14 @@ export default function AvailabilityScreen() {
         </View>
 
         <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>NOTICE BEFORE A SLOT</Text>
-        <View style={styles.chipRow}>
+        <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {CUTOFF_CHOICES.map((choice) => {
             const active = draft.cutoffMin === choice.value;
             return (
               <Pressable
                 key={choice.value}
-                onPress={() => mayManage && setDraft({ ...draft, cutoffMin: choice.value })}
+                onPress={() => setDraft({ ...draft, cutoffMin: choice.value })}
+                disabled={!mayManage}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
                 <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{choice.label}</Text>
@@ -322,13 +341,14 @@ export default function AvailabilityScreen() {
         </Text>
 
         <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>TIMES ON THIS SCREEN ARE</Text>
-        <View style={styles.chipRow}>
+        <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {timezoneChoices.map((tz) => {
             const active = draft.timezone === tz;
             return (
               <Pressable
                 key={tz}
-                onPress={() => mayManage && setDraft({ ...draft, timezone: tz })}
+                onPress={() => setDraft({ ...draft, timezone: tz })}
+                disabled={!mayManage}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
                 <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{tz}</Text>
@@ -386,6 +406,10 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6, marginBottom: 8 },
   hint: { fontSize: 11.5, lineHeight: 16, marginTop: 4, marginBottom: 8 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
+  /** Dims a whole chip row for a viewer while leaving the CHOSEN chip readable — it is still the answer they came to read. */
+  readOnlyRow: { opacity: 0.65 },
+  readOnlyBanner: { borderRadius: radii.sm, paddingVertical: 6, paddingHorizontal: 10, marginBottom: 10 },
+  readOnlyText: { fontSize: 11.5, fontWeight: '600' },
   presetChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: 1.5 },
   optionChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   blackoutChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill },

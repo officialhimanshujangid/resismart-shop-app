@@ -4,7 +4,7 @@ import { ActivityIndicator, Button, Surface, Text } from 'react-native-paper';
 import { StatusBadge } from './StatusBadge';
 import { BookingVerb, PartnerBookingView } from '../booking.types';
 import { VERB_LABELS } from '../booking.types';
-import { formatDateTime, formatTime } from '../format';
+import { formatDateTime, formatMinutes, formatTime, minutesBetween } from '../format';
 import { formatPaise } from '../../../lib/money';
 import { themeColors, radii } from '../../../constants/colors';
 
@@ -27,13 +27,85 @@ const ROUTED_VERBS = new Set<BookingVerb>([
   // customer's balance — and the partner had no way to tell that anything was
   // outstanding.
   'invoice', 'markPaid',
+  // `POST /:id/extend` — mounted on the same router as every verb above.
+  'extend',
 ]);
 
 /** Reading order for the action row — the happy path left to right, `cancel` always last. */
 const VERB_ORDER: BookingVerb[] = [
   'accept', 'start', 'reach', 'complete', 'invoice', 'markPaid',
+  // Directly after `complete`: on a job that is running long the two are the
+  // same decision asked from opposite ends — finish now and hand the rest back,
+  // or claim more of the diary out loud.
+  'extend',
   'assign', 'reschedule', 'reject', 'noShow', 'cancel', 'note',
 ];
+
+/**
+ * How this job is running against the hour it was sold, from fields the booking
+ * view ALREADY carries.
+ *
+ * No request. `slotEnd` (what was agreed), `occupiesUntil` (what the diary is
+ * actually blocked for) and `actual` all travel on every partner-side booking
+ * response, so a timeline of twenty cards costs twenty sentences and zero calls;
+ * `GET /:id/overrun` is for the sheet, where `canExtendByMin` and the
+ * appointments behind matter and are worth a round trip.
+ *
+ * `now` is passed in rather than read here so the card can tick — see the
+ * interval in the component. `overrunning` travels beside the sentence rather
+ * than being sniffed back out of it: a caller matching on the wording is a
+ * caller that breaks the day somebody rewords the copy.
+ */
+interface ClockLine {
+  text: string;
+  /** Past its claim RIGHT NOW — the one state on this card that earns a colour. */
+  overrunning: boolean;
+}
+
+function clockLine(booking: PartnerBookingView, now: number): ClockLine | null {
+  const { status, slotEnd, occupiesUntil, actual } = booking;
+
+  // Finished. What it actually took, and — the point of the whole feature —
+  // whether the unused tail went back on sale.
+  if (actual?.endedAt) {
+    const took = actual.durationMin;
+    const planned = booking.serviceSnapshot.durationMin;
+    const handedBack = occupiesUntil ? minutesBetween(occupiesUntil, slotEnd) : 0;
+    const parts: string[] = [];
+    if (typeof took === 'number') parts.push(`Took ${formatMinutes(took)} of ${formatMinutes(planned)}`);
+    if (handedBack > 0) parts.push(`${formatMinutes(handedBack)} handed back`);
+    else if (handedBack < 0) parts.push(`ran to ${formatTime(occupiesUntil as string)}`);
+    return parts.length ? { text: parts.join(' · '), overrunning: false } : null;
+  }
+
+  if (status !== 'IN_PROGRESS') return null;
+
+  // Live. `occupiesUntil` is what the partner has actually claimed, so an
+  // already-extended job counts its overrun from the EXTENDED end — saying
+  // "40 minutes over" to somebody who asked for and was given those 40 minutes
+  // would be the app arguing with a decision it just carried out.
+  //
+  // Compared as instants, not as strings. Both arrive as UTC ISO today and
+  // would sort correctly, but that is a property of one serializer rather than
+  // of the contract, and a clock is the wrong place to depend on it.
+  const extended = Boolean(occupiesUntil) && minutesBetween(slotEnd, occupiesUntil as string) > 0;
+  const claimEnd = extended ? (occupiesUntil as string) : slotEnd;
+  const over = minutesBetween(claimEnd, now);
+  if (over > 0) {
+    return {
+      text: `Running over by ${formatMinutes(over)} — your diary is free again from ${formatTime(claimEnd)}`,
+      overrunning: true,
+    };
+  }
+  const left = -over;
+  if (extended) {
+    return { text: `Extended to ${formatTime(claimEnd)} · ${formatMinutes(left)} left`, overrunning: false };
+  }
+  return {
+    text: `${formatMinutes(left)} left of the booked ${formatMinutes(booking.serviceSnapshot.durationMin)}`,
+    overrunning: false,
+  };
+}
 
 export function routedVerbsOf(booking: PartnerBookingView): BookingVerb[] {
   return VERB_ORDER.filter((v) => ROUTED_VERBS.has(v) && booking.allowedVerbs.includes(v));
@@ -74,6 +146,26 @@ export function BookingCard({ booking, pending, onQuickAction, onOpenForm, compa
   const verbs = routedVerbsOf(booking);
   const money = formatPaise(booking.pricing.totalPaise);
 
+  /**
+   * A minute hand, and ONLY while a job is actually running.
+   *
+   * "You are running over" is worth nothing if it appears the next time
+   * something else happens to refetch. The partner has to see it while the job
+   * is under way and the next customer is still on their way, so a live card
+   * re-renders every half minute; every other card mounts no timer at all. The
+   * value is a tick counter rather than a stored `Date` — nothing reads it, and
+   * `Date.now()` at render is what the sentence is computed against.
+   */
+  const live = booking.status === 'IN_PROGRESS';
+  const [, tick] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => {
+    if (!live) return undefined;
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [live]);
+
+  const clock = clockLine(booking, Date.now());
+
   return (
     <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
       <View style={styles.headerRow}>
@@ -100,6 +192,16 @@ export function BookingCard({ booking, pending, onQuickAction, onOpenForm, compa
       {booking.customer.contactMasked && booking.customer.maskNote ? (
         <Text style={[styles.maskNote, { color: c.textDisabled }]}>{booking.customer.maskNote}</Text>
       ) : null}
+
+      {/* The clock. Drawn on the COMPACT card too — a partner scanning today's
+          timeline is exactly the person who needs to see a job running over
+          before the next customer arrives, and the compact card is the one on
+          the Today screen. */}
+      {clock && (
+        <Text style={[styles.clock, { color: clock.overrunning ? c.warning : c.textSecondary }]}>
+          {clock.text}
+        </Text>
+      )}
 
       {!compact && verbs.length > 0 && (
         <View style={styles.actions}>
@@ -134,6 +236,7 @@ const styles = StyleSheet.create({
   customer: { fontSize: 13, flex: 1, marginRight: 8 },
   money: { fontSize: 13, fontWeight: '600' },
   maskNote: { fontSize: 11, fontStyle: 'italic' },
+  clock: { fontSize: 12, lineHeight: 17, fontWeight: '600' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   actionBtn: { borderRadius: radii.pill },
   actionLabel: { fontSize: 12, marginVertical: 6 },

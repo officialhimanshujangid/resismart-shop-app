@@ -10,7 +10,7 @@ import { parseRupeesToPaise } from '../../../src/lib/money';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { PRODUCT_UNITS, ProductUnit } from '../../../src/types/api-contract.generated';
-import { useCreateProduct, useProductCategories, CategoryPicker, UsageMeterBar } from '../../../src/features/catalog';
+import { useCreateProduct, useProductCategories, CategoryPicker, ProductImages, UsageMeterBar } from '../../../src/features/catalog';
 import { BarcodeScannerView, ProductScanOutcome } from '../../../src/features/scanner';
 
 /**
@@ -56,6 +56,7 @@ export default function CreateProductScreen() {
   const [lowStockAt, setLowStockAt] = useState('');
   const [trackStock, setTrackStock] = useState(true);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
+  const [images, setImages] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [scannerOpen, setScannerOpen] = useState(false);
 
@@ -152,7 +153,12 @@ export default function CreateProductScreen() {
         stockQty: stockQtyNum,
         lowStockAt: lowStockNum,
         trackStock,
-        images: [],
+        // Was a hardcoded `images: []` — which is why every item in every
+        // partner's catalogue was a line of text to the residents browsing it.
+        // These URLs are the ones `POST /upload` returned and are stored
+        // verbatim; `createProductSchema` refuses anything that is not from our
+        // own bucket, so none of them is ever built by hand. See `ProductImages`.
+        images,
         categoryId,
         isActive: true,
       },
@@ -213,6 +219,13 @@ export default function CreateProductScreen() {
           );
         })}
       </View>
+
+      {/* Above Category and above SKU: a shop adding stock has the item in its
+          hand, and photographing it first is the natural order. Each photo
+          uploads as it is picked rather than at save, so a bad connection costs
+          one picture instead of the whole form. */}
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Photos</Text>
+      <ProductImages value={images} onChange={setImages} c={c} canManage={canManage} />
 
       <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Category</Text>
       <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={canManage} />

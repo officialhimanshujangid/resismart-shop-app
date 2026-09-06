@@ -32,6 +32,29 @@ export function useBooking(id: string | undefined) {
 }
 
 /**
+ * The clock on one job: how far over it is running, and what is behind it.
+ *
+ * Fetched only when something is actually asking — the extend sheet, while it is
+ * open. It is a real query per booking, and firing one for every row of a
+ * timeline would cost a request per card for an answer most cards do not use.
+ *
+ * `staleTime: 0` and a refetch on mount, unlike everything else in this file:
+ * the whole value of this read is that "you have eleven minutes left" is true at
+ * the moment it is read. A cached minute count is a wrong minute count, and a
+ * partner deciding whether to ask for twenty more is exactly the person who must
+ * not be shown one.
+ */
+export function useBookingOverrun(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: qk.bookings.overrun(id ?? ''),
+    queryFn: () => bookingApi.overrun(id as string),
+    enabled: enabled && Boolean(id),
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
+}
+
+/**
  * Staff eligible for assignment. A 403 here means this viewer's role does not
  * hold `STAFF READ` — a real, unremarkable case for somebody who only manages
  * bookings — so it fails to an EMPTY list rather than surfacing a scary error;

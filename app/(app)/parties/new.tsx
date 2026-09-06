@@ -126,8 +126,14 @@ export default function PartyFormScreen() {
           <Text style={{ color: c.error, fontWeight: '600' }}>
             You have reached your plan's limit of {cap.limit} {cap.noun}.
           </Text>
+          {/* "you can put them back" is load-bearing. Hiding used to be a
+              one-way door — the list filtered to active parties and offered no
+              undo anywhere — so this sentence was pushing people through it.
+              The Parties list now carries a "Show hidden parties" switch and an
+              unhide action on every row. */}
           <Text style={{ color: c.textSecondary, fontSize: 12 }}>
-            Upgrade your plan, or hide a party you no longer trade with, before adding another.
+            Upgrade your plan, or hide a party you no longer trade with — you can put them back from the Parties
+            list at any time.
           </Text>
         </View>
       )}

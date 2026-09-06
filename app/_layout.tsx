@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
@@ -24,9 +24,28 @@ import { useOnboardingGate } from '../src/hooks';
  * imperatively from an effect that could run before the navigator had mounted.
  *
  * The session is restored from SecureStore before any of this — `isLoading` is
- * true until then, and nothing is rendered while it is. Deciding the guard on a
- * half-restored session is exactly how an already-signed-in partner gets shown
- * the login screen for a moment on every cold start.
+ * true until then, and the navigator is not built yet while it is. Deciding the
+ * guard on a half-restored session is exactly how an already-signed-in partner
+ * gets shown the login screen for a moment on every cold start.
+ *
+ * ── The splash is COMPOSED, never substituted ─────────────────────────────
+ *
+ * `resolving` used to `return <LoadingOverlay/>` in place of the `<Stack>`, and
+ * that one line cost a partner their whole registration. `applySession` clears
+ * the query cache BEFORE it flips `isAuthenticated`, so the entitlements request
+ * is gone and `resolving` goes false → true on a navigator that is already
+ * mounted: the tree was torn down and replaced by a spinner over an empty root
+ * view, taking every screen's React state with it. `LoadingOverlay` is a
+ * `<Modal>`, so it composes over the navigator instead — nothing here may ever
+ * unmount the navigator to show a splash again.
+ *
+ * The splash still stands ALONE before the navigator has been built once, and
+ * that is not the same thing: at that point there is no tree to destroy, and
+ * mounting a half of the app to answer a question that is about to be answered
+ * costs a real request on every cold start — `(auth)` would open the wizard,
+ * which asks `/me/onboarding-status`, an endpoint a member of staff is 403'd
+ * from. `booted` is the difference between "not built yet" and "built, and now
+ * being asked again".
  */
 function RootNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -40,21 +59,46 @@ function RootNavigator() {
    */
   const { resolving, needsOnboarding } = useOnboardingGate(isAuthenticated);
 
-  if (isLoading || resolving) {
+  /**
+   * A one-way latch: false until the navigator has rendered, true forever after.
+   *
+   * Written during render on purpose — it is idempotent, nothing reads it before
+   * it is set, and the alternative (state plus an effect) would add a render
+   * pass to the launch path to answer a question the render itself already knows.
+   */
+  const booted = useRef(false);
+  if (!booted.current && (isLoading || resolving)) {
     return <LoadingOverlay visible message="Starting up..." />;
   }
+  booted.current = true;
 
-  const inApp = isAuthenticated && !needsOnboarding;
+  /**
+   * `resolving` holds the partner in `(auth)`, it does not send them to `(app)`.
+   *
+   * The fail-open in `useOnboardingGate` is about the ANSWER — an entitlements
+   * call that failed must not throw a trading business into a signup form — and
+   * it still is: `needsOnboarding` is false there, so the moment the request
+   * settles, either way, this reads it. The PENDING state is a different
+   * question. It is only reachable after `booted` (a fresh sign-in, which clears
+   * the cache), and guessing `(app)` for it would open the SSE stream and
+   * register a push token for a business that is about to turn out to be a
+   * DRAFT. `(auth)` is the cheaper half to be wrong in — the partner is standing
+   * on a screen there already — and the overlay covers the guess either way.
+   */
+  const inApp = isAuthenticated && !resolving && !needsOnboarding;
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={inApp}>
-        <Stack.Screen name="(app)" />
-      </Stack.Protected>
-      <Stack.Protected guard={!inApp}>
-        <Stack.Screen name="(auth)" />
-      </Stack.Protected>
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={inApp}>
+          <Stack.Screen name="(app)" />
+        </Stack.Protected>
+        <Stack.Protected guard={!inApp}>
+          <Stack.Screen name="(auth)" />
+        </Stack.Protected>
+      </Stack>
+      <LoadingOverlay visible={resolving} message="Starting up..." />
+    </>
   );
 }
 

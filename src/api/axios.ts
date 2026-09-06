@@ -2,9 +2,50 @@ import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } fro
 import { API_BASE_URL, STORAGE_KEYS } from '../constants/app';
 import { storage } from '../utils/storage';
 
+/**
+ * The normal ceiling. A warm server answers every one of these endpoints in
+ * well under a second, so 30s is already generous — long enough to survive a
+ * bad cell, short enough that a real failure is reported while the partner is
+ * still looking at the screen.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * The ceiling for a request that may be the one WAKING THE SERVER UP.
+ *
+ * `constants/app.ts` points at a free Render instance, which is suspended after
+ * roughly fifteen minutes with no traffic and takes 30–60s to boot on the next
+ * request. At the normal 30s that first call of the morning aborts before the
+ * server has finished starting, and `apiErrorMessage` — with no response to
+ * read — reports "No connection", blaming the shop's wifi for a sleeping
+ * backend the partner cannot see.
+ *
+ * Deliberately NOT the global timeout. Raising `REQUEST_TIMEOUT_MS` to 60s
+ * would make every genuine failure take a full minute to surface for the whole
+ * day, to buy one request in the morning. The longer ceiling is spent only
+ * while the server might actually be asleep — see `mightBeCold`.
+ */
+const COLD_START_TIMEOUT_MS = 60_000;
+
+/**
+ * How long the instance may sit idle before we assume it has been suspended
+ * again. Render's own idle window is ~15 minutes; erring slightly under it
+ * means the extra headroom is offered a little too often rather than not at
+ * all, and offering it costs nothing unless the request is failing anyway.
+ */
+const IDLE_SLEEP_MS = 14 * 60_000;
+
+/** When the server last proved it was awake by answering ANYTHING, 4xx included. */
+let lastResponseAt: number | null = null;
+
+/** True before the first answer of the process, and after a long enough silence. */
+function mightBeCold(): boolean {
+  return lastResponseAt === null || Date.now() - lastResponseAt > IDLE_SLEEP_MS;
+}
+
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: REQUEST_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -153,14 +194,27 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Only when the caller has not asked for its own ceiling, and only while the
+    // instance may still be asleep. `config.timeout` is already the instance
+    // default by this point, so "did the caller choose it" is "is it anything
+    // other than the default".
+    if (config.timeout === REQUEST_TIMEOUT_MS && mightBeCold()) {
+      config.timeout = COLD_START_TIMEOUT_MS;
+    }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    lastResponseAt = Date.now();
+    return response;
+  },
   async (error: AxiosError) => {
+    // A refusal is still proof the server is up and serving; only a request that
+    // never got a response leaves the question open.
+    if (error.response) lastResponseAt = Date.now();
     const originalRequest = error.config as RetriableRequest | undefined;
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
@@ -222,6 +276,17 @@ export function unwrap<T>(body: ApiEnvelope<T> | T): T {
   return body as T;
 }
 
+/**
+ * A request that ran out of time rather than one that was refused or dropped.
+ *
+ * Both codes appear: axios aborts with `ECONNABORTED` on its own `timeout`, and
+ * React Native's networking stack sometimes surfaces the platform's own
+ * `ETIMEDOUT` first.
+ */
+function isTimeout(error: AxiosError): boolean {
+  return !error.response && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT');
+}
+
 /** The server's error body. `missing` is the onboarding checklist; see below. */
 interface ApiErrorBody {
   error?: string;
@@ -240,12 +305,20 @@ interface ApiErrorBody {
  * "Request failed" would throw away the only useful part of the response. The
  * fallback names the network, since that is the actual cause when there is no
  * response body at all and a shop's connection dies constantly.
+ *
+ * A TIMEOUT is separated out from the rest of the no-response cases. The two
+ * look identical to axios but are not the same event: a dropped connection is
+ * the partner's network, while an abort after the full ceiling is usually the
+ * server still waking up (see `COLD_START_TIMEOUT_MS`). Telling somebody with
+ * four bars of signal to check their network sends them to reboot a router that
+ * was never the problem.
  */
 export function apiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
   if (axios.isAxiosError(error)) {
     const body = error.response?.data as ApiErrorBody | undefined;
     const fromBody = body?.error ?? body?.message;
     if (typeof fromBody === 'string' && fromBody.trim()) return fromBody;
+    if (isTimeout(error)) return 'The server is taking too long to answer. Please try again.';
     if (!error.response) return 'No connection. Check your network and try again.';
   }
   if (error instanceof Error && error.message) return error.message;

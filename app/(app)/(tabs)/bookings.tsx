@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, useColorScheme, View } from 'react-native';
-import { Chip, Searchbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Chip, Searchbar, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { themeColors, radii } from '../../../src/constants/colors';
@@ -8,8 +8,10 @@ import { Hero } from '../../../src/components/Hero';
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction, useBookingsList } from '../../../src/features/bookings/hooks';
-import { BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
+import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
+import { slotConflictsOf } from '../../../src/features/bookings/booking.api';
 import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
+import { ErrorBlock } from '../../../src/features/more/ui';
 // `as Href` on the push below: the destination is built with a query string, so
 // it is not one of the literal routes the generated union describes — the same
 // documented escape hatch `catalog/create.tsx` uses for `returnTo`.
@@ -42,6 +44,9 @@ const TAB_LABEL: Record<FilterTab, string> = {
   PAST: 'Past',
 };
 
+/** One page. Was a flat `limit: 50` with no second page — see the accumulate effect. */
+const PAGE_LIMIT = 20;
+
 /** Verbs whose confirmation is a native alert rather than the form sheet — see `BookingCard.CONFIRM_DIRECTLY`. */
 const CONFIRM_COPY: Partial<Record<BookingVerb, string>> = {
   accept: 'Accept this booking?',
@@ -56,13 +61,52 @@ export default function BookingsScreen() {
   const [tab, setTab] = useState<FilterTab>('REQUESTED');
   const [code, setCode] = useState('');
   const [formTarget, setFormTarget] = useState<{ booking: PartnerBookingView; verb: BookingVerb } | null>(null);
+  /** The appointments the last submit was refused for — see `submitForm`. */
+  const [conflicts, setConflicts] = useState<BookingConflictView[]>([]);
+
+  const [page, setPage] = useState(1);
+  const [rows, setRows] = useState<PartnerBookingView[]>([]);
+
+  // Any change of tab or search starts the accumulated list over at page 1.
+  useEffect(() => {
+    setPage(1);
+    setRows([]);
+  }, [tab, code]);
 
   const filters = useMemo(
-    () => ({ status: FILTER_STATUS[tab], code: code.trim() || undefined, limit: 50 }),
-    [tab, code],
+    () => ({ status: FILTER_STATUS[tab], code: code.trim() || undefined, page, limit: PAGE_LIMIT }),
+    [tab, code, page],
   );
   const list = useBookingsList(filters);
   const { act, pendingId, isPending } = useBookingAction();
+
+  /**
+   * Pages accumulated into one list — the `(tabs)/orders.tsx` pattern, which
+   * this screen was the only list not to use.
+   *
+   * It asked for `limit: 50` and had NO paging at all, and the Past tab is where
+   * that hurt: a shop doing ten jobs a week runs out of reachable history in
+   * about five weeks, and last quarter's bookings were simply not addressable
+   * from anywhere in the app. `bookingApi.list` has always returned
+   * `page`/`limit`/`total`; nothing was asking for page two.
+   *
+   * De-duplicated by id: a booking whose status changes moves between tabs and
+   * can shift across a page boundary between two requests.
+   */
+  useEffect(() => {
+    if (!list.data) return;
+    setRows((prev) => {
+      if (list.data.page === 1) return list.data.data;
+      const seen = new Set(prev.map((b) => b.id));
+      return [...prev, ...list.data.data.filter((b) => !seen.has(b.id))];
+    });
+  }, [list.data]);
+
+  const hasMore = list.data ? rows.length < list.data.total : false;
+  const loadMore = useCallback(() => {
+    if (list.isFetching || !hasMore) return;
+    setPage((p) => p + 1);
+  }, [list.isFetching, hasMore]);
 
   /**
    * The Billing screen, opened to raise the bill for THIS job.
@@ -135,14 +179,45 @@ export default function BookingsScreen() {
     (body: Record<string, unknown>) => {
       if (!formTarget) return;
       const { booking, verb } = formTarget;
+      setConflicts([]);
       act(booking.id, verb, body)
         .then(() => setFormTarget(null))
-        .catch((e) => Alert.alert('Could not do that', apiErrorMessage(e)));
+        .catch((e) => {
+          /**
+           * A refusal that NAMES the appointments in the way stays in the sheet.
+           *
+           * `extend` answers 409 `SLOT_TAKEN_AHEAD` carrying `data.conflicts[]`.
+           * "Could not do that" throws away the only part the partner can act
+           * on — the whole reason `BookingConflictError` carries a body is so
+           * the app can show whose appointment is about to be eaten into and
+           * offer to move it rather than presenting a dead end with an OK
+           * button.
+           */
+          const named = slotConflictsOf(e);
+          if (named.length) return setConflicts(named);
+          Alert.alert('Could not do that', apiErrorMessage(e));
+        });
     },
     [act, formTarget],
   );
 
-  const rows = list.data?.data ?? [];
+  /**
+   * Why the diary is empty, when it is empty for a reason other than "no
+   * bookings".
+   *
+   * `isLoading` goes false whether the request succeeded or failed, so on its
+   * own it hands a 500, a 403 or a dropped connection straight to "No new
+   * requests right now." — telling a partner their day is clear when the app
+   * simply does not know. The paused case is the same lie from the other side:
+   * `onlineManager` (see `lib/queryClient.ts`) holds a query rather than firing
+   * it into a dead radio, so "still pending" means "offline" as often as it
+   * means "loading" and only one of those deserves a spinner.
+   */
+  const loadError = list.isError
+    ? apiErrorMessage(list.error, 'Could not load your bookings.')
+    : list.isPending && list.isPaused
+      ? 'No connection. Check your network and try again.'
+      : null;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
@@ -168,8 +243,18 @@ export default function BookingsScreen() {
         data={rows}
         keyExtractor={(b) => b.id}
         contentContainerStyle={styles.list}
-        refreshing={list.isFetching}
-        onRefresh={() => void list.refetch()}
+        // `page === 1` on both: without it, fetching page four spins the
+        // pull-to-refresh indicator at the TOP of a list the partner is reading
+        // the bottom of.
+        refreshing={list.isFetching && page === 1}
+        onRefresh={() => { setPage(1); void list.refetch(); }}
+        onEndReachedThreshold={0.4}
+        onEndReached={loadMore}
+        ListFooterComponent={
+          list.isFetching && page > 1 ? (
+            <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
+          ) : null
+        }
         renderItem={({ item }) => (
           <BookingCard
             booking={item}
@@ -180,11 +265,13 @@ export default function BookingsScreen() {
           />
         )}
         ListEmptyComponent={
-          !list.isLoading ? (
+          loadError ? (
+            <ErrorBlock c={c} message={loadError} onRetry={() => void list.refetch()} />
+          ) : list.isLoading ? null : (
             <Text style={[styles.empty, { color: c.textSecondary }]}>
               {tab === 'REQUESTED' ? 'No new requests right now.' : 'Nothing here yet.'}
             </Text>
-          ) : null
+          )
         }
       />
 
@@ -194,7 +281,8 @@ export default function BookingsScreen() {
         booking={formTarget?.booking ?? null}
         isDark={isDark}
         submitting={isPending}
-        onDismiss={() => setFormTarget(null)}
+        conflicts={conflicts}
+        onDismiss={() => { setConflicts([]); setFormTarget(null); }}
         onSubmit={submitForm}
       />
     </SafeAreaView>

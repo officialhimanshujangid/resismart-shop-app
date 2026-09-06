@@ -47,6 +47,30 @@ export function formatDateTime(iso: string): string {
   return `${formatDayLabel(iso)}, ${formatTime(iso)}`;
 }
 
+/**
+ * A count of minutes, said the way a shop says it: "20 min", "1 hr 35 min".
+ *
+ * Rounded to whole minutes, because every duration in this vertical already is
+ * — `actual.durationMin`, `runningOverMin` and `canExtendByMin` are all whole
+ * numbers on the server, and showing "19.6 min over" for a clock a partner is
+ * reading between customers is precision nobody asked for.
+ */
+export function formatMinutes(total: number): string {
+  const mins = Math.max(0, Math.round(total));
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h} hr${h === 1 ? '' : 's'}${m ? ` ${m} min` : ''}`;
+}
+
+/** Whole minutes from one ISO instant to another. Negative when `to` is earlier. */
+export function minutesBetween(fromIso: string, to: string | number): number {
+  const a = new Date(fromIso).getTime();
+  const b = typeof to === 'number' ? to : new Date(to).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.round((b - a) / 60_000);
+}
+
 /** The word a partner reads for each status. Same vocabulary as `VERB_LABELS`. */
 export const STATUS_LABELS: Record<BookingStatus, string> = {
   REQUESTED: 'New request',

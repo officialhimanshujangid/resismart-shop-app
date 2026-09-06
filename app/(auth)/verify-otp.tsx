@@ -16,6 +16,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { AppButton } from '../../src/components/AppButton';
 import { Hero } from '../../src/components/Hero';
+import { OtpDeliveryNotice } from '../../src/components/OtpDeliveryNotice';
+import { OtpAltVia, OtpDeliveredVia, OtpVia } from '../../src/api/auth.api';
 import { themeColors, radii } from '../../src/constants/colors';
 
 /**
@@ -32,31 +34,104 @@ import { themeColors, radii } from '../../src/constants/colors';
  * while signed out and then sends the partner here to open the session that
  * lets them save steps 2–5 (those endpoints run on `PARTNER_PROPRIETOR_CHAIN`).
  *
+ * ── Saying where the code went ────────────────────────────────────────────
+ *
+ * The code is REQUESTED on the screen before this one, so the delivery report
+ * that came back with it is handed over as params rather than re-fetched — a
+ * second request just to learn what the first one did would send a second code.
+ * From then on this screen owns the report, because every re-request it makes
+ * returns a fresh one.
+ *
+ * `POST /auth/login/otp/request` is the enumeration-safe endpoint: it answers
+ * 200 for everybody and its `deliveredVia` is the transport used OR MERELY
+ * INTENDED. It cannot report a failed delivery, and it must not be made to —
+ * so there is no 502 branch here and no "we could not deliver" copy. What the
+ * user gets instead, and what actually helps them, is the other transport as a
+ * button. Anything thrown by a re-request is a 429, a 400 or the network.
+ *
  * Params:
- *   identifier  email or phone — whichever the code was sent to
- *   reason      'new-account' softens the copy for someone who has just
- *               registered and is being asked for a third code in two minutes
- *   devCode     dev only; no SMS gateway is wired, so `requestOtp` hands the
- *               phone code straight back and it is prefilled rather than
- *               invented by the user
+ *   identifier         email or phone — whichever the code was sent to
+ *   reason             'new-account' softens the copy for someone who has just
+ *                      registered and is being asked for a third code in two minutes
+ *   message            the server's own sentence, which already names the transport
+ *   deliveredVia       'whatsapp' | 'sms' | 'email'
+ *   alternatives       comma-separated rungs the server will still accept
+ *   whatsappAvailable  '1' | '0' — a platform fact, safe to print
+ *   email              the identity's verified email, where the sending flow knows
+ *                      one. Present from the signup wizard (whose identifier is a
+ *                      PHONE) and absent from sign-in, where the identifier
+ *                      already is the email and offering it would be a no-op.
  */
 
 const CODE_LENGTH = 6;
 const RESEND_SECONDS = 30;
 
+/** What the screen is currently telling the user about delivery. */
+interface DeliveryView {
+  message: string | null;
+  deliveredVia: OtpDeliveredVia | null;
+  alternatives: OtpAltVia[];
+  whatsappAvailable: boolean | null;
+}
+
+const asString = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+/** Params arrive as strings; anything unrecognised becomes "we were not told". */
+const asDeliveredVia = (v: unknown): OtpDeliveredVia | null =>
+  v === 'whatsapp' || v === 'sms' || v === 'email' ? v : null;
+
+const asAlternatives = (v: unknown): OtpAltVia[] =>
+  asString(v)
+    .split(',')
+    .filter((s): s is OtpAltVia => s === 'whatsapp' || s === 'sms');
+
+const asTriState = (v: unknown): boolean | null => (v === '1' ? true : v === '0' ? false : null);
+
 export default function VerifyOtpScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const params = useLocalSearchParams<{ identifier?: string; reason?: string; devCode?: string }>();
-  const identifier = typeof params.identifier === 'string' ? params.identifier : '';
+  const params = useLocalSearchParams<{
+    identifier?: string;
+    reason?: string;
+    message?: string;
+    deliveredVia?: string;
+    alternatives?: string;
+    whatsappAvailable?: string;
+    email?: string;
+  }>();
   const isNewAccount = params.reason === 'new-account';
+  const emailIdentity = asString(params.email);
 
   const { requestLoginOtp, verifyLoginOtp } = useAuth();
   const inputRef = useRef<RNTextInput>(null);
 
-  const [code, setCode] = useState(typeof params.devCode === 'string' ? params.devCode : '');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(RESEND_SECONDS);
+  /** The transport being requested right now, or `null`. Never the cooldown. */
+  const [sending, setSending] = useState<OtpVia | null>(null);
+  /**
+   * Set only once this screen has sent a code of its own. Until then the params
+   * are the truth, and they are read fresh on every render rather than captured
+   * into state — expo-router can deliver them a beat after the first paint, and
+   * a `useState` initialiser would freeze the empty version.
+   */
+  const [sentHere, setSentHere] = useState<DeliveryView | null>(null);
+  /**
+   * The address this screen switched to, when the user chose "use email
+   * instead". It replaces the param for verification as well as for sending —
+   * the code is bound to the target it went to.
+   */
+  const [switchedTo, setSwitchedTo] = useState<string | null>(null);
+
+  const identifier = switchedTo ?? asString(params.identifier);
+
+  const delivery: DeliveryView = sentHere ?? {
+    message: asString(params.message) || null,
+    deliveredVia: asDeliveredVia(params.deliveredVia),
+    alternatives: asAlternatives(params.alternatives),
+    whatsappAvailable: asTriState(params.whatsappAvailable),
+  };
   const [snack, setSnack] = useState<{ visible: boolean; message: string; error: boolean }>({
     visible: false,
     message: '',
@@ -78,10 +153,21 @@ export default function VerifyOtpScreen() {
       try {
         const result = await verifyLoginOtp(identifier, value);
         if (result.success) {
-          // No navigation. `app/_layout.tsx` guards the two route groups on the
-          // session, so flipping `isAuthenticated` swaps them — and the
-          // onboarding gate decides whether that means the app or the rest of
-          // the wizard. Pushing a route here would race that swap.
+          /**
+           * No navigation, and TWO guards do the moving — which is worth being
+           * precise about, because for a long time only one of them did and a
+           * partner who had just registered was left standing here.
+           *
+           * `app/_layout.tsx` swaps `(app)` for `(auth)` on the session. That
+           * alone cannot help somebody who registered a moment ago: they are
+           * created in DRAFT, so `needsOnboarding` is true both before and after
+           * this line and the group they are in never changes. `(auth)/_layout`
+           * is what moves them — this screen leaves the navigator when the
+           * session opens, and the wizard is the route left standing.
+           *
+           * An already-live partner is carried by the root guard as before.
+           * Either way, pushing a route here would race the swap.
+           */
           return;
         }
         if (result.requiresContextSelection) {
@@ -102,17 +188,53 @@ export default function VerifyOtpScreen() {
     [busy, identifier, verifyLoginOtp],
   );
 
-  const resend = useCallback(async () => {
+  /**
+   * One path for every re-request: the plain resend, the alternative-transport
+   * buttons and the switch to email all land here, so there is exactly one place
+   * that knows what a new code does to the screen.
+   *
+   * `to` is passed rather than read off `identifier` because the email switch
+   * changes the target and the send, and the two must not be able to disagree.
+   */
+  const send = useCallback(
+    async (via: OtpVia, to: string) => {
+      if (sending || !to) return;
+      setSending(via);
+      try {
+        const result = await requestLoginOtp(to, via);
+        if (!result.success || !result.delivery) {
+          // A 429, a 400, or no network. Never a delivery failure — this
+          // endpoint does not report those. See the header.
+          show(result.error ?? 'Could not send another code.', true);
+          return;
+        }
+        if (to !== identifier) setSwitchedTo(to);
+        setSentHere({
+          message: result.delivery.message,
+          deliveredVia: result.delivery.deliveredVia,
+          alternatives: result.delivery.alternatives,
+          whatsappAvailable: result.delivery.whatsappAvailable,
+        });
+        // The old code is dead the moment a new one is minted, so clearing the
+        // boxes is not politeness — it stops a half-typed old code being
+        // submitted against the new one.
+        setCode('');
+        // Restarts the countdown on the SAME-transport resend only. The
+        // alternative buttons are never gated by it: the server waives the
+        // cooldown on a transport switch, and greying the one control that is
+        // guaranteed to work would be the old silence in a new shape.
+        setCooldown(RESEND_SECONDS);
+      } finally {
+        setSending(null);
+      }
+    },
+    [identifier, requestLoginOtp, sending],
+  );
+
+  const resend = useCallback(() => {
     if (cooldown > 0) return;
-    setCooldown(RESEND_SECONDS);
-    const result = await requestLoginOtp(identifier);
-    if (!result.success) {
-      show(result.error ?? 'Could not send another code.', true);
-      return;
-    }
-    if (result.devCode) setCode(result.devCode);
-    show('A new code is on its way.');
-  }, [cooldown, identifier, requestLoginOtp]);
+    void send('auto', identifier);
+  }, [cooldown, identifier, send]);
 
   const onChange = (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, CODE_LENGTH);
@@ -155,9 +277,13 @@ export default function VerifyOtpScreen() {
             {isNewAccount ? 'One last code' : 'Enter your code'}
           </Text>
           <Text style={[styles.subtitle, { color: c.textSecondary }]}>
+            {/* The identifier lives here and the TRANSPORT lives in the notice
+                below, which prints the server's own sentence. Saying "we have
+                sent a code" here as well would be this screen asserting a
+                delivery it did not perform and cannot see. */}
             {isNewAccount
-              ? `Your business is created. We have sent a sign-in code to ${identifier} so you can finish setting it up.`
-              : `We have sent a 6-digit code to ${identifier}.`}
+              ? `Your business is created. Enter the sign-in code for ${identifier} so you can finish setting it up.`
+              : `Enter the 6-digit code for ${identifier}.`}
           </Text>
 
           {/*
@@ -210,8 +336,33 @@ export default function VerifyOtpScreen() {
             />
           )}
 
-          <TouchableOpacity onPress={resend} disabled={cooldown > 0} style={styles.resend}>
-            <Text style={{ color: cooldown > 0 ? c.textDisabled : c.primary, fontWeight: '600' }}>
+          {/* Under the code input, as the obvious next move for somebody who is
+              watching the wrong app. `onUseEmail` is offered only where there is
+              a second identity to fall back to — from the signup wizard, whose
+              identifier is a phone. On sign-in the identifier already IS the
+              email, so the control would do nothing and is omitted. */}
+          <OtpDeliveryNotice
+            c={c}
+            message={delivery.message}
+            deliveredVia={delivery.deliveredVia}
+            alternatives={delivery.alternatives}
+            whatsappAvailable={delivery.whatsappAvailable}
+            sending={sending}
+            onRetry={(via) => void send(via, identifier)}
+            onUseEmail={
+              emailIdentity && emailIdentity !== identifier
+                ? () => void send('auto', emailIdentity)
+                : undefined
+            }
+          />
+
+          {/* Same-transport resend, and the ONLY control the countdown touches. */}
+          <TouchableOpacity
+            onPress={resend}
+            disabled={cooldown > 0 || !!sending}
+            style={styles.resend}
+          >
+            <Text style={{ color: cooldown > 0 || sending ? c.textDisabled : c.primary, fontWeight: '600' }}>
               {cooldown > 0 ? `Send another code in ${cooldown}s` : 'Send another code'}
             </Text>
           </TouchableOpacity>
@@ -237,15 +388,28 @@ export default function VerifyOtpScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
-  centre: { flex: 1, justifyContent: 'center', padding: 28, gap: 12 },
-  content: { padding: 28, gap: 14, flexGrow: 1, justifyContent: 'center' },
+  centre: { flex: 1, justifyContent: 'center', padding: 22, gap: 12 },
+  // 22, not 28: six code boxes plus their gaps have to fit between these two
+  // edges, and at 28 on a 360dp screen each box was down to 44dp.
+  content: {
+    padding: 22,
+    gap: 14,
+    flexGrow: 1,
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+  },
   brandHero: { paddingVertical: 24, marginBottom: 12 },
   title: { fontSize: 24, fontWeight: '600' },
   subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 10 },
   boxes: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginVertical: 10 },
   box: {
     flex: 1,
-    height: 58,
+    // `minHeight`, so a digit rendered at a large system font scale grows the
+    // box instead of being clipped by it.
+    minHeight: 58,
+    paddingVertical: 10,
     borderRadius: radii.field,
     borderWidth: 1.5,
     alignItems: 'center',

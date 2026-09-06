@@ -8,6 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { Hero, GlassStat } from '../../../src/components/Hero';
+import { ErrorBlock } from '../../../src/features/more/ui';
+import { apiErrorMessage } from '../../../src/api/axios';
 import { useProducts, useProductCategories, ProductCard, UsageMeterBar } from '../../../src/features/catalog';
 import type { Product } from '../../../src/features/catalog';
 
@@ -18,6 +20,10 @@ import type { Product } from '../../../src/features/catalog';
  * even render: READ opened this screen, and it is not permission to change
  * anything.
  */
+
+/** One page of the product list. See the accumulate effect below for why 100 was wrong. */
+const PAGE_LIMIT = 30;
+
 export default function CatalogListScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
@@ -30,21 +36,74 @@ export default function CatalogListScreen() {
   const [q, setQ] = useState('');
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [page, setPage] = useState(1);
+  const [rows, setRows] = useState<Product[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(searchInput.trim()), 300);
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // Any filter change starts the accumulated list over at page 1.
+  useEffect(() => {
+    setPage(1);
+    setRows([]);
+  }, [q, categoryId, lowStockOnly]);
+
   const categoriesQuery = useProductCategories();
   const productsQuery = useProducts({
     q: q || undefined,
     categoryId,
     lowStock: lowStockOnly ? 'true' : undefined,
-    limit: 100,
+    page,
+    limit: PAGE_LIMIT,
   });
 
-  const rows: Product[] = productsQuery.data?.data ?? [];
+  /**
+   * Pages accumulated into one list, the same way `(tabs)/orders.tsx` does it.
+   *
+   * This screen asked for `limit: 100` and drew whatever came back, which was
+   * not a generous default but a CEILING: a shop with 150 SKUs could not reach
+   * the last 50 from anywhere in this app, and nothing on screen admitted it.
+   * The endpoint has always been paginated (`page`/`limit`/`total`); nothing was
+   * asking for the second page.
+   *
+   * De-duplicated by `_id` on append: a stock adjustment refetches page 1 while
+   * later pages are held here, and a product can shift between pages between two
+   * requests.
+   */
+  useEffect(() => {
+    if (!productsQuery.data) return;
+    setRows((prev) => {
+      if (productsQuery.data.page === 1) return productsQuery.data.data;
+      const seen = new Set(prev.map((p) => p._id));
+      return [...prev, ...productsQuery.data.data.filter((p) => !seen.has(p._id))];
+    });
+  }, [productsQuery.data]);
+
+  const total = productsQuery.data?.total ?? rows.length;
+  const hasMore = productsQuery.data ? rows.length < total : false;
+  const loadMore = useCallback(() => {
+    if (productsQuery.isFetching || !hasMore) return;
+    setPage((p) => p + 1);
+  }, [productsQuery.isFetching, hasMore]);
+
+  /**
+   * Why the catalogue is empty, when it is empty for a reason other than
+   * "nothing added yet".
+   *
+   * `isLoading` is false on a failed request just as it is on a successful
+   * one, so a 500 or a dropped connection used to read as "No products yet" —
+   * a shop being shown an empty shelf and invited to start typing its stock in
+   * again. `isPaused` is the offline case: `onlineManager` (see
+   * `lib/queryClient.ts`) holds the request rather than firing it into a dead
+   * radio, which without this would be an unexplained spinner.
+   */
+  const loadError = productsQuery.isError
+    ? apiErrorMessage(productsQuery.error, 'Could not load your products.')
+    : productsQuery.isPending && productsQuery.isPaused
+      ? 'No connection. Check your network and try again.'
+      : null;
 
   const goCreate = useCallback(() => {
     if (cap.atLimit) return;
@@ -81,7 +140,10 @@ export default function CatalogListScreen() {
         isDark={isDark}
         rounded={false}
         eyebrow="Catalog"
-        headline={{ value: String(rows.length), label: rows.length === 1 ? 'product' : 'products' }}
+        // The server's `total`, not `rows.length`: now that the list pages, the
+        // loaded count is "how far you have scrolled", which is not what a shop
+        // wants to read off its own catalogue header.
+        headline={{ value: String(total), label: total === 1 ? 'product' : 'products' }}
         subtitle={heroSubtitle}
       >
         <GlassStat icon="alert-octagon-outline" label="Running low" value={String(lowCount)} />
@@ -137,8 +199,17 @@ export default function CatalogListScreen() {
           <ProductCard product={item} onPress={() => router.push({ pathname: '/catalog/[id]', params: { id: item._id } })} />
         )}
         contentContainerStyle={rows.length === 0 ? styles.emptyGrow : styles.listPad}
+        onEndReachedThreshold={0.4}
+        onEndReached={loadMore}
+        ListFooterComponent={
+          productsQuery.isFetching && page > 1 ? (
+            <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
+          ) : null
+        }
         ListEmptyComponent={
-          productsQuery.isLoading ? (
+          loadError ? (
+            <ErrorBlock c={c} message={loadError} onRetry={() => void productsQuery.refetch()} />
+          ) : productsQuery.isLoading ? (
             <ActivityIndicator color={c.primary} />
           ) : (
             <View style={styles.emptyBox}>

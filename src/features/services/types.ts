@@ -38,6 +38,15 @@ export const MODE_LABEL: Record<ServiceMode, string> = {
 export const MIN_DURATION_MIN = 5;
 export const MAX_DURATION_MIN = 8 * 60;
 
+/**
+ * = `MIN_SERVICE_CAPACITY` / `MAX_SERVICE_CAPACITY` in `partner-service.model.ts`,
+ * which are deliberately the SAME pair `PartnerAvailability.capacityPerSlot`
+ * uses. A service allowed a capacity of 0 would describe a day that is open and
+ * unbookable at once.
+ */
+export const MIN_SERVICE_CAPACITY = 1;
+export const MAX_SERVICE_CAPACITY = 100;
+
 /** `IPartnerService`, as `partner-service.controller.ts` returns it (`.lean()`, `categoryId` unpopulated). */
 export interface PartnerServiceRow {
   _id: string;
@@ -47,6 +56,21 @@ export interface PartnerServiceRow {
   pricePaise: number;
   priceType: ServicePriceType;
   durationMin: number;
+  /**
+   * How many of THIS service fit in one slot, when that is not the day's number.
+   *
+   * **Absent or `null` means "use the day's `capacityPerSlot`"** — the contract
+   * `partner-service.model.ts` states at length, and the reason nothing in this
+   * app may substitute a default for it: a form that always posts a number would
+   * pin every service to one customer at a time and silently override the day
+   * capacity of every partner who had set one.
+   *
+   * A number here names a DEDICATED RESOURCE. The slot engine counts a service
+   * with an override against its own bookings only, and drops those bookings out
+   * of the day's shared pool — so five chairs plus one massage room really is six
+   * people at once.
+   */
+  capacityPerSlotOverride?: number | null;
   modes: ServiceMode[];
   advancePaise: number;
   visitChargePaise: number;
@@ -64,6 +88,16 @@ export interface ServiceFormInput {
   pricePaise: number;
   priceType: ServicePriceType;
   durationMin: number;
+  /**
+   * OMIT THE KEY for "use the day's capacity". Never a default.
+   *
+   * `null` is accepted on the EDIT path only (`updatePartnerServiceSchema` adds
+   * `.nullable()`) and is the clear signal: it puts the service back on the
+   * day's number. On create the schema is not nullable, so a new service that is
+   * not dedicated must send nothing at all — which is why this is optional here
+   * rather than `number | null` with a sentinel.
+   */
+  capacityPerSlotOverride?: number | null;
   modes: ServiceMode[];
   advancePaise: number;
   visitChargePaise: number;
