@@ -180,6 +180,170 @@ export async function clearSession(notify = true): Promise<void> {
 }
 
 /**
+ * ── Why a refresh failed, and which failures may end a session ───────────────
+ *
+ * The distinction this app was missing. Every throw out of the refresh — a DNS
+ * failure, a 60s cold-start timeout, a 502 from a Render instance still booting,
+ * a 429 from the shared-IP auth limiter — arrived at one `catch` that called
+ * `clearSession()`. The note at the top of this file says the free instance
+ * takes 30–60s to wake, so the first tap of the morning was signing partners
+ * out; so was a lift, a dead patch of the market, or one shop's wifi dropping
+ * mid-request.
+ *
+ * A failure the server never answered tells us NOTHING about the credential. It
+ * is not evidence and must not be acted on; the next request tries again.
+ *
+ *  - `rejected`      the server answered 401 — the refresh token is expired or
+ *                    revoked via `tokenVersion`, which the backend raises on
+ *                    logout and password reset. A real sign-out, and it must
+ *                    still be prompt.
+ *  - `stale-context` 403 `Unauthorized context request`: the TOKEN is fine, but
+ *                    the `partner:<id>` this session was minted against no
+ *                    longer resolves for this user. See `endsSession`.
+ *  - `no-credential` nothing stored to refresh with; there is no session left.
+ *  - `inconclusive`  everything else — no response at all (a timeout included:
+ *                    `isTimeout` separates the two no-response cases for the
+ *                    SENTENCE a partner reads, and neither of them is evidence
+ *                    here), 429, 5xx, or a 200 carrying no token.
+ */
+export type RefreshFailureKind = 'rejected' | 'stale-context' | 'no-credential' | 'inconclusive';
+
+type RefreshError = Error & { refreshFailure: RefreshFailureKind };
+
+/**
+ * A tagged Error rather than an Error subclass: `instanceof` on a subclassed
+ * builtin depends on how the file is down-levelled, and this check has to be
+ * right in a release bundle, not just in dev.
+ */
+function refreshFailed(kind: RefreshFailureKind, message: string): RefreshError {
+  const e = new Error(message) as RefreshError;
+  e.refreshFailure = kind;
+  return e;
+}
+
+function classifyRefreshFailure(e: unknown): RefreshFailureKind {
+  const res = (e as AxiosError<ApiErrorBody> | null)?.response;
+  if (!res) return 'inconclusive';
+  if (res.status === 401) return 'rejected';
+  // Matched on the server's prose because this answer carries no `code`. If the
+  // backend rewords it the branch degrades to `inconclusive`, which is the safe
+  // side of the mistake: nobody is signed out for it.
+  if (res.status === 403 && res.data?.error === 'Unauthorized context request') return 'stale-context';
+  // 429 lands here on purpose. `/auth/refresh-token` sits behind an IP-keyed
+  // limiter of 20 per 15 minutes, and behind carrier NAT or one shop's wifi a
+  // whole street shares an egress IP — so a routine background refresh can be
+  // throttled for something somebody else did. "Come back later" is not "your
+  // session is over".
+  return 'inconclusive';
+}
+
+/**
+ * May this failure end the session?
+ *
+ * Only when the server actually answered that the credential — or the business
+ * behind it — is finished. `stale-context` counts, and it is the one kind that
+ * needed a decision rather than a default: `partner:<id>` stops resolving when
+ * the partner record this session was signed in to is gone or no longer lists
+ * this user, and the `tenantId` + `role` pair posted alongside it is read off
+ * that same dead context, so there is nothing left to retry with. Signing in
+ * again is the only thing that re-establishes WHICH business the app is showing
+ * — and doing that visibly matters here, because a user who is PARTNER_ADMIN of
+ * one business and PARTNER_STAFF of another would otherwise be silently
+ * re-scoped to whichever context the server returned first (see `StoredProfile`).
+ *
+ * An ALLOWLIST on purpose — a kind added later defaults to "leave the session
+ * alone", which is the side of the mistake a partner recovers from by waiting
+ * rather than by signing in again mid-invoice.
+ */
+export function endsSession(e: unknown): boolean {
+  const kind = (e as Partial<RefreshError> | null)?.refreshFailure;
+  return kind === 'rejected' || kind === 'no-credential' || kind === 'stale-context';
+}
+
+/**
+ * The single-flight slot, and the reason the refresh moved out of the
+ * interceptor.
+ *
+ * It used to run INLINE there, so a screen that fired five requests at once ran
+ * five refreshes. The server tolerates that — rotation re-issues in the same
+ * `tokenVersion` generation, so the previous refresh token stays valid — but
+ * tolerating is not surviving: if any ONE of the five failed for any reason, its
+ * `catch` deleted the tokens the other four had just written successfully, and a
+ * perfectly good session died at a random moment. It also spent that budget of
+ * 20-per-15-minutes five times faster, turning a burst into the 429 above.
+ */
+let refreshInFlight: Promise<string> | null = null;
+
+async function runRefresh(): Promise<string> {
+  const [refreshToken, stored] = await Promise.all([
+    storage.get(STORAGE_KEYS.REFRESH_TOKEN),
+    storage.getObject<StoredProfile>(STORAGE_KEYS.USER_PROFILE),
+  ]);
+  if (!refreshToken) throw refreshFailed('no-credential', 'no refresh token');
+  const profile = normalizeLegacyProfile(stored);
+
+  let data: unknown;
+  try {
+    // A bare axios call on purpose: going through `apiClient` would put the
+    // refresh itself behind this interceptor, and a 401 from the refresh would
+    // try to refresh.
+    ({ data } = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
+      refreshToken,
+      // contextId when we have it; the tenantId/role pair is the fallback the
+      // server still honours for sessions that predate contexts.
+      contextId: profile?.contextId,
+      tenantId: profile?.tenantId,
+      role: profile?.role,
+    }));
+  } catch (e) {
+    // Even a refusal proves the server is awake — the same rule the response
+    // interceptor applies, which this deliberately bare call does not pass through.
+    if ((e as AxiosError).response) lastResponseAt = Date.now();
+    throw refreshFailed(classifyRefreshFailure(e), 'the refresh call did not succeed');
+  }
+  // Likewise on the way out: without this, a long quiet spell followed by a
+  // successful refresh still hands the NEXT request a cold-start ceiling.
+  lastResponseAt = Date.now();
+
+  const { token, refreshToken: newRefresh } = (data ?? {}) as {
+    token?: string;
+    refreshToken?: string;
+  };
+  // A 2xx carrying no token is the server misbehaving, not this partner's
+  // session ending — `inconclusive`, so the session survives it.
+  if (!token) throw refreshFailed('inconclusive', 'refresh returned no token');
+
+  const storedAccess = await storage.set(STORAGE_KEYS.ACCESS_TOKEN, token);
+  if (newRefresh) await storage.set(STORAGE_KEYS.REFRESH_TOKEN, newRefresh);
+  /**
+   * A token we cannot persist is not a session we can use.
+   *
+   * `storage.set` used to swallow its own failure, which made this the quietest
+   * fault in the file: the one retried request would succeed on the header the
+   * interceptor sets from the returned token, every LATER request would read the
+   * stale token back off disk, 401, and refresh again — one refresh per request,
+   * straight into the IP limiter, with nothing anywhere to say why. Reported as
+   * `inconclusive` because it is our disk that failed and not the credential:
+   * this request fails, the session stays, and the next attempt tries again.
+   * Whichever refresh token is on disk afterwards — the rotated one or the one
+   * it was meant to replace — is still accepted, so there is a way back.
+   */
+  if (!storedAccess) throw refreshFailed('inconclusive', 'could not store the new access token');
+
+  return token;
+}
+
+/** The shared refresh. Callers that arrive while one is running join it. */
+export function refreshSession(): Promise<string> {
+  if (!refreshInFlight) {
+    refreshInFlight = runRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/**
  * `_retry` is ours, not axios's, so it is declared rather than bolted onto an
  * `any`. Without the flag a 401 on the REFRESH call itself would be retried
  * through the same interceptor forever.
@@ -219,31 +383,16 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const refreshToken = await storage.get(STORAGE_KEYS.REFRESH_TOKEN);
-        const profile = normalizeLegacyProfile(
-          await storage.getObject<StoredProfile>(STORAGE_KEYS.USER_PROFILE)
-        );
-        if (!refreshToken) throw new Error('No refresh token');
-
-        const response = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
-          refreshToken,
-          // contextId when we have it; the tenantId/role pair is the fallback the
-          // server still honours for sessions that predate contexts.
-          contextId: profile?.contextId,
-          tenantId: profile?.tenantId,
-          role: profile?.role,
-        });
-
-        const { token, refreshToken: newRefresh } = response.data;
-        await storage.set(STORAGE_KEYS.ACCESS_TOKEN, token);
-        await storage.set(STORAGE_KEYS.REFRESH_TOKEN, newRefresh);
-
+        const token = await refreshSession();
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${token}`;
         }
         return apiClient(originalRequest);
-      } catch {
-        await clearSession();
+      } catch (refreshError) {
+        // The whole point: only a server answer that rejects the credential ends
+        // the session. Anything we never got an answer to leaves it exactly as it
+        // was — this request fails, and the next one refreshes again.
+        if (endsSession(refreshError)) await clearSession();
       }
     }
     return Promise.reject(error);

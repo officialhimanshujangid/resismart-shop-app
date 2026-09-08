@@ -153,6 +153,29 @@ async function unregisterPushDevice(): Promise<void> {
   await store.remove(DEVICE_KEYS.PUSH_TOKEN_SCOPE);
 }
 
+/**
+ * The sign-in could not be written to this device.
+ *
+ * Its own class rather than a bare `Error` so the four `applySession` callers
+ * can tell "the keychain refused us" from "the server refused us" — they read
+ * very differently to whoever is standing at the till, and only one of them is
+ * worth a retry on the same tap.
+ *
+ * The message is deliberately a whole instruction and not a code. It is shown
+ * verbatim by every path (`apiErrorMessage` returns `Error.message` before it
+ * reaches its own fallback), and "restart the app, and if it happens again free
+ * up some space" is something a shopkeeper can actually do; "storage error" is
+ * not.
+ */
+class SessionPersistError extends Error {
+  constructor() {
+    super(
+      'Signed in, but this device would not save the session — you would be signed out again on the next launch. Please restart the app and try again; if it keeps happening, free up some storage space on the device.',
+    );
+    this.name = 'SessionPersistError';
+  }
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -184,9 +207,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user: UserInfo | null,
     ) => {
       const profile = toProfile(context);
-      await storage.set(STORAGE_KEYS.ACCESS_TOKEN, token);
-      await storage.set(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-      await storage.setObject(STORAGE_KEYS.USER_PROFILE, profile);
+      /**
+       * A SIGN-IN THAT CANNOT BE WRITTEN DOWN HAS NOT HAPPENED.
+       *
+       * `storage.set` reports a failed write in its return value rather than
+       * throwing (see `utils/storage.ts`, and `runRefresh` in `api/axios.ts`,
+       * which already acts on the same answer). This call site threw all three
+       * answers away, so a keychain that refused — an Android device out of
+       * space, a locked or corrupted keystore — produced a sign-in that looked
+       * perfect: the state flipped, the tabs mounted, every request worked off
+       * the in-memory token, and the session was simply gone on the next launch
+       * with nothing anywhere to explain it. That is the worst shape a bug can
+       * take on a shop's till, because the partner's own conclusion is that the
+       * app randomly logs them out.
+       *
+       * Three keys, not four. The cold-start rehydrate below needs `token &&
+       * profile` to restore anything at all, and the refresh token is what buys
+       * the session a second day — losing any one of them costs the session.
+       * `USER_INFO` is the name and photo on the More tab; a lost write there
+       * costs a label until the next fetch and must not cost the sign-in.
+       *
+       * Written first and checked together so one failure does not leave a
+       * half-session on disk: `clearSession` removes the keys that DID land, so
+       * the next launch opens on a clean login screen instead of restoring an
+       * access token with no refresh token behind it.
+       */
+      const wrote = await Promise.all([
+        storage.set(STORAGE_KEYS.ACCESS_TOKEN, token),
+        storage.set(STORAGE_KEYS.REFRESH_TOKEN, refreshToken),
+        storage.setObject(STORAGE_KEYS.USER_PROFILE, profile),
+      ]);
+      if (wrote.some((ok) => !ok)) {
+        await clearSession(false); // we are undoing our own write — nobody to notify
+        throw new SessionPersistError();
+      }
       if (user) await storage.setObject(STORAGE_KEYS.USER_INFO, user);
       // Before the state flips, not after: anything already mounted would
       // otherwise refetch against the OLD cache key and paint the previous
@@ -201,9 +255,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
        *
        * AsyncStorage rather than SecureStore: this can be several businesses'
        * worth of JSON and SecureStore's Android backend refuses anything over
-       * 2 KB — silently, in `storage.set`'s swallowed catch, which would make the
-       * switch menu empty for exactly the partners who need it most. Nothing
-       * secret goes here; see `SESSION_CACHE_KEYS`.
+       * 2 KB — a refusal `storage.set` reports only in its return value, which
+       * would make the switch menu empty for exactly the partners who need it
+       * most. Nothing secret goes here; see `SESSION_CACHE_KEYS`.
        *
        * Not awaited-on-failure: a write that fails costs an empty switch menu
        * until the next sign-in, and must never cost the sign-in itself.
@@ -252,22 +306,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const active = data.activeContext;
       if (partners.length === 1) {
         const only = partners[0];
-        if (active && active.contextId === only.contextId) {
-          await applySession(data.token, data.refreshToken, only, all, data.user ?? null);
+        /**
+         * Both `applySession` calls below can now fail the sign-in outright —
+         * see `SessionPersistError`. Caught HERE rather than left to the `catch`
+         * in `login` / `verifyLoginOtp` / `loginWithGoogle`: those three are
+         * written for an axios error off the network call above and each ends in
+         * its own fallback sentence ("That code did not work"), which is exactly
+         * the wrong thing to tell somebody whose code was fine and whose
+         * keychain was not. This function already answers "no" as a value for
+         * the not-a-partner case; a device that cannot hold the session is the
+         * same kind of no.
+         */
+        try {
+          if (active && active.contextId === only.contextId) {
+            await applySession(data.token, data.refreshToken, only, all, data.user ?? null);
+            return { success: true };
+          }
+          // The server auto-selected something else (a flat, or an admin role).
+          // Switch straight to the one business this person has rather than
+          // showing a picker with a single row in it.
+          const switched = await authApi.switchContext(data.refreshToken, only.contextId);
+          await applySession(
+            switched.data.token,
+            switched.data.refreshToken,
+            switched.data.activeContext,
+            switched.data.availableContexts,
+            data.user ?? null,
+          );
           return { success: true };
+        } catch (err) {
+          if (err instanceof SessionPersistError) return { success: false, error: err.message };
+          throw err; // a failed `switchContext` is still the callers' to report
         }
-        // The server auto-selected something else (a flat, or an admin role).
-        // Switch straight to the one business this person has rather than
-        // showing a picker with a single row in it.
-        const switched = await authApi.switchContext(data.refreshToken, only.contextId);
-        await applySession(
-          switched.data.token,
-          switched.data.refreshToken,
-          switched.data.activeContext,
-          switched.data.availableContexts,
-          data.user ?? null,
-        );
-        return { success: true };
       }
 
       const handle = `pending-${Date.now().toString(36)}`;
@@ -423,6 +493,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Rethrown as a sentence rather than swallowed: the caller has a modal
         // open and has to say why nothing happened. An axios error surfaced raw
         // here would read "Request failed with status code 401" on a shop's till.
+        //
+        // A `SessionPersistError` passes through with its own wording intact
+        // (`apiErrorMessage` returns `Error.message` before reaching its
+        // fallback). Its `clearSession` has emptied the keychain by then, which
+        // is the honest state: `authApi.switchContext` succeeding ROTATED the
+        // stored refresh token, so what was on disk was already dead. The
+        // session stays mounted for now and the next request's refresh finds no
+        // credential, which the session-expired handler turns into a clean,
+        // explained sign-out rather than the silent one this used to produce.
         throw new Error(apiErrorMessage(err, 'Could not switch business. Please try again.'));
       }
     },

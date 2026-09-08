@@ -89,6 +89,14 @@ export default function CreateProductScreen() {
     }
     // 'error' — the lookup itself failed (network/5xx), not "code unknown".
     // The camera stays open; nothing has been decided about this code yet.
+    //
+    // The retry is a physical one: the scanner latched when it read this code
+    // and will not read anything again until the pack has left the frame for a
+    // moment, so dismissing this alert while still hovering over the same
+    // barcode does nothing. Lifting the phone and re-aiming — which is what a
+    // person does after an error anyway — re-arms it. Deliberately not forced
+    // by closing and reopening the modal here: that would throw away the
+    // camera and the torch state for what is usually a one-second blip.
     Alert.alert('Could not check that barcode', outcome.message);
   }, []);
 

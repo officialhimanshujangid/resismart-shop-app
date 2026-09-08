@@ -7,18 +7,22 @@ import {
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, usePathname, useLocalSearchParams } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 
 import { themeColors, radii } from '../../../src/constants/colors';
+import { qk } from '../../../src/lib/queryKeys';
+import { settingsApi } from '../../../src/api/settings.api';
 import { DateField } from '../../../src/components/DateField';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
-import { formatPaise, parseRupeesToPaise } from '../../../src/lib/money';
+import { formatPaise } from '../../../src/lib/money';
 import { BarcodeScannerView, ProductScanOutcome } from '../../../src/features/scanner';
 import { partiesApi } from '../../../src/features/billing/parties.api';
 import { productsApi, BillableProduct } from '../../../src/features/billing/products.api';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
 import { useDebouncedValue } from '../../../src/features/billing/useDebouncedValue';
-import { estimateDraftTotalPaise } from '../../../src/features/billing/offlineDrafts';
+import { previewDocumentTax } from '../../../src/features/billing/taxPreview';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
+import { LineEditorSheet } from '../../../src/features/billing/components/LineEditorSheet';
 import {
   BillingScreenDocumentType, DOCUMENT_TYPE_LABEL, DocumentDirection, DraftLineInput,
   GST_STATES, PartnerPartyRecord, SALES_DOCUMENT_TYPES, PURCHASE_DOCUMENT_TYPES, behaviourOf,
@@ -51,14 +55,34 @@ type EditableLine = DraftLineInput & { key: string };
 let lineKeySeq = 0;
 const nextLineKey = () => `line-${(lineKeySeq += 1)}`;
 
-function lineFromProduct(product: { _id: string; name: string; unit: string; sellPaise: number; taxRatePercent: number; taxInclusive: boolean }): EditableLine {
+/**
+ * A catalogue product as a billable line.
+ *
+ * `taxRatePercent` AND `taxInclusive` both ride across, and that pairing is the
+ * whole game: `sellPaise` means one of two different amounts of money depending
+ * on the flag the partner set on the product ("Price includes tax" in
+ * `catalog/create.tsx`), and `computeDocumentTax` reads the flag off the LINE,
+ * not off the product. Carrying the rate without the flag — or the flag without
+ * the rate — is how a ₹118 shelf price becomes a ₹139 bill.
+ *
+ * `hsn` comes across too. It was dropped here, so every line billed from this
+ * phone reached the invoice with no HSN code, and the PDF's HSN column
+ * (`partner-document-render.service.ts`, `settings.showHsn`) printed blank on a
+ * document that is legally required to carry it.
+ */
+function lineFromProduct(product: {
+  _id: string; name: string; unit: string; hsnCode?: string;
+  sellPaise: number; taxRatePercent: number; taxInclusive: boolean;
+}): EditableLine {
   return {
     key: nextLineKey(),
     itemId: product._id,
     itemName: product.name,
+    hsn: product.hsnCode,
     unit: product.unit,
     qty: 1,
     ratePaise: product.sellPaise,
+    discountPaise: 0,
     taxRatePercent: product.taxRatePercent,
     taxInclusive: product.taxInclusive,
   };
@@ -190,10 +214,13 @@ export default function NewInvoiceScreen() {
   const [productQuery, setProductQuery] = useState('');
   const debouncedProductQuery = useDebouncedValue(productQuery, 300);
   const [productResults, setProductResults] = useState<BillableProduct[]>([]);
-  const [customLineOpen, setCustomLineOpen] = useState(false);
-  const [customName, setCustomName] = useState('');
-  const [customQty, setCustomQty] = useState('1');
-  const [customRate, setCustomRate] = useState('');
+  /**
+   * The line the editor sheet is open on: a `key` for an existing line, `'NEW'`
+   * for the one-off item being typed, `null` for closed. One piece of state
+   * rather than two booleans, because "editing row 3" and "adding a new row"
+   * are the same sheet and cannot both be true.
+   */
+  const [editingKey, setEditingKey] = useState<string | 'NEW' | null>(null);
 
   /**
    * Seed the form from the job, once.
@@ -273,6 +300,12 @@ export default function NewInvoiceScreen() {
   const handleScanResult = useCallback(
     (outcome: ProductScanOutcome) => {
       if (outcome.status === 'found') {
+        // No de-duplication here, on purpose. The scanner's latch has already
+        // decided that this `onResult` is a genuinely separate presentation of
+        // an item — one held in frame never gets this far a second time — so a
+        // repeat arriving here IS the cashier scanning a second tin, and
+        // `addOrBumpLine` is right to bump qty. Guarding again on the product
+        // id or a timestamp would break exactly that.
         addOrBumpLine(lineFromProduct(outcome.product));
         setScanError(null);
         return; // camera stays open — continuous multi-scan, per spec
@@ -290,25 +323,23 @@ export default function NewInvoiceScreen() {
     [addOrBumpLine, pathname],
   );
 
-  const addCustomLine = useCallback(() => {
-    const name = customName.trim();
-    const qty = Number(customQty);
-    const ratePaise = parseRupeesToPaise(customRate);
-    if (!name || !Number.isFinite(qty) || qty <= 0 || ratePaise === null || ratePaise < 0) return;
-    addOrBumpLine({
-      key: nextLineKey(),
-      itemName: name,
-      qty,
-      unit: 'PCS',
-      ratePaise,
-      taxInclusive: true,
-      taxRatePercent: 0,
+  /**
+   * Save out of the editor sheet — a new one-off line, or an edit to an
+   * existing one.
+   *
+   * A new line goes through `addOrBumpLine` for the same merge rule scans and
+   * searches get; an edit replaces in place and never merges, because two rows
+   * the partner has deliberately given different rates or tax treatments must
+   * not collapse into one just because they now share a name.
+   */
+  const saveEditedLine = useCallback((patch: DraftLineInput) => {
+    setLines((prev) => {
+      if (editingKey === 'NEW' || editingKey === null) return prev;
+      return prev.map((l) => (l.key === editingKey ? { ...l, ...patch, key: l.key } : l));
     });
-    setCustomName('');
-    setCustomQty('1');
-    setCustomRate('');
-    setCustomLineOpen(false);
-  }, [customName, customQty, customRate, addOrBumpLine]);
+    if (editingKey === 'NEW') addOrBumpLine({ ...patch, key: nextLineKey() });
+    setEditingKey(null);
+  }, [editingKey, addOrBumpLine]);
 
   const updateQty = useCallback((key: string, delta: number) => {
     setLines((prev) =>
@@ -322,7 +353,58 @@ export default function NewInvoiceScreen() {
     setLines((prev) => prev.filter((l) => l.key !== key));
   }, []);
 
-  const estimatedTotalPaise = useMemo(() => estimateDraftTotalPaise(lines), [lines]);
+  /**
+   * The shop's own state and whether it is GST registered — the two inputs
+   * `resolveDocumentTaxContext` (partner-billing-settings.controller.ts:333)
+   * feeds into the server's tax engine. Read here so the preview below asks the
+   * same question of the same facts.
+   *
+   * `isGstRegistered: false` is not a display detail: the server passes it as
+   * `gstApplicable`, and `computeLine` then forces EVERY rate to zero. A shop
+   * that has never opened Settings → Business has no settings row at all and
+   * the controller answers `false` — which is the honest answer, and is also
+   * the most likely reason a partner reports "tax is not being calculated".
+   * Hence the banner further down rather than a silently untaxed bill.
+   */
+  const businessQuery = useQuery({
+    queryKey: qk.businessSettings(),
+    queryFn: settingsApi.business.get,
+    staleTime: 5 * 60 * 1000,
+  });
+  const supplierState = businessQuery.data?.state;
+  const gstApplicable = businessQuery.data?.isGstRegistered ?? true;
+
+  /**
+   * Place of supply, exactly as `handleIssue` will send it — a named party's
+   * billing state, or the walk-in state picker. The preview has to read the
+   * SAME value the document will carry or it splits the tax the other way.
+   */
+  const placeOfSupply = selectedParty ? selectedParty.billingAddress?.state : (walkinState || undefined);
+
+  /**
+   * A real tax preview, not an estimate.
+   *
+   * The screen used to sum `qty × rate − discount` and say "tax is added when
+   * the invoice is issued", on the reasoning that a client-side approximation
+   * that disagrees with the issued invoice is worse than no preview. That
+   * reasoning is right and this does not violate it: `previewDocumentTax` is a
+   * line-for-line COPY of `computeDocumentTax`, not an approximation of it, and
+   * it is fed the same supplier state, place of supply and `gstApplicable` the
+   * server will resolve for itself. Nothing computed here is ever sent — the
+   * validator refuses tax fields from a client — so the server remains the only
+   * thing that taxes a document.
+   *
+   * `roundOff` is left at its default `true`, matching `resolveDocumentTaxContext`.
+   * `reverseCharge` is false because this screen has no RCM toggle; if one is
+   * ever added it must be passed here too or the preview will over-state the
+   * total by exactly the tax.
+   */
+  const preview = useMemo(
+    () => previewDocumentTax(lines, supplierState, placeOfSupply, { gstApplicable }),
+    [lines, supplierState, placeOfSupply, gstApplicable],
+  );
+  const totals = preview.totals;
+  const untaxedLineCount = lines.filter((l) => !(l.taxRatePercent ?? 0)).length;
 
   // ---- issue ----
   const [submitting, setSubmitting] = useState(false);
@@ -648,82 +730,110 @@ export default function NewInvoiceScreen() {
             ))}
 
             {lines.length > 0 && <Divider style={{ marginVertical: 8 }} />}
-            {lines.map((line) => (
+            {/*
+              The row shows the PRICED total from the preview, not `qty × rate`.
+              On an exclusive line those are different numbers, and a row that
+              says ₹100 under a bill that says ₹118 is the drift this whole
+              change exists to remove. `preview.lines` is positional against
+              `lines` — the same contract `computeDocumentTax` keeps — so the
+              index is the join.
+            */}
+            {lines.map((line, idx) => (
               <View key={line.key} style={styles.lineRow}>
-                <View style={{ flex: 1 }}>
+                <Pressable style={{ flex: 1 }} onPress={() => setEditingKey(line.key)}>
                   <Text style={[styles.lineName, { color: c.textPrimary }]} numberOfLines={1}>
                     {line.itemName}
                   </Text>
                   <Text style={[styles.lineMeta, { color: c.textSecondary }]}>
                     {formatPaise(line.ratePaise)} × {line.qty} {line.unit ?? ''}
+                    {(line.discountPaise ?? 0) > 0 ? ` · −${formatPaise(line.discountPaise)}` : ''}
+                    {gstApplicable
+                      ? ` · ${line.taxRatePercent ?? 0}% ${(line.taxInclusive ?? true) ? 'incl.' : 'extra'}`
+                      : ''}
                   </Text>
-                </View>
+                </Pressable>
                 <View style={styles.qtyStepper}>
                   <IconButton icon="minus" size={16} onPress={() => updateQty(line.key, -1)} />
                   <Text style={{ color: c.textPrimary, minWidth: 24, textAlign: 'center' }}>{line.qty}</Text>
                   <IconButton icon="plus" size={16} onPress={() => updateQty(line.key, 1)} />
                 </View>
                 <Text style={[styles.lineAmount, { color: c.textPrimary }]}>
-                  {formatPaise(Math.round(line.qty * line.ratePaise) - (line.discountPaise ?? 0))}
+                  {formatPaise(preview.lines[idx]?.totalPaise ?? 0)}
                 </Text>
-                <IconButton icon="trash-can-outline" size={18} onPress={() => removeLine(line.key)} />
+                {/* Both, deliberately: removing a mis-scanned line is the most
+                    common correction at a counter and must stay one tap, and the
+                    pencil is what says the tax fields are in there at all — a
+                    tappable row with no affordance is a feature nobody finds. */}
+                <IconButton icon="pencil-outline" size={16} onPress={() => setEditingKey(line.key)} accessibilityLabel={`Edit ${line.itemName}`} />
+                <IconButton icon="trash-can-outline" size={16} onPress={() => removeLine(line.key)} accessibilityLabel={`Remove ${line.itemName}`} />
               </View>
             ))}
 
-            {customLineOpen ? (
-              <View style={styles.customBox}>
-                <TextInput
-                  mode="outlined"
-                  label="Item name"
-                  value={customName}
-                  onChangeText={setCustomName}
-                  style={styles.walkinInput}
-                  outlineStyle={{ borderRadius: radii.field }}
-                />
-                <View style={styles.customRow}>
-                  <TextInput
-                    mode="outlined"
-                    label="Qty"
-                    value={customQty}
-                    onChangeText={setCustomQty}
-                    keyboardType="decimal-pad"
-                    style={[styles.walkinInput, { flex: 1 }]}
-                    outlineStyle={{ borderRadius: radii.field }}
-                  />
-                  <TextInput
-                    mode="outlined"
-                    label="Price (₹)"
-                    value={customRate}
-                    onChangeText={setCustomRate}
-                    keyboardType="decimal-pad"
-                    style={[styles.walkinInput, { flex: 1 }]}
-                    outlineStyle={{ borderRadius: radii.field }}
-                  />
-                </View>
-                <View style={styles.customRow}>
-                  <Button mode="text" onPress={() => setCustomLineOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button mode="contained" onPress={addCustomLine}>
-                    Add item
-                  </Button>
-                </View>
-              </View>
-            ) : (
-              <Button mode="text" icon="pencil-plus-outline" compact onPress={() => setCustomLineOpen(true)} style={{ alignSelf: 'flex-start' }}>
-                Add a one-off item
-              </Button>
-            )}
+            <Button mode="text" icon="pencil-plus-outline" compact onPress={() => setEditingKey('NEW')} style={{ alignSelf: 'flex-start' }}>
+              Add a one-off item
+            </Button>
           </Surface>
 
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+            {/*
+              A real breakup, priced by the mirror of the server's own function.
+
+              This card used to show one "Estimated total" that was the PRE-TAX
+              sum and said so in small print. That was honest, and it was also
+              the thing the partner was complaining about: the number under their
+              thumb on the Issue button was not the number the customer would be
+              asked for, and on an exclusive-priced line it was not even close.
+            */}
+            <TotalLine label="Taxable value" value={totals.subPaise} c={c} />
+            {totals.discountPaise > 0 && <TotalLine label="Discount" value={-totals.discountPaise} c={c} />}
+            {gstApplicable && preview.interState && <TotalLine label="IGST" value={totals.igstPaise} c={c} />}
+            {gstApplicable && !preview.interState && (
+              <>
+                <TotalLine label="CGST" value={totals.cgstPaise} c={c} />
+                <TotalLine label="SGST" value={totals.sgstPaise} c={c} />
+              </>
+            )}
+            {totals.cessPaise > 0 && <TotalLine label="Cess" value={totals.cessPaise} c={c} />}
+            {totals.roundOffPaise !== 0 && <TotalLine label="Round off" value={totals.roundOffPaise} c={c} />}
+            <Divider style={{ marginVertical: 6 }} />
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: c.textSecondary }]}>Estimated total</Text>
-              <Text style={[styles.totalAmount, { color: c.textPrimary }]}>{formatPaise(estimatedTotalPaise)}</Text>
+              <Text style={[styles.totalLabel, { color: c.textSecondary }]}>Total</Text>
+              <Text style={[styles.totalAmount, { color: c.textPrimary }]}>{formatPaise(totals.grandPaise)}</Text>
             </View>
             <Text style={[styles.totalHint, { color: c.textSecondary }]}>
-              Tax is added when the invoice is issued — this is the pre-tax amount.
+              {!gstApplicable
+                ? 'No GST is charged — your business is saved as not GST registered (Settings → Business).'
+                : preview.interState
+                  ? `Inter-state supply${placeOfSupply ? ` to ${placeOfSupply}` : ''} — IGST. The server prices the invoice the same way.`
+                  : 'Within your state — CGST + SGST. The server prices the invoice the same way.'}
             </Text>
+            {/*
+              `gstApplicable` falls back to TRUE while the settings are still
+              loading or if they fail to load, which OVER-states the tax rather
+              than under-stating it. That is the safer error for a preview: the
+              server has the real answer, and an over-stated preview gets
+              corrected downward on the issued bill instead of surprising the
+              customer upward at the counter.
+            */}
+            {businessQuery.isPending && (
+              <Text style={[styles.totalHint, { color: c.textSecondary }]}>Checking your GST registration…</Text>
+            )}
+            {/*
+              The nudge that answers the original complaint.
+
+              A one-off line typed at the counter, and a line seeded from a
+              service booking, both start at 0% — this screen cannot know the
+              SAC rate for "repaired the geyser", and guessing 18% onto a tax
+              document is not a guess anybody should make on a partner's behalf.
+              So the rate stays 0 and the screen SAYS SO, once, instead of
+              issuing a silently untaxed invoice the way it used to.
+            */}
+            {gstApplicable && untaxedLineCount > 0 && (
+              <Text style={[styles.totalHint, { color: c.warning }]}>
+                {untaxedLineCount === 1 ? '1 item has' : `${untaxedLineCount} items have`} no GST rate set.
+                Tap the pencil on {untaxedLineCount === 1 ? 'it' : 'them'} to pick one.
+              </Text>
+            )}
           </Surface>
 
           {errorMessage && (
@@ -743,7 +853,7 @@ export default function NewInvoiceScreen() {
           disabled={submitting || lines.length === 0 || invoiceCapacity.atLimit}
           style={{ borderRadius: radii.field, marginTop: 8 }}
         >
-          {docType === 'TAX_INVOICE' ? `Issue invoice — ${formatPaise(estimatedTotalPaise)}` : 'Save & issue'}
+          {docType === 'TAX_INVOICE' ? `Issue invoice — ${formatPaise(totals.grandPaise)}` : 'Save & issue'}
         </Button>
       </View>
 
@@ -757,9 +867,32 @@ export default function NewInvoiceScreen() {
             <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>Scan items</Text>
             <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel="Done scanning" />
           </View>
-          <BarcodeScannerView active={scannerOpen} onResult={handleScanResult} hint="Keep scanning — each item adds to the bill." />
+          {/* The hint now names the ONE physical gesture the latch depends on.
+              A held pack is one line, not a climbing count, so a cashier
+              wanting two of something has to lift the phone away and come
+              back — which is what they already do, but they should not have to
+              discover it by finding out the second tin did not register. */}
+          <BarcodeScannerView
+            active={scannerOpen}
+            onResult={handleScanResult}
+            hint="Each item adds a line. For two of the same, lift the phone away and scan it again."
+          />
         </Modal>
       </Portal>
+
+      <LineEditorSheet
+        visible={editingKey !== null}
+        line={editingKey && editingKey !== 'NEW' ? (lines.find((l) => l.key === editingKey) ?? null) : null}
+        supplierState={supplierState}
+        placeOfSupply={placeOfSupply}
+        gstApplicable={gstApplicable}
+        onDismiss={() => setEditingKey(null)}
+        onSave={saveEditedLine}
+        onRemove={editingKey && editingKey !== 'NEW'
+          ? () => { removeLine(editingKey); setEditingKey(null); }
+          : undefined}
+        c={c}
+      />
 
       {/*
         The place-of-supply list. A plain scrolling list of the 37 names the
@@ -808,6 +941,16 @@ export default function NewInvoiceScreen() {
   );
 }
 
+/** One line of the totals breakup. Negative values (a discount) print with the sign `formatPaise` gives them. */
+function TotalLine({ label, value, c }: { label: string; value: number; c: ReturnType<typeof themeColors> }) {
+  return (
+    <View style={styles.breakupRow}>
+      <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>{label}</Text>
+      <Text style={{ color: c.textPrimary, fontSize: 12.5, fontWeight: '500' }}>{formatPaise(value)}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
@@ -836,10 +979,9 @@ const styles = StyleSheet.create({
   lineMeta: { fontSize: 11, marginTop: 2 },
   qtyStepper: { flexDirection: 'row', alignItems: 'center' },
   lineAmount: { fontSize: 13, fontWeight: '600', minWidth: 64, textAlign: 'right' },
-  customBox: { gap: 8, marginTop: 4 },
   goodsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  customRow: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end', alignItems: 'center' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  breakupRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel: { fontSize: 13, fontWeight: '600' },
   totalAmount: { fontSize: 22, fontWeight: '600' },
   totalHint: { fontSize: 11 },

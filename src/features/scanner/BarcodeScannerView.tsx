@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, useColorScheme, Linking, Platform } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { IconButton, Text, TextInput, ActivityIndicator } from 'react-native-paper';
 
 import { useProductScanner } from './useProductScanner';
 import { useRememberedScanMethod } from './scanMethod';
-import { SUPPORTED_BARCODE_TYPES, ProductScanOutcome } from './types';
+import { RETAIL_BARCODE_TYPES, EXTENDED_BARCODE_TYPES, ProductScanOutcome } from './types';
 import { themeColors, radii } from '../../constants/colors';
 
 /**
@@ -17,13 +17,19 @@ import { themeColors, radii } from '../../constants/colors';
  * running bill list beside it), use `useProductScanner` directly instead —
  * see the header on that file.
  *
- * Three things this owns and a caller should not reimplement:
+ * Four things this owns and a caller should not reimplement:
  *  - camera permission, requested once and re-offered with a clear reason if
  *    refused, WITHOUT ever blocking manual entry;
  *  - the torch toggle, tap target large enough for a one-handed counter;
  *  - manual entry, which is ALWAYS reachable — collapsed to one line when the
  *    remembered method is "camera", expanded when it is "manual" or when the
- *    camera has no permission, but never removed from the screen.
+ *    camera has no permission, but never removed from the screen;
+ *  - the scan latch and the symbology set, both from `useProductScanner` /
+ *    `RETAIL_BARCODE_TYPES`. ONE physical scan is one beep and one `onResult`,
+ *    however long the item is held in frame; the next one needs the item to
+ *    leave the frame first. A caller's `onResult` therefore never has to
+ *    de-duplicate, and must not try to — see the latch note on the hook for
+ *    why the second tin of the same paint depends on it not trying.
  */
 export interface BarcodeScannerViewProps {
   /** Pauses scanning without unmounting the camera — e.g. a result sheet from `onResult` is open on top. */
@@ -31,9 +37,19 @@ export interface BarcodeScannerViewProps {
   onResult: (outcome: ProductScanOutcome) => void;
   /** Shown above the manual-entry row. Defaults to a generic instruction. */
   hint?: string;
+  /**
+   * Also decode QR, DataMatrix, PDF417, Aztec, Code 93 and Codabar. OFF by
+   * default and it should stay off on a retail counter — see the reasoning on
+   * `RETAIL_BARCODE_TYPES`. A screen that turns this on is accepting that when
+   * a pack carries several codes, whichever one the decoder resolves first is
+   * the one that gets scanned. None of this app's three scanning screens sets
+   * it; it exists so a future screen with a real reason has one instead of
+   * reaching back into the constant.
+   */
+  extendedSymbologies?: boolean;
 }
 
-export function BarcodeScannerView({ active, onResult, hint }: BarcodeScannerViewProps) {
+export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies = false }: BarcodeScannerViewProps) {
   const c = themeColors(useColorScheme() === 'dark');
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
@@ -44,6 +60,18 @@ export function BarcodeScannerView({ active, onResult, hint }: BarcodeScannerVie
     enabled: active,
     onResult,
   });
+
+  // Memoised because `barcodeScannerSettings` is a new object on every render
+  // otherwise, and this component re-renders on the torch toggle, on `looking`
+  // and on every keystroke in the manual field — handing the native camera a
+  // fresh settings object each time is work for nothing on the one screen that
+  // is already busy decoding frames.
+  const barcodeTypes = useMemo(
+    () => (extendedSymbologies
+      ? [...RETAIL_BARCODE_TYPES, ...EXTENDED_BARCODE_TYPES]
+      : [...RETAIL_BARCODE_TYPES]),
+    [extendedSymbologies],
+  );
 
   // Ask once on mount. `permission === null` is "we haven't asked yet" — a
   // camera screen that never asks is a camera screen that never works, and the
@@ -93,7 +121,7 @@ export function BarcodeScannerView({ active, onResult, hint }: BarcodeScannerVie
             style={StyleSheet.absoluteFill}
             facing="back"
             enableTorch={torch}
-            barcodeScannerSettings={{ barcodeTypes: [...SUPPORTED_BARCODE_TYPES] }}
+            barcodeScannerSettings={{ barcodeTypes }}
             onBarcodeScanned={active ? handleBarcodeScanned : undefined}
           />
         ) : (

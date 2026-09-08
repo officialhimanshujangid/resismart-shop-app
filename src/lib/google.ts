@@ -74,6 +74,22 @@ const configureOnce = (mod: GoogleSdk): void => {
   configured = true;
 };
 
+/**
+ * `GoogleSignInStatusCodes.DEVELOPER_ERROR`, as the string the bridge delivers.
+ *
+ * NOT `statusCodes.DEVELOPER_ERROR`, and the difference is the whole reason this
+ * constant is written out here: the installed SDK's `statusCodes` freezes only
+ * SIGN_IN_CANCELLED, IN_PROGRESS, PLAY_SERVICES_NOT_AVAILABLE, SIGN_IN_REQUIRED
+ * and NULL_PRESENTER — there is no DEVELOPER_ERROR member. Comparing against the
+ * missing member would compare against `undefined`, which then matches every
+ * error that carries no code at all, and the branch would claim a
+ * misconfiguration for an unrelated failure.
+ *
+ * The native side stringifies `ApiException.getStatusCode()`, so the value that
+ * arrives is `'10'`.
+ */
+const DEVELOPER_ERROR_CODE = '10';
+
 /** Backing out of the sheet is a choice, not a failure worth a red banner. */
 export class GoogleCancelled extends Error {
   constructor() { super('cancelled'); this.name = 'GoogleCancelled'; }
@@ -126,7 +142,41 @@ export async function getGoogleIdToken(): Promise<string> {
     if (code === codes.PLAY_SERVICES_NOT_AVAILABLE) {
       throw new Error('Google Play Services is not available on this device.');
     }
-    throw new Error('Google sign-in could not be completed.');
+    /**
+     * DEVELOPER_ERROR — Android's code 10, and the reason this branch exists.
+     *
+     * It means Google refused before the account chooser: the SHA-1 of the
+     * certificate that signed THIS build, together with the package name, is not
+     * registered on an Android OAuth client in the same Google Cloud project as
+     * `GOOGLE_WEB_CLIENT_ID`. It is a CONFIGURATION fact — the same build fails
+     * for every user on every network, forever, until the console is changed —
+     * and it used to fall into the generic message below, where it read exactly
+     * like a flaky connection and was retried instead of fixed. A Play-signed
+     * release is the classic instance: Play re-signs the upload with its own key,
+     * so the SHA-1 that worked in the debug build is not the one users run.
+     *
+     * The raw code goes in the sentence deliberately. Whoever hits this is far
+     * more likely to be the owner testing a new build than a shop owner, and
+     * "code 10" is the string that matches Google's own documentation.
+     */
+    if (code === DEVELOPER_ERROR_CODE) {
+      throw new Error(
+        'Google rejected this app build (DEVELOPER_ERROR, code 10). Its signing ' +
+          'certificate SHA-1 and package name are not registered on an Android OAuth ' +
+          'client in the same Google project as the web client id. Sign in with your ' +
+          'phone number instead.'
+      );
+    }
+    /**
+     * Everything left is genuinely unknown, so the code is carried out rather
+     * than dropped — without it, the next diagnosis starts from a sentence that
+     * says nothing about which of a dozen failures happened.
+     */
+    throw new Error(
+      code
+        ? `Google sign-in could not be completed (${code}).`
+        : 'Google sign-in could not be completed.'
+    );
   }
 }
 

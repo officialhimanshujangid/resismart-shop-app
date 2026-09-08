@@ -28,8 +28,19 @@
  *        enabled: cameraIsOnScreen,
  *        onResult: handleOutcome,
  *      });
- *      <CameraView barcodeScannerSettings={{ barcodeTypes: [...SUPPORTED_BARCODE_TYPES] }}
+ *      <CameraView barcodeScannerSettings={{ barcodeTypes: [...RETAIL_BARCODE_TYPES] }}
  *                  onBarcodeScanned={handleBarcodeScanned} />
+ *
+ *    `RETAIL_BARCODE_TYPES`, not `SUPPORTED_BARCODE_TYPES` — the latter is the
+ *    full list the native module can decode and exists to source the type
+ *    union, not to configure a camera with. Read the note on both in
+ *    `types.ts` before widening what a screen decodes.
+ *
+ * ONE SCAN IS ONE `onResult`, on either path. The hook latches on acceptance
+ * and re-arms only once the frame has been clear of codes for a moment, so an
+ * item held in front of the lens does not repeat. A caller does not need to
+ * de-duplicate and should not: `billing/new.tsx` relies on a genuinely
+ * re-presented item arriving as a second `onResult` so it can bump qty.
  *
  * THE UNKNOWN-CODE CONTRACT (both paths): pushing
  * `{ pathname: '/catalog/create', params: { barcode: code, returnTo: path } }`
@@ -59,7 +70,7 @@ export { useRememberedScanMethod } from './scanMethod';
 
 export { lookupProductByBarcode } from './api';
 
-export { SUPPORTED_BARCODE_TYPES } from './types';
+export { RETAIL_BARCODE_TYPES, EXTENDED_BARCODE_TYPES, SUPPORTED_BARCODE_TYPES } from './types';
 export type {
   SupportedBarcodeType, ScanHit, ScannedProduct, BarcodeLookupResult, ProductScanOutcome, ScanMethod,
 } from './types';

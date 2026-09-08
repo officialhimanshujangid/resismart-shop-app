@@ -26,6 +26,14 @@ export default function CatalogScanScreen() {
   // coming BACK to it (rather than a fresh mount) is the whole point of
   // pushing instead of replacing. Without this, `suppressed` stays `true`
   // from the scan that navigated away and the camera looks dead on return.
+  //
+  // Un-suppressing here does NOT risk bouncing the shopkeeper straight back
+  // into the product they just came from, even though the phone is usually
+  // still hovering over the same pack. `useProductScanner` treats the code it
+  // accepted last, seen again in the first moments after being un-paused, as
+  // the tail of that same presentation rather than a new scan — it has to
+  // leave the frame before it counts again. That is the hook's job precisely
+  // because this screen is not the only one that pauses and resumes.
   useFocusEffect(
     useCallback(() => {
       setSuppressed(false);

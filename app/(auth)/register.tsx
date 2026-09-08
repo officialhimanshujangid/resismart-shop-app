@@ -40,8 +40,9 @@ import { getGoogleIdToken, isGoogleAvailable, GoogleCancelled } from '../../src/
 import { AppInput } from '../../src/components/AppInput';
 import { Hero } from '../../src/components/Hero';
 import { OtpDeliveryNotice } from '../../src/components/OtpDeliveryNotice';
+import { MapPicker } from '../../src/components/MapPicker';
 import { themeColors, radii, ColorScheme } from '../../src/constants/colors';
-import { parseCoords } from '../../src/lib/geo';
+import { parseCoords, pointFromLocation } from '../../src/lib/geo';
 import { qk } from '../../src/lib/queryKeys';
 import { useOnboardingStatus, resumeStep, useIsOnline } from '../../src/hooks';
 import {
@@ -858,16 +859,19 @@ function StepIdentity({
  * a real point in the Gulf of Guinea, so it passes every range check while
  * meaning "the map never loaded".
  *
- * This captures the pin from GPS rather than from a draggable map: a real map
- * needs `react-native-maps`, an API key per platform and a dev build, which is a
- * shipping decision and not this agent's to take.
+ * The pin is now placed on a REAL MAP (`components/MapPicker`) — the note that
+ * used to sit here said a map needed a development build, and that turned out
+ * not to be so: `react-native-maps` is compiled into Expo Go for SDK 54, so it
+ * renders under `expo start --go` with no key and no build. See `MapPicker`'s
+ * header for the version pin and for what a store binary additionally needs.
  *
- * So the two numbers are TYPEABLE, and that is not a nicety. They were rendered
- * as text beside a comment claiming they were editable, which meant the only way
- * past this step was a GPS fix — and a shop whose phone never fixes indoors, or
- * who has denied location permission, or whose pin lands on the wrong side of
- * the road, had no way to finish registering at all. It was the hardest trap in
- * the flow and it was invisible, because the partner could see the numbers.
+ * The two numbers stay TYPEABLE underneath it, and that is not redundancy. They
+ * were once rendered as read-only text beside a comment claiming they were
+ * editable, which meant the only way past this step was a GPS fix — and a shop
+ * whose phone never fixes indoors, or who has denied location permission, had no
+ * way to finish registering at all. They are also still the source of truth: the
+ * map writes into them, not beside them, so one value decides whether this step
+ * may be completed.
  */
 function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
   const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
@@ -878,7 +882,6 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
   const [pincode, setPincode] = useState('');
   const [latText, setLatText] = useState('');
   const [lngText, setLngText] = useState('');
-  const [locating, setLocating] = useState(false);
 
   // Shared with Settings → Address & map pin, which asks for the same pair and
   // has to accept exactly what this does. See `lib/geo`.
@@ -891,49 +894,52 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
     setCity((v) => v || p.city || '');
     setState((v) => v || p.state || '');
     setPincode((v) => v || p.pincode || '');
-    const [lng, lat] = p.location?.coordinates ?? [];
-    if (typeof lat === 'number' && typeof lng === 'number' && !(lat === 0 && lng === 0)) {
-      setLatText((v) => v || String(lat));
-      setLngText((v) => v || String(lng));
+    // `pointFromLocation` unwraps GeoJSON's [lng, lat] and applies the server's
+    // own `hasDiscoveryLocation` rule, under which `[0, 0]` is not a pin.
+    const saved = pointFromLocation(p.location);
+    if (saved) {
+      setLatText((v) => v || String(saved.lat));
+      setLngText((v) => v || String(saved.lng));
     }
   }, [existing]);
 
-  const locate = async () => {
-    setLocating(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        show('We need location access to place your shop on the map. You can also type the coordinates.', true);
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      // Straight into the boxes, which are the source of truth — so a fix that
-      // lands next door can be nudged by hand instead of retaken.
-      setLatText(String(position.coords.latitude));
-      setLngText(String(position.coords.longitude));
+  /**
+   * The map's only way to write — into the boxes, which stay the source of
+   * truth, so a pin dropped a shopfront too far can be nudged by typing rather
+   * than re-dragged.
+   */
+  const onPickOnMap = useCallback((lat: number, lng: number) => {
+    setLatText(String(lat));
+    setLngText(String(lng));
+  }, []);
 
-      // Best-effort only. A failed reverse geocode must not block the step —
-      // the partner can type the three fields, and the pin is what actually
-      // matters for discovery.
-      try {
-        const [place] = await Location.reverseGeocodeAsync(position.coords);
-        if (place) {
-          if (place.city) setCity((v) => v || place.city || '');
-          if (place.region) setState((v) => v || place.region || '');
-          if (place.postalCode) setPincode((v) => v || place.postalCode || '');
-          if (!address && place.street) {
-            setAddress([place.streetNumber, place.street, place.district].filter(Boolean).join(', '));
-          }
-        }
-      } catch {
-        /* the pin is the part that matters */
+  /**
+   * Reverse geocoding, hung off the GPS button ONLY.
+   *
+   * Standing at the shop is the one moment the phone knows enough to guess the
+   * address boxes, and filling them then saves the partner four fields. A
+   * dragged pin gets no such treatment: by then the boxes may hold something
+   * typed, and overwriting that from a marker nudged twenty metres would be a
+   * screen that edits itself.
+   *
+   * Best-effort throughout — every write is `v || …`, so nothing already
+   * entered is replaced, and a failure is swallowed. The pin is the part that
+   * decides discoverability; the address is what a resident then reads.
+   */
+  const fillAddressFromFix = useCallback(async (at: { latitude: number; longitude: number }) => {
+    try {
+      const [place] = await Location.reverseGeocodeAsync(at);
+      if (!place) return;
+      if (place.city) setCity((v) => v || place.city || '');
+      if (place.region) setState((v) => v || place.region || '');
+      if (place.postalCode) setPincode((v) => v || place.postalCode || '');
+      if (place.street) {
+        setAddress((v) => v || [place.streetNumber, place.street, place.district].filter(Boolean).join(', '));
       }
-    } catch (e) {
-      show(apiErrorMessage(e, 'Could not read your location.'), true);
-    } finally {
-      setLocating(false);
+    } catch {
+      /* the pin is the part that matters */
     }
-  };
+  }, []);
 
   // `coords` is already null for out-of-range, half-typed and (0, 0), so there
   // is nothing left to re-check about it here.
@@ -948,28 +954,10 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
     <View style={styles.step}>
       <StepHeading c={c} title="Where you are" blurb="Residents find you by distance, so the pin matters more than the address." />
 
-      <TouchableOpacity
-        onPress={locate}
-        disabled={locating}
-        style={[styles.pinCard, { backgroundColor: coords ? c.surfaceVariant : c.surface, borderColor: coords ? c.primary : c.border }]}
-      >
-        <MaterialCommunityIcons
-          name={coords ? 'map-marker-check' : 'map-marker-plus-outline'}
-          size={28}
-          color={coords ? c.primary : c.textDisabled}
-        />
-        <View style={styles.flex}>
-          <Text style={[styles.pinTitle, { color: c.textPrimary }]}>
-            {coords ? 'Pin placed' : 'Place the pin on your shop'}
-          </Text>
-          <Text style={[styles.note, { color: c.textSecondary }]}>
-            {coords
-              ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)} — tap to take it again from where you are standing.`
-              : 'Stand at your shop and tap here. This is what puts you in front of nearby residents.'}
-          </Text>
-        </View>
-        {locating && <ActivityIndicator />}
-      </TouchableOpacity>
+      {/* No marker until the partner places one, so "the map opened" and "the
+          pin is set" can never look the same. `valid` below reads `coords`, not
+          the map, so an unplaced pin blocks the step exactly as it always did. */}
+      <MapPicker c={c} point={coords} onPick={onPickOnMap} onGpsFix={(at) => void fillAddressFromFix(at)} />
 
       {/* The same two numbers, by hand. Indoors a phone often never gets a fix,
           and location permission can be refused outright — without these boxes
@@ -998,7 +986,7 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
           ? coords
             ? 'That is a valid point on the map.'
             : 'Latitude is between -90 and 90, longitude between -180 and 180 — and (0, 0) is in the sea.'
-          : 'You can also read these off a maps app: hold your finger on your shop and copy the two numbers.'}
+          : 'Typing here moves the pin above, so you can also copy the two numbers out of a maps app.'}
       </Text>
 
       <AppInput label="Full address" value={address} onChangeText={setAddress} multiline leftIcon="map-outline" />
@@ -1579,16 +1567,6 @@ const styles = StyleSheet.create({
   },
   choiceCardTall: { paddingVertical: 20 },
   choiceTitle: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  pinCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 16,
-    borderRadius: radii.card,
-    borderWidth: 1.5,
-    marginBottom: 8,
-  },
-  pinTitle: { fontSize: 15, fontWeight: '600', marginBottom: 2 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { marginBottom: 4 },
   divider: { marginVertical: 14 },

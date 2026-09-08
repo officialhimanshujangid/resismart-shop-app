@@ -18,6 +18,7 @@ import { router } from 'expo-router';
 
 import { useAuth, LoginResult } from '../../src/context/AuthContext';
 import { ProfileInfo } from '../../src/api/auth.api';
+import { apiErrorMessage } from '../../src/api/axios';
 import { AppButton } from '../../src/components/AppButton';
 import { getGoogleIdToken, isGoogleAvailable, GoogleCancelled } from '../../src/lib/google';
 import { AppInput } from '../../src/components/AppInput';
@@ -270,8 +271,14 @@ export default function LoginScreen() {
       setContextModal(false);
       // Same non-route as in `onSubmit` above — see the note there.
       router.replace('/(app)/(tabs)');
-    } catch (err: any) {
-      showSnack(err?.response?.data?.error ?? 'Context selection failed.', true);
+    } catch (err) {
+      // `apiErrorMessage`, not a hand-rolled reach into an axios body: that
+      // reach discarded the message of every failure that is not an axios error,
+      // and `selectContext` now raises one that matters — a device that could
+      // not write the session down (`SessionPersistError`) carries the only
+      // sentence telling the partner what to do, and it would have been shown
+      // here as the generic "Context selection failed."
+      showSnack(apiErrorMessage(err, 'Context selection failed.'), true);
     } finally {
       setContextLoading(false);
     }

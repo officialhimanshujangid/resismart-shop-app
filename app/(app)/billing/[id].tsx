@@ -367,6 +367,21 @@ export default function DocumentDetailScreen() {
   const canSend = canManage && !isDraft && doc.status !== 'CANCELLED';
 
   const outstandingPaise = Math.max(0, doc.totals.grandPaise - doc.paidPaise);
+  /**
+   * Summed off the stored lines, not recomputed — see the note at the totals
+   * card. Plain `reduce` rather than `useMemo` because the early returns above
+   * (`isPending`, `isError`) mean a hook here would be conditional, and four
+   * additions over at most 200 lines is not the cost a memo would save.
+   */
+  const taxSplit = doc.lines.reduce(
+    (acc, l) => ({
+      cgstPaise: acc.cgstPaise + l.cgstPaise,
+      sgstPaise: acc.sgstPaise + l.sgstPaise,
+      igstPaise: acc.igstPaise + l.igstPaise,
+      cessPaise: acc.cessPaise + l.cessPaise,
+    }),
+    { cgstPaise: 0, sgstPaise: 0, igstPaise: 0, cessPaise: 0 },
+  );
   const behaviour = behaviourOf(doc.type);
   const conversionTargets = CONVERSION_TARGETS[doc.type];
   const settledStatus = doc.status === 'ISSUED' || doc.status === 'PARTIALLY_PAID' || doc.status === 'PAID';
@@ -420,6 +435,18 @@ export default function DocumentDetailScreen() {
                 <Text style={[styles.lineName, { color: c.textPrimary }]}>{line.itemName}</Text>
                 <Text style={[styles.lineMeta, { color: c.textSecondary }]}>
                   {line.qty} {line.unit} × {formatPaise(line.ratePaise)}
+                  {line.discountPaise > 0 ? ` · −${formatPaise(line.discountPaise)}` : ''}
+                  {/*
+                    The rate and how it was treated, together. `ratePaise` alone
+                    is ambiguous — ₹118 at 18% is the same line whether the tax
+                    was inside it or added to it, and the two produce different
+                    money. This is read off the STORED line, which is what
+                    `computeDocumentTax` was actually given.
+                  */}
+                  {line.taxRatePercent > 0
+                    ? ` · GST ${line.taxRatePercent}% ${line.taxInclusive ? 'included' : 'extra'}`
+                    : ' · no GST'}
+                  {line.hsn ? ` · HSN ${line.hsn}` : ''}
                 </Text>
               </View>
               <Text style={[styles.lineAmount, { color: c.textPrimary }]}>{formatPaise(line.totalPaise)}</Text>
@@ -429,7 +456,26 @@ export default function DocumentDetailScreen() {
           <Divider style={{ marginVertical: 8 }} />
           <TotalRow label="Subtotal" value={doc.totals.subPaise} c={c} />
           {doc.totals.discountPaise > 0 && <TotalRow label="Discount" value={-doc.totals.discountPaise} c={c} />}
-          <TotalRow label="Tax" value={doc.totals.taxPaise} c={c} />
+          {/*
+            The tax, split the way it is filed, summed from the STORED lines —
+            never recomputed. `partner-document.model.ts` is explicit that an
+            issued document's numbers are what `computeDocumentTax()` returned
+            and must not be re-derived, and `partner-document-render.service.ts`
+            builds the printed footer from the same stored lines for the same
+            reason. `doc.totals` carries only the single `taxPaise`, so the
+            split has to come off the lines; the two always agree because both
+            were written in one pass.
+
+            One aggregate "Tax" row was what a partner saw before, and it is the
+            row a customer disputes: a GST invoice states CGST and SGST (or
+            IGST) separately, and a screen that will not show what the paper
+            shows is a screen the shopkeeper stops trusting.
+          */}
+          {taxSplit.igstPaise > 0 && <TotalRow label="IGST" value={taxSplit.igstPaise} c={c} />}
+          {taxSplit.cgstPaise > 0 && <TotalRow label="CGST" value={taxSplit.cgstPaise} c={c} />}
+          {taxSplit.sgstPaise > 0 && <TotalRow label="SGST" value={taxSplit.sgstPaise} c={c} />}
+          {taxSplit.cessPaise > 0 && <TotalRow label="Cess" value={taxSplit.cessPaise} c={c} />}
+          {doc.totals.taxPaise === 0 && <TotalRow label="Tax" value={0} c={c} />}
           {doc.totals.roundOffPaise !== 0 && <TotalRow label="Round off" value={doc.totals.roundOffPaise} c={c} />}
           <TotalRow label="Total" value={doc.totals.grandPaise} c={c} bold />
           {doc.paidPaise > 0 && <TotalRow label="Paid" value={doc.paidPaise} c={c} />}

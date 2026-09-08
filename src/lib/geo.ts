@@ -45,3 +45,44 @@ export function parseCoords(latText: string, lngText: string): { lat: number; ln
   if (lat === 0 && lng === 0) return null;
   return { lat, lng };
 }
+
+/** A saved `Partner.location`, as the API sends it. GeoJSON, so `[lng, lat]`. */
+export type StoredLocation = { type?: string; coordinates?: number[] } | null | undefined;
+
+/**
+ * "Does this partner actually have a pin?" — the SAME rule as the server's.
+ *
+ * Named and written to match `hasDiscoveryLocation` in
+ * `backend/src/models/partner.model.ts` line for line, because it is the same
+ * question and the backend header records what a second, slightly-different
+ * copy already cost: four call sites tested this, three of them checked only
+ * `coordinates.length !== 2`, and a save that wrote `[0, 0]` therefore turned
+ * the "your map pin is missing" banner OFF while sorting the shop ~7,000 km
+ * into the Gulf of Guinea. Length 2 is not the test. The pair being the origin
+ * is.
+ *
+ * Both screens that read a partner back were open-coding this inline; they now
+ * call it, so there is one place left in this app that can get it wrong.
+ */
+export const hasDiscoveryLocation = (location: StoredLocation): boolean => {
+  const coords = location?.coordinates;
+  if (!Array.isArray(coords) || coords.length !== 2) return false;
+  const [lng, lat] = coords;
+  if (typeof lng !== 'number' || typeof lat !== 'number') return false;
+  return !(lng === 0 && lat === 0);
+};
+
+/**
+ * The saved pin as `{ lat, lng }`, or `null` when there is not one.
+ *
+ * Exists so no caller has to destructure `coordinates` itself: GeoJSON is
+ * `[longitude, latitude]`, the reverse of the order every human says it in, and
+ * reading it backwards puts an Indian shop in the Indian Ocean without failing
+ * a single range check. One place does the swap.
+ */
+export function pointFromLocation(location: StoredLocation): { lat: number; lng: number } | null {
+  const coords = location?.coordinates;
+  if (!coords || !hasDiscoveryLocation(location)) return null;
+  const [lng, lat] = coords;
+  return { lat, lng };
+}

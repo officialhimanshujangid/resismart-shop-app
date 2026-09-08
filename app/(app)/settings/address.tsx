@@ -1,17 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as Location from 'expo-location';
 
 import { themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
-import { parseCoords } from '../../../src/lib/geo';
+import { parseCoords, pointFromLocation } from '../../../src/lib/geo';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { partnerApi } from '../../../src/api/partner.api';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
+import { MapPicker } from '../../../src/components/MapPicker';
 import { Card, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 
 /**
@@ -55,9 +55,19 @@ export default function AddressScreen() {
   const [pincode, setPincode] = useState('');
   const [latText, setLatText] = useState('');
   const [lngText, setLngText] = useState('');
-  const [locating, setLocating] = useState(false);
 
   const coords = useMemo(() => parseCoords(latText, lngText), [latText, lngText]);
+
+  /**
+   * The map's only way to write. It puts the pin into the TEXT boxes rather than
+   * into a second piece of state, so there is still exactly one source of truth
+   * on this screen and everything downstream — the validity line, the Save
+   * guard, the request body — keeps reading it through `parseCoords`.
+   */
+  const onPickOnMap = useCallback((lat: number, lng: number) => {
+    setLatText(String(lat));
+    setLngText(String(lng));
+  }, []);
 
   useEffect(() => {
     const p = query.data?.partner;
@@ -69,41 +79,13 @@ export default function AddressScreen() {
     setCity(p.city ?? '');
     setState(p.state ?? '');
     setPincode(p.pincode ?? '');
-    // GeoJSON is [longitude, latitude] — that order, not the one people say.
-    const [lng, lat] = p.location?.coordinates ?? [];
-    const saved = typeof lat === 'number' && typeof lng === 'number' ? parseCoords(String(lat), String(lng)) : null;
+    // GeoJSON is [longitude, latitude], and `hasDiscoveryLocation` (shared with
+    // the server's copy of the same name) is what decides whether the pair means
+    // a pin at all — `[0, 0]` has length 2 and does not.
+    const saved = pointFromLocation(p.location);
     setLatText(saved ? String(saved.lat) : '');
     setLngText(saved ? String(saved.lng) : '');
   }, [query.data]);
-
-  /**
-   * The pin from GPS, exactly as the wizard takes it — into the boxes, which are
-   * the source of truth, so a fix that lands across the road can be nudged by
-   * hand rather than retaken.
-   *
-   * A refused permission is not an error here: the two boxes are a complete way
-   * to do this without it, and saying so is more use than a red toast.
-   */
-  const locate = async () => {
-    setLocating(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          'Location is off',
-          'You can still set the pin by typing the two numbers — a maps app will give them to you if you hold your finger on your shop.',
-        );
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      setLatText(String(position.coords.latitude));
-      setLngText(String(position.coords.longitude));
-    } catch (e) {
-      Alert.alert('Could not read your location', apiErrorMessage(e, 'Please type the two numbers instead.'));
-    } finally {
-      setLocating(false);
-    }
-  };
 
   const save = useMutation({
     mutationFn: () => partnerApi.updateMe({
@@ -155,7 +137,7 @@ export default function AddressScreen() {
     if (!coords) {
       Alert.alert(
         'The map pin is not set',
-        'Residents find businesses by distance, so without it you are in nobody’s area. Latitude is between -90 and 90, longitude between -180 and 180.',
+        'Residents find businesses by distance, so without it you are in nobody’s area. Tap your shop on the map, or type a latitude between -90 and 90 and a longitude between -180 and 180.',
       );
       return;
     }
@@ -204,6 +186,12 @@ export default function AddressScreen() {
           Resident search is a distance query, so this is the field that decides whether you appear at all —
           not the address above it.
         </Text>
+
+        {/* The map writes THROUGH the two boxes below rather than around them —
+            see `onPickOnMap`. With no pin it shows no marker at all, so a shop
+            that has never been placed cannot look like one that has. */}
+        <MapPicker c={c} point={coords} onPick={onPickOnMap} disabled={!canEdit} />
+
         <View style={styles.row}>
           {/* `numeric`, not `number-pad`: React Native maps it to a keyboard
               carrying the decimal point AND the minus sign on both platforms,
@@ -230,19 +218,8 @@ export default function AddressScreen() {
             ? coords
               ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)} — a valid point on the map.`
               : 'Latitude is between -90 and 90, longitude between -180 and 180 — and (0, 0) is in the sea.'
-            : 'No pin set yet. Stand at your shop and take it, or copy the two numbers out of a maps app.'}
+            : 'No pin set yet. Place it on the map above, or copy the two numbers out of a maps app.'}
         </Text>
-        {canEdit && (
-          <AppButton
-            label={locating ? 'Reading your location…' : 'Take the pin from where I am'}
-            mode="outlined"
-            icon="crosshairs-gps"
-            onPress={() => void locate()}
-            loading={locating}
-            disabled={locating}
-            style={styles.locateBtn}
-          />
-        )}
       </Card>
 
       {canEdit && (
@@ -257,5 +234,4 @@ export default function AddressScreen() {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
-  locateBtn: { marginTop: 4 },
 });

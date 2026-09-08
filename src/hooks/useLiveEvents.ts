@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { useQueryClient, QueryKey } from '@tanstack/react-query';
 import { openEventStream, SseEvent } from '../lib/sse';
 import { qk } from '../lib/queryKeys';
-import { apiClient } from '../api/axios';
+import { clearSession, endsSession, refreshSession } from '../api/axios';
 
 /**
  * Live updates: a new booking lands on the Today screen without a pull-to-refresh.
@@ -77,7 +77,6 @@ export interface LiveEventsState {
 export function useLiveEvents(enabled: boolean): LiveEventsState {
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
-  const refreshing = useRef(false);
 
   useEffect(() => {
     if (!enabled) {
@@ -97,18 +96,23 @@ export function useLiveEvents(enabled: boolean): LiveEventsState {
       },
       onUnauthorized: () => {
         setConnected(false);
-        // The access token expired mid-stream. Any request through `apiClient`
-        // runs the refresh interceptor, so one cheap authenticated call renews
-        // the session and the stream picks the new token up on its next attempt.
-        // Guarded so a burst of 401s cannot start a refresh per frame.
-        if (refreshing.current) return;
-        refreshing.current = true;
-        apiClient
-          .get('/notifications/config')
-          .catch(() => undefined)
-          .finally(() => {
-            refreshing.current = false;
-          });
+        /**
+         * The access token expired mid-stream, and the stream picks the new one
+         * up on its next attempt — so all this has to do is cause a refresh.
+         *
+         * It used to do that by firing `GET /notifications/config` purely to
+         * provoke the 401 interceptor: a whole authenticated round trip whose
+         * answer was thrown away, and a SECOND source of 401s in an app that ran
+         * one refresh per 401. `refreshSession` is the same shared promise the
+         * interceptor now awaits, so a stream drop that coincides with a screen's
+         * requests joins their refresh instead of racing it.
+         *
+         * A failure here is judged by the same rule as anywhere else: a revoked
+         * token ends the session, a dropped connection does not.
+         */
+        void refreshSession().catch((e) => {
+          if (endsSession(e)) void clearSession();
+        });
       },
     });
 

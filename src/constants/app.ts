@@ -36,7 +36,8 @@ export const STORAGE_KEYS = {
  *
  *  - SecureStore's Android backend refuses values over 2048 bytes, so an offline
  *    invoice draft or a cached list simply fails to write — and `storage.set`
- *    swallows the error, so the failure is a draft that quietly never existed.
+ *    reports that only in its return value, so a caller that ignores it is left
+ *    with a draft that quietly never existed.
  *  - Everything under `STORAGE_KEYS` is wiped by `logout()`. A push token, the
  *    last-used scan method and a queue of unsynced drafts must survive a sign-out;
  *    binning a partner's unsent bills because they switched accounts is not a
