@@ -1,5 +1,6 @@
 import { apiClient } from './axios';
 import { formatPaise } from '../lib/money';
+import i18n from '../i18n';
 
 /**
  * The Phase-0 envelope every analytics board (web panel, society app, shop
@@ -137,7 +138,14 @@ export function formatKpiValue(kpiValue: number | null, unit: KpiUnit): string {
     case 'PERCENT':
       return `${kpiValue.toFixed(1)}%`;
     case 'MINUTES':
-      return `${Math.round(kpiValue)} min`;
+      // The singleton, not a `t` from a caller: this is a plain function that
+      // six render sites call inline, and threading a translator through all of
+      // them to reach one branch is the change that would drift. Every caller
+      // renders under a `useTranslation()` that re-renders on a language
+      // switch, so the tile follows the rest of the screen.
+      // `common.duration.min` is the same entry `features/services/duration.ts`
+      // reads — a minute count is written one way in this app.
+      return i18n.t('common.duration.min', { count: Math.round(kpiValue) });
     case 'RATING':
       return kpiValue.toFixed(1);
     case 'COUNT':

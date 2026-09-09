@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 
 import { documentsApi } from './documents.api';
 import { platformBillingApi } from '../../api/billing.api';
+import i18n from '../../i18n';
 
 /**
  * Fetching and sharing a document's PDF — `GET /partners/me/documents/:id/pdf`
@@ -16,6 +17,17 @@ import { platformBillingApi } from '../../api/billing.api';
  * file. `File.write()` takes a `Uint8Array` directly, which is exactly what
  * `documentsApi.pdfBytes()` returns — no base64 round trip needed.
  */
+
+/**
+ * `i18n.t` on the singleton rather than a `t` handed in by a caller: nothing in
+ * this module is a React component, so there is no hook to read, and the two
+ * callers of `shareDocumentPdf` reach the sentence below through
+ * `apiErrorMessage`'s `error.message` branch — which PREFERS a thrown message
+ * over the fallback they pass. The singleton is the same instance every screen
+ * renders from (`src/i18n/index.ts`), and `language-sync.ts` already imports it
+ * this way, so this is not a second translator.
+ */
+const t = (key: string, vars?: Record<string, string>): string => i18n.t(key, vars ?? {});
 
 const INVOICE_DIR = new Directory(Paths.cache, 'partner-invoices');
 
@@ -55,11 +67,11 @@ export async function shareDocumentPdf(id: string, label: string): Promise<void>
   const uri = await downloadDocumentPdf(id, label);
   const available = await Sharing.isAvailableAsync();
   if (!available) {
-    throw new Error('Sharing is not available on this device.');
+    throw new Error(t('billing.share.sharingUnavailable'));
   }
   await Sharing.shareAsync(uri, {
     mimeType: 'application/pdf',
-    dialogTitle: `Share ${label}`,
+    dialogTitle: t('billing.share.dialogTitle', { label }),
   });
 }
 
@@ -101,10 +113,10 @@ export async function sharePlatformInvoicePdf(id: string, label: string): Promis
 
   const available = await Sharing.isAvailableAsync();
   if (!available) {
-    throw new Error('Sharing is not available on this device.');
+    throw new Error(t('billing.share.sharingUnavailable'));
   }
   await Sharing.shareAsync(downloaded.uri, {
     mimeType: 'application/pdf',
-    dialogTitle: `Share ${label}`,
+    dialogTitle: t('billing.share.dialogTitle', { label }),
   });
 }

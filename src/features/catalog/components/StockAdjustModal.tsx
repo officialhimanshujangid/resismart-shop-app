@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, useColorScheme, ScrollView } from 'react-native';
 import { Portal, Dialog, Text, TextInput, Button, HelperText, SegmentedButtons } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../constants/colors';
-import { StockAdjustMode, StockAdjustReasonCode, STOCK_ADJUST_REASON_CODES, STOCK_ADJUST_REASON_LABELS } from '../types';
+import { StockAdjustMode, StockAdjustReasonCode, STOCK_ADJUST_REASON_CODES, STOCK_ADJUST_REASON_LABEL_KEYS } from '../types';
 
 /**
  * "Stock adjust with a reason" (the assignment's own words). Mirrors
@@ -43,6 +44,7 @@ const DEFAULT_REASON: Record<StockAdjustMode, StockAdjustReasonCode> = {
 };
 
 export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: StockAdjustModalProps) {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const [mode, setMode] = useState<StockAdjustMode>('INCREASE');
   const [qtyText, setQtyText] = useState('');
@@ -86,23 +88,25 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
         <Dialog.ScrollArea style={styles.scrollArea}>
           <ScrollView contentContainerStyle={styles.body}>
             <Text style={[styles.currentLine, { color: c.textSecondary }]}>
-              Currently {target?.currentQty ?? 0} on hand
+              {t('catalog.stock.currently', { qty: target?.currentQty ?? 0 })}
             </Text>
 
             <SegmentedButtons
               value={mode}
               onValueChange={(v) => changeMode(v as StockAdjustMode)}
+              /* The three `value`s are `STOCK_ADJUST_MODES` — the wire value
+                 `adjustStockSchema` validates — so they stay English literals. */
               buttons={[
-                { value: 'INCREASE', label: 'Add' },
-                { value: 'DECREASE', label: 'Remove' },
-                { value: 'SET', label: 'Set to' },
+                { value: 'INCREASE', label: t('catalog.stock.modeIncrease') },
+                { value: 'DECREASE', label: t('catalog.stock.modeDecrease') },
+                { value: 'SET', label: t('catalog.stock.modeSet') },
               ]}
               style={styles.segmented}
             />
 
             <TextInput
               mode="outlined"
-              label={mode === 'SET' ? 'New count' : 'Quantity'}
+              label={t(mode === 'SET' ? 'catalog.stock.newCount' : 'catalog.stock.quantity')}
               value={qtyText}
               onChangeText={setQtyText}
               keyboardType="numeric"
@@ -110,7 +114,7 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
             />
             {preview !== null && (
               <Text style={[styles.previewLine, { color: preview < 0 ? c.error : c.textSecondary }]}>
-                {preview < 0 ? 'That would take stock below zero.' : `New count: ${preview}`}
+                {preview < 0 ? t('catalog.stock.belowZero') : t('catalog.stock.preview', { qty: preview })}
               </Text>
             )}
 
@@ -129,7 +133,7 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
                       },
                     ]}
                   >
-                    {STOCK_ADJUST_REASON_LABELS[code]}
+                    {t(STOCK_ADJUST_REASON_LABEL_KEYS[code])}
                   </Text>
                 );
               })}
@@ -137,27 +141,27 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
 
             <TextInput
               mode="outlined"
-              label="Note"
+              label={t('catalog.stock.note')}
               value={reason}
               onChangeText={setReason}
-              placeholder="e.g. Delivery from supplier, 2 cases"
+              placeholder={t('catalog.stock.notePlaceholder')}
               multiline
               numberOfLines={2}
               outlineStyle={styles.outline}
             />
             <HelperText type="error" visible={reason.trim().length > 0 && !reasonValid}>
-              Say a little more — this becomes part of the audit record.
+              {t('catalog.stock.noteTooShort')}
             </HelperText>
           </ScrollView>
         </Dialog.ScrollArea>
         <Dialog.Actions>
-          <Button onPress={onCancel} disabled={submitting}>Cancel</Button>
+          <Button onPress={onCancel} disabled={submitting}>{t('common.cancel')}</Button>
           <Button
             onPress={() => onSubmit({ mode, qty, reason: reason.trim(), reasonCode })}
             disabled={!canSubmit || (preview !== null && preview < 0)}
             loading={submitting}
           >
-            Save
+            {t('common.save')}
           </Button>
         </Dialog.Actions>
       </Dialog>

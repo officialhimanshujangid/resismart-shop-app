@@ -16,6 +16,7 @@
  * these dates". `booking-slots.service.ts` is what turns the rule into
  * bookable slots; nothing here computes one.
  */
+import type { Translate } from '../services/duration';
 
 export interface AvailabilityWindow { from: string; to: string }
 
@@ -44,8 +45,28 @@ export interface AvailabilityRow {
   isActive: boolean;
 }
 
-export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-export const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/**
+ * WEEKDAY NAMES ARE I18N KEYS, INDEXED BY THE WIRE VALUE.
+ *
+ * The wire value is the INDEX — `day: 0…6`, matching `Date.getDay()`, which is
+ * what `weekly[].day` carries in both directions and what
+ * `booking-slots.service.ts` reads. Nothing here is ever posted; only the
+ * position is. So unlike `GST_STATES` in `billing/types.ts`, these are display
+ * labels and translating them is correct — the same split that file's header
+ * draws between `DOCUMENT_TYPE_LABEL_KEY` and the state table.
+ *
+ * `common.daysLong` and `common.days` are one catalogue read by every screen:
+ * a private array here is how this file and the register screen's weekday
+ * picker would end up able to disagree about the same day.
+ */
+export const DAY_NAME_KEYS = [
+  'common.daysLong.0', 'common.daysLong.1', 'common.daysLong.2', 'common.daysLong.3',
+  'common.daysLong.4', 'common.daysLong.5', 'common.daysLong.6',
+] as const;
+export const DAY_SHORT_KEYS = [
+  'common.days.0', 'common.days.1', 'common.days.2', 'common.days.3',
+  'common.days.4', 'common.days.5', 'common.days.6',
+] as const;
 
 export const DEFAULT_SLOT_MIN = 30;
 export const DEFAULT_CAPACITY = 1;
@@ -153,8 +174,6 @@ export function deviceTimezone(): string {
   }
 }
 
-const DAY_LABEL = DAY_NAMES;
-
 const minutesBetween = (from: string, to: string): number => {
   const [fh, fm] = from.split(':');
   const [th, tm] = to.split(':');
@@ -166,38 +185,42 @@ const minutesBetween = (from: string, to: string): number => {
  * also refused by the model/validator (`booking.validator.ts`); restated so
  * the partner is told before the request round-trips, in the field's own
  * language rather than a Mongoose sentence.
+ *
+ * `t` is handed in — this is a plain function, not a component, and the one
+ * caller (`availability/index.tsx`) already holds a translator. The same shape
+ * `bookings/format.ts` uses, and for the same reason: a module-level `t` would
+ * freeze the language at import.
  */
-export function draftProblem(draft: AvailabilityDraft): string | null {
+export function draftProblem(draft: AvailabilityDraft, t: Translate): string | null {
+  const dayName = (day: number) => t(DAY_NAME_KEYS[day]);
   const open = draft.days.filter((d) => d.isOpen);
   if (!open.length) {
-    return draft.isActive
-      ? 'Every day is closed, so nobody can book anything. Open at least one day, or switch off "Taking bookings" below if that is what you meant.'
-      : null;
+    return draft.isActive ? t('availability.problem.allClosed') : null;
   }
   for (const d of open) {
-    if (!d.windows.length) return `You have not said what hours you are open on ${DAY_LABEL[d.day]}.`;
+    if (!d.windows.length) return t('availability.problem.noHours', { day: dayName(d.day) });
     for (const w of d.windows) {
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(w.from) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(w.to)) {
-        return `Those opening hours on ${DAY_LABEL[d.day]} are not a time.`;
+        return t('availability.problem.notATime', { day: dayName(d.day) });
       }
       if (w.from >= w.to) {
-        return `On ${DAY_LABEL[d.day]} you close before you open. A window like that produces no slots at all.`;
+        return t('availability.problem.closeBeforeOpen', { day: dayName(d.day) });
       }
     }
     const sorted = [...d.windows].sort((a, b) => a.from.localeCompare(b.from));
     for (let i = 1; i < sorted.length; i += 1) {
       if (sorted[i].from < sorted[i - 1].to) {
-        return `Your opening hours on ${DAY_LABEL[d.day]} overlap each other.`;
+        return t('availability.problem.overlap', { day: dayName(d.day) });
       }
     }
     const shortest = Math.min(...d.windows.map((w) => minutesBetween(w.from, w.to)));
     if (d.slotMin > shortest) {
-      return `On ${DAY_LABEL[d.day]} a slot is longer than the time you are open, so there is nothing to book.`;
+      return t('availability.problem.slotTooLong', { day: dayName(d.day) });
     }
   }
   for (const b of draft.breaks) {
     if (b.from >= b.to) {
-      return `That break on ${DAY_LABEL[b.day]} ends before it starts, which blocks nothing while looking like a lunch hour.`;
+      return t('availability.problem.breakBackwards', { day: dayName(b.day) });
     }
   }
   return null;

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { StyleSheet, useColorScheme, View } from 'react-native';
 import { TextInput, HelperText } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
+
 import { palette, themeColors, radii } from '../constants/colors';
 
 /**
@@ -70,6 +72,7 @@ export function AppInput({
   numberOfLines,
   style,
 }: AppInputProps) {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const [isSecureVisible, setIsSecureVisible] = useState(false);
@@ -110,7 +113,7 @@ export function AppInput({
               icon={isSecureVisible ? 'eye-off' : 'eye'}
               onPress={() => setIsSecureVisible((v) => !v)}
               color={adornmentColor}
-              accessibilityLabel={isSecureVisible ? 'Hide password' : 'Show password'}
+              accessibilityLabel={t(isSecureVisible ? 'components.input.hidePassword' : 'components.input.showPassword')}
             />
           ) : undefined
         }

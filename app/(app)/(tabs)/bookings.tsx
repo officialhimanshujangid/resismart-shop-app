@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Chip, Searchbar, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { Hero } from '../../../src/components/Hero';
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction, useBookingsList } from '../../../src/features/bookings/hooks';
-import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
+import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABEL_KEYS } from '../../../src/features/bookings/booking.types';
 import { slotConflictsOf } from '../../../src/features/bookings/booking.api';
 import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
 import { ErrorBlock } from '../../../src/features/more/ui';
@@ -38,24 +39,41 @@ const FILTER_STATUS: Record<FilterTab, string | undefined> = {
   PAST: 'COMPLETED,INVOICED,PAID,REJECTED,CANCELLED,NO_SHOW',
 };
 
-const TAB_LABEL: Record<FilterTab, string> = {
-  REQUESTED: 'New',
-  LIVE: 'Live',
-  PAST: 'Past',
+/**
+ * WHAT EACH TAB SAYS — a catalogue key per tab, not the words.
+ *
+ * The KEYS are the `FilterTab` union, which never moves: `FILTER_STATUS` above
+ * is keyed by the same three, and the values THERE are the wire strings sent as
+ * `status` on `GET /partners/me/bookings`. Only the labels are translated — the
+ * split `features/billing/types.ts` is the worked example of.
+ */
+const TAB_LABEL_KEYS: Record<FilterTab, string> = {
+  REQUESTED: 'bookings.list.tabNew',
+  LIVE: 'bookings.list.tabLive',
+  PAST: 'bookings.list.tabPast',
 };
 
 /** One page. Was a flat `limit: 50` with no second page — see the accumulate effect. */
 const PAGE_LIMIT = 20;
 
-/** Verbs whose confirmation is a native alert rather than the form sheet — see `BookingCard.CONFIRM_DIRECTLY`. */
-const CONFIRM_COPY: Partial<Record<BookingVerb, string>> = {
-  accept: 'Accept this booking?',
-  start: 'Start this job now?',
-  reach: 'Send the customer their completion code now?',
-  noShow: 'Mark this as nobody turning up? This closes the job.',
+/**
+ * Verbs whose confirmation is a native alert rather than the form sheet — see
+ * `BookingCard.CONFIRM_DIRECTLY`.
+ *
+ * Keys again, and the same four entries `(tabs)/index.tsx` holds: Today runs the
+ * identical quick actions on the identical cards, so both tables point at ONE
+ * pair of catalogue entries rather than two translations of the same question.
+ * The verb keys are the wire values — see `VERB_LABEL_KEYS`.
+ */
+const CONFIRM_COPY_KEYS: Partial<Record<BookingVerb, string>> = {
+  accept: 'bookings.confirm.accept',
+  start: 'bookings.confirm.start',
+  reach: 'bookings.confirm.reach',
+  noShow: 'bookings.confirm.noShow',
 };
 
 export default function BookingsScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const [tab, setTab] = useState<FilterTab>('REQUESTED');
@@ -138,7 +156,7 @@ export default function BookingsScreen() {
 
   const runQuick = useCallback(
     (booking: PartnerBookingView, verb: BookingVerb) => {
-      const prompt = CONFIRM_COPY[verb];
+      const promptKey = CONFIRM_COPY_KEYS[verb];
       const fire = () => {
         act(booking.id, verb).catch((e) => {
           /**
@@ -150,25 +168,25 @@ export default function BookingsScreen() {
            */
           if (verb === 'invoice' && apiErrorCode(e) === 'NO_BILL_RAISED') {
             Alert.alert(
-              'No bill for this job yet',
-              'Raise it now? The customer and the amount are filled in for you.',
+              t('bookings.list.noBillTitle'),
+              t('bookings.list.noBillBody'),
               [
-                { text: 'Not now', style: 'cancel' },
-                { text: 'Raise the bill', onPress: () => openBillFor(booking) },
+                { text: t('common.notNow'), style: 'cancel' },
+                { text: t('bookings.list.raiseBill'), onPress: () => openBillFor(booking) },
               ],
             );
             return;
           }
-          Alert.alert('Could not do that', apiErrorMessage(e));
+          Alert.alert(t('bookings.actionFailed'), apiErrorMessage(e));
         });
       };
-      if (!prompt) return fire();
-      Alert.alert(VERB_LABELS[verb], prompt, [
-        { text: 'Not now', style: 'cancel' },
-        { text: VERB_LABELS[verb], onPress: fire },
+      if (!promptKey) return fire();
+      Alert.alert(t(VERB_LABEL_KEYS[verb]), t(promptKey), [
+        { text: t('common.notNow'), style: 'cancel' },
+        { text: t(VERB_LABEL_KEYS[verb]), onPress: fire },
       ]);
     },
-    [act, openBillFor],
+    [act, openBillFor, t],
   );
 
   const openForm = useCallback((booking: PartnerBookingView, verb: BookingVerb) => {
@@ -195,10 +213,10 @@ export default function BookingsScreen() {
            */
           const named = slotConflictsOf(e);
           if (named.length) return setConflicts(named);
-          Alert.alert('Could not do that', apiErrorMessage(e));
+          Alert.alert(t('bookings.actionFailed'), apiErrorMessage(e));
         });
     },
-    [act, formTarget],
+    [act, formTarget, t],
   );
 
   /**
@@ -214,26 +232,30 @@ export default function BookingsScreen() {
    * means "loading" and only one of those deserves a spinner.
    */
   const loadError = list.isError
-    ? apiErrorMessage(list.error, 'Could not load your bookings.')
+    ? apiErrorMessage(list.error, t('bookings.list.loadFailed'))
     : list.isPending && list.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('bookings.list.noConnection')
       : null;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <Hero isDark={isDark} rounded={false} eyebrow="Manage" title="Bookings" />
+      {/* The title is `modules.BOOKINGS.label`, the same catalogue entry the tab
+          bar and the More menu read — a module is called one thing in this app. */}
+      <Hero isDark={isDark} rounded={false} eyebrow={t('bookings.list.eyebrow')} title={t('modules.BOOKINGS.label')} />
       <View style={styles.controls}>
         <Searchbar
-          placeholder="Search by code (BK-0001)"
+          placeholder={t('bookings.list.searchPlaceholder')}
           value={code}
           onChangeText={setCode}
           style={[styles.search, { backgroundColor: c.surfaceVariant }]}
           inputStyle={{ minHeight: 0 }}
         />
         <View style={styles.tabs}>
-          {(Object.keys(TAB_LABEL) as FilterTab[]).map((t) => (
-            <Chip key={t} selected={tab === t} onPress={() => setTab(t)} style={styles.tabChip}>
-              {TAB_LABEL[t]}
+          {/* `key`, not `t` — this file holds a translator now, and a callback
+              parameter called `t` is the shadow that broke `billing/[id].tsx`. */}
+          {(Object.keys(TAB_LABEL_KEYS) as FilterTab[]).map((key) => (
+            <Chip key={key} selected={tab === key} onPress={() => setTab(key)} style={styles.tabChip}>
+              {t(TAB_LABEL_KEYS[key])}
             </Chip>
           ))}
         </View>
@@ -269,7 +291,7 @@ export default function BookingsScreen() {
             <ErrorBlock c={c} message={loadError} onRetry={() => void list.refetch()} />
           ) : list.isLoading ? null : (
             <Text style={[styles.empty, { color: c.textSecondary }]}>
-              {tab === 'REQUESTED' ? 'No new requests right now.' : 'Nothing here yet.'}
+              {tab === 'REQUESTED' ? t('bookings.list.emptyRequested') : t('bookings.list.empty')}
             </Text>
           )
         }

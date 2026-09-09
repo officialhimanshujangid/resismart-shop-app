@@ -3,6 +3,7 @@ import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
 import { Switch, Text } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePlanUsage } from '../../../src/hooks';
@@ -14,16 +15,22 @@ import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { ChipRow, Screen } from '../../../src/features/more/ui';
 
-const KIND_OPTIONS: { key: PartyKind; label: string }[] = [
-  { key: 'CUSTOMER', label: 'Customer' },
-  { key: 'SUPPLIER', label: 'Supplier' },
-  { key: 'BOTH', label: 'Both' },
+/**
+ * `key` is the WIRE value — `kind` on `POST /parties`, and what the server's
+ * `kindsForSide()` filter is written against — so it stays an English literal.
+ * Only `labelKey` is display.
+ */
+const KIND_OPTIONS: { key: PartyKind; labelKey: string }[] = [
+  { key: 'CUSTOMER', labelKey: 'parties.form.kindCustomer' },
+  { key: 'SUPPLIER', labelKey: 'parties.form.kindSupplier' },
+  { key: 'BOTH', labelKey: 'parties.form.kindBoth' },
 ];
 
 /** Create a party, or edit one when `?id=` is present — same form either way. */
 export default function PartyFormScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ id?: string; kind?: PartyKind }>();
   const editing = Boolean(params.id);
   const queryClient = useQueryClient();
@@ -72,7 +79,7 @@ export default function PartyFormScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.usage() });
       router.replace({ pathname: '/parties/[id]', params: { id: party._id } });
     },
-    onError: (err) => Alert.alert('Could not add party', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('parties.form.addFailed'), apiErrorMessage(err)),
   });
 
   const updateMutation = useMutation({
@@ -86,17 +93,17 @@ export default function PartyFormScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.parties.detail(party._id) });
       router.back();
     },
-    onError: (err) => Alert.alert('Could not save changes', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('parties.form.saveFailed'), apiErrorMessage(err)),
   });
 
   const validate = (): boolean => {
     const next: Record<string, string> = {};
-    if (!name.trim()) next.name = 'A party needs a name.';
-    if (isWalkIn && !phone.trim() && !editing) next.phone = 'A walk-in needs a phone number to be found again later.';
-    if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) next.email = 'That does not look like an email address.';
+    if (!name.trim()) next.name = t('parties.form.nameRequired');
+    if (isWalkIn && !phone.trim() && !editing) next.phone = t('parties.form.phoneRequired');
+    if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) next.email = t('parties.form.emailInvalid');
     if (!editing) {
       const paise = parseRupeesToPaise(openingBalance || '0');
-      if (paise === null) next.openingBalance = 'Enter a valid amount, e.g. 1500.00';
+      if (paise === null) next.openingBalance = t('parties.form.amountInvalid');
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -120,11 +127,15 @@ export default function PartyFormScreen() {
   const saving = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Screen c={c} title={editing ? 'Edit party' : 'Add party'}>
+    <Screen c={c} title={t(editing ? 'parties.form.editTitle' : 'parties.form.addTitle')}>
       {!editing && cap.atLimit && (
         <View style={[styles.limitBanner, { backgroundColor: c.surfaceVariant }]}>
           <Text style={{ color: c.error, fontWeight: '600' }}>
-            You have reached your plan's limit of {cap.limit} {cap.noun}.
+            {/* `noun` is the SERVER's word ("customers") and arrives in English
+                — the same trade `UsageMeter.tsx` documents. The sentence around
+                it is translated; the noun follows when the backend catalogue
+                does. */}
+            {t('parties.form.limitTitle', { limit: cap.limit, noun: cap.noun })}
           </Text>
           {/* "you can put them back" is load-bearing. Hiding used to be a
               one-way door — the list filtered to active parties and offered no
@@ -132,28 +143,27 @@ export default function PartyFormScreen() {
               The Parties list now carries a "Show hidden parties" switch and an
               unhide action on every row. */}
           <Text style={{ color: c.textSecondary, fontSize: 12 }}>
-            Upgrade your plan, or hide a party you no longer trade with — you can put them back from the Parties
-            list at any time.
+            {t('parties.form.limitBody')}
           </Text>
         </View>
       )}
 
-      <Text style={[styles.label, { color: c.textSecondary }]}>Kind</Text>
-      <ChipRow c={c} value={kind} options={KIND_OPTIONS} onChange={setKind} />
+      <Text style={[styles.label, { color: c.textSecondary }]}>{t('parties.form.kindLabel')}</Text>
+      <ChipRow c={c} value={kind} options={KIND_OPTIONS.map((o) => ({ key: o.key, label: t(o.labelKey) }))} onChange={setKind} />
 
-      <AppInput label="Name" value={name} onChangeText={setName} error={errors.name} />
-      <AppInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" error={errors.phone} />
-      <AppInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
-      <AppInput label="GSTIN (optional)" value={gstin} onChangeText={(v) => setGstin(v.toUpperCase())} autoCapitalize="characters" />
+      <AppInput label={t('parties.form.name')} value={name} onChangeText={setName} error={errors.name} />
+      <AppInput label={t('parties.form.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" error={errors.phone} />
+      <AppInput label={t('parties.form.email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
+      <AppInput label={t('parties.form.gstin')} value={gstin} onChangeText={(v) => setGstin(v.toUpperCase())} autoCapitalize="characters" />
 
       {!editing && (
         <>
           <View style={styles.switchRow}>
-            <Text style={{ color: c.textPrimary, fontSize: 14 }}>Walk-in / entered by hand</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 14 }}>{t('parties.form.walkIn')}</Text>
             <Switch value={isWalkIn} onValueChange={setIsWalkIn} color={c.primary} />
           </View>
           <AppInput
-            label="Opening balance (₹) — what they already owed you, or you owed them"
+            label={t('parties.form.openingBalance')}
             value={openingBalance}
             onChangeText={setOpeningBalance}
             keyboardType="numeric"
@@ -162,14 +172,18 @@ export default function PartyFormScreen() {
         </>
       )}
 
-      <Text style={[styles.label, { color: c.textSecondary }]}>Billing address (optional)</Text>
-      <AppInput label="Address line" value={line1} onChangeText={setLine1} />
-      <AppInput label="City" value={city} onChangeText={setCity} />
-      <AppInput label="State" value={state} onChangeText={setState} />
-      <AppInput label="Pincode" value={pincode} onChangeText={setPincode} keyboardType="numeric" />
+      <Text style={[styles.label, { color: c.textSecondary }]}>{t('parties.form.billingAddress')}</Text>
+      <AppInput label={t('parties.form.addressLine')} value={line1} onChangeText={setLine1} />
+      <AppInput label={t('parties.form.city')} value={city} onChangeText={setCity} />
+      {/* The party's POSTAL state, free text on their address — NOT
+          `placeOfSupply`. Only the label is translated; whatever is typed is
+          stored verbatim. The tax-deciding state list is `GST_STATES`, which
+          `features/billing/types.ts:186-204` explains must never be translated. */}
+      <AppInput label={t('parties.form.state')} value={state} onChangeText={setState} />
+      <AppInput label={t('parties.form.pincode')} value={pincode} onChangeText={setPincode} keyboardType="numeric" />
 
       <AppButton
-        label={editing ? 'Save changes' : 'Add party'}
+        label={t(editing ? 'parties.form.saveChanges' : 'parties.form.addTitle')}
         onPress={onSubmit}
         loading={saving}
         disabled={saving || (!editing && cap.atLimit)}

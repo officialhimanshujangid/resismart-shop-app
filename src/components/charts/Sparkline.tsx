@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
+import { useTranslation } from 'react-i18next';
 import { ColorScheme } from '../../constants/colors';
 
 /**
@@ -31,7 +32,7 @@ export function Sparkline({
   width = 96,
   strokeWidth = 2,
   fill = true,
-  label = 'Trend',
+  label,
   valueFormatter,
   accessibilityLabel,
 }: {
@@ -51,6 +52,10 @@ export function Sparkline({
   /** Full override for the screen-reader summary, when the caller wants exact wording. */
   accessibilityLabel?: string;
 }) {
+  const { t } = useTranslation();
+  // `?? t(…)` inside the component, never a default parameter — see the note at
+  // the top of `ChartStates.tsx`.
+  const shownLabel = label ?? t('components.chart.trendLabel');
   const stroke = color ?? c.primary;
 
   const shape = useMemo(() => {
@@ -82,14 +87,20 @@ export function Sparkline({
   // the trend is always reachable as text — never colour/slope-only.
   const lastPoint = [...points].reverse().find((p) => typeof p.v === 'number');
   const describeValue = (v: number) => (valueFormatter ? valueFormatter(v) : String(v));
+  /* `_one`/`_other`, not an English `-s` on "points": Hindi cannot pluralise by
+     suffixing, and CLDR puts BOTH 0 and 1 in its `one` category. */
   const defaultA11yLabel =
     points.length === 0
-      ? `${label}, no data yet`
+      ? t('components.chart.noData', { label: shownLabel })
       : shape?.allZero
-        ? `${label}, no activity in this period`
+        ? t('components.chart.noActivity', { label: shownLabel })
         : lastPoint
-          ? `${label}, ${points.length} points, latest ${describeValue(lastPoint.v as number)}`
-          : `${label}, ${points.length} points`;
+          ? t('components.chart.pointsSummary', {
+            label: shownLabel,
+            count: points.length,
+            latest: describeValue(lastPoint.v as number),
+          })
+          : t('components.chart.pointsOnly', { label: shownLabel, count: points.length });
   const resolvedA11yLabel = accessibilityLabel ?? defaultA11yLabel;
 
   if (!shape) {

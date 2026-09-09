@@ -3,6 +3,7 @@ import { StyleSheet, View, useColorScheme } from 'react-native';
 import { Button, Snackbar, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -10,7 +11,7 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { qk } from '../../../src/lib/queryKeys';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { reviewsApi, ReviewListPage } from '../../../src/features/reviews/api';
-import { fmtReviewDate } from '../../../src/features/reviews/types';
+import { formatI18nDate } from '../../../src/i18n';
 import { ReplyBox } from '../../../src/features/reviews/components/ReplyBox';
 import { Card, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 
@@ -27,6 +28,7 @@ const PAGE_SIZE = 20;
  * exactly what a resident browsing the profile page sees.
  */
 export default function ReviewsScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -56,7 +58,9 @@ export default function ReviewsScreen() {
   // same list.
   const pageAverage = useMemo(() => {
     if (!reviews.length) return null;
-    return reviews.reduce((t, r) => t + r.rating, 0) / reviews.length;
+    // `sum`, not `t`: this file holds a translator now, and a reducer
+    // accumulator called `t` shadows it inside the callback.
+    return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
   }, [reviews]);
   const unanswered = useMemo(() => reviews.filter((r) => !r.partnerReply).length, [reviews]);
 
@@ -72,40 +76,40 @@ export default function ReviewsScreen() {
           qk.reviews(page),
           (prev) => (prev ? { ...prev, data: prev.data.map((r) => (r._id === reviewId ? updated : r)) } : prev),
         );
-        setToast('Reply posted');
+        setToast(t('reviews.replyPosted'));
       } catch (e: unknown) {
-        setToast(apiErrorMessage(e, 'That reply could not be posted.'));
+        setToast(apiErrorMessage(e, t('reviews.replyFailed')));
       } finally {
         setReplyingId(null);
       }
     },
-    [queryClient, page],
+    [queryClient, page, t],
   );
 
   if (!partnerId) {
     return (
-      <Screen c={c} title="Reviews">
-        <ErrorBlock c={c} message="Reviews belong to one business, and this session is not in a business context." />
+      <Screen c={c} title={t('reviews.title')}>
+        <ErrorBlock c={c} message={t('reviews.noBusinessContext')} />
       </Screen>
     );
   }
 
-  if (query.isPending) return <Screen c={c} title="Reviews"><Loading c={c} label="Loading your reviews…" /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('reviews.title')}><Loading c={c} label={t('reviews.loading')} /></Screen>;
   if (query.isError) {
     return (
-      <Screen c={c} title="Reviews">
-        <ErrorBlock c={c} message={apiErrorMessage(query.error, 'We could not load your reviews.')} onRetry={() => query.refetch()} />
+      <Screen c={c} title={t('reviews.title')}>
+        <ErrorBlock c={c} message={apiErrorMessage(query.error, t('reviews.loadFailed'))} onRetry={() => query.refetch()} />
       </Screen>
     );
   }
 
   return (
-    <Screen c={c} title="Reviews" subtitle="What residents said, and your reply">
+    <Screen c={c} title={t('reviews.title')} subtitle={t('reviews.subtitle')}>
       {reviews.length > 0 && (
         <Card c={c} style={styles.statsCard}>
-          <StatBlock c={c} label="On this page" value={pageAverage?.toFixed(1) ?? '—'} icon="star" />
-          <StatBlock c={c} label="Published" value={String(total)} />
-          <StatBlock c={c} label="Awaiting reply" value={String(unanswered)} />
+          <StatBlock c={c} label={t('reviews.statPage')} value={pageAverage?.toFixed(1) ?? '—'} icon="star" />
+          <StatBlock c={c} label={t('reviews.statPublished')} value={String(total)} />
+          <StatBlock c={c} label={t('reviews.statAwaiting')} value={String(unanswered)} />
         </Card>
       )}
 
@@ -113,15 +117,17 @@ export default function ReviewsScreen() {
         <EmptyBlock
           c={c}
           icon="star-outline"
-          title="No reviews yet"
-          body="Residents can review you once a booking or an order is closed."
+          title={t('reviews.emptyTitle')}
+          body={t('reviews.emptyBody')}
         />
       ) : (
         reviews.map((r) => (
           <Card key={r._id} c={c} style={styles.reviewCard}>
             <View style={styles.headerRow}>
               <Text style={{ fontSize: 13, fontWeight: '600', color: c.textPrimary }} numberOfLines={1}>
-                {r.authorName || 'A resident'}
+                {/* `authorName` arrives from the server already masked to
+                    "Priya N." — a real person's name, never translated. */}
+                {r.authorName || t('reviews.anonymousAuthor')}
               </Text>
               <View style={styles.ratingRow}>
                 <MaterialCommunityIcons name="star" size={14} color={c.warning} />
@@ -129,8 +135,8 @@ export default function ReviewsScreen() {
               </View>
             </View>
             <Text style={{ fontSize: 11, color: c.textDisabled, marginTop: 2 }}>
-              {fmtReviewDate(r.createdAt)}
-              {r.bookingId ? ' · after a booking' : r.orderId ? ' · after an order' : ''}
+              {formatI18nDate(r.createdAt, t)}
+              {r.bookingId ? t('reviews.afterBooking') : r.orderId ? t('reviews.afterOrder') : ''}
             </Text>
             {!!r.text && (
               <Text style={{ fontSize: 13, color: c.textSecondary, marginTop: 6, lineHeight: 18 }}>{r.text}</Text>
@@ -144,11 +150,11 @@ export default function ReviewsScreen() {
       {totalPages > 1 && (
         <View style={styles.pager}>
           <Button compact disabled={page === 1} onPress={() => setPage((p) => Math.max(1, p - 1))}>
-            Previous
+            {t('reviews.previous')}
           </Button>
-          <Text style={{ color: c.textSecondary, fontSize: 12 }}>Page {page} of {totalPages}</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('reviews.pageOf', { page, total: totalPages })}</Text>
           <Button compact disabled={page >= totalPages} onPress={() => setPage((p) => p + 1)}>
-            Next
+            {t('reviews.next')}
           </Button>
         </View>
       )}

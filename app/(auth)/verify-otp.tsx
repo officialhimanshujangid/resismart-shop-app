@@ -12,6 +12,7 @@ import {
 import { Text, Snackbar, ActivityIndicator } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '../../src/context/AuthContext';
 import { AppButton } from '../../src/components/AppButton';
@@ -88,6 +89,7 @@ const asAlternatives = (v: unknown): OtpAltVia[] =>
 const asTriState = (v: unknown): boolean | null => (v === '1' ? true : v === '0' ? false : null);
 
 export default function VerifyOtpScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const params = useLocalSearchParams<{
@@ -142,8 +144,9 @@ export default function VerifyOtpScreen() {
 
   useEffect(() => {
     if (cooldown <= 0) return;
-    const t = setTimeout(() => setCooldown((s) => s - 1), 1000);
-    return () => clearTimeout(t);
+    // `handle`, not `t` — `t` is the translator in this component.
+    const handle = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(handle);
   }, [cooldown]);
 
   const submit = useCallback(
@@ -175,17 +178,17 @@ export default function VerifyOtpScreen() {
           // signs in with a code. The picker lives on the login screen, so send
           // them there with the session already half-open rather than inventing
           // a second picker here.
-          show('You work in more than one business. Please sign in from the main screen to pick one.', true);
+          show(t('auth.verifyOtp.multipleBusinesses'), true);
           setTimeout(() => router.replace('/(auth)/login'), 2200);
           return;
         }
-        show(result.error ?? 'That code did not work.', true);
+        show(result.error ?? t('auth.verifyOtp.codeFailed'), true);
         setCode('');
       } finally {
         setBusy(false);
       }
     },
-    [busy, identifier, verifyLoginOtp],
+    [busy, identifier, verifyLoginOtp, t],
   );
 
   /**
@@ -205,7 +208,7 @@ export default function VerifyOtpScreen() {
         if (!result.success || !result.delivery) {
           // A 429, a 400, or no network. Never a delivery failure — this
           // endpoint does not report those. See the header.
-          show(result.error ?? 'Could not send another code.', true);
+          show(result.error ?? t('auth.verifyOtp.resendFailed'), true);
           return;
         }
         if (to !== identifier) setSwitchedTo(to);
@@ -228,7 +231,7 @@ export default function VerifyOtpScreen() {
         setSending(null);
       }
     },
-    [identifier, requestLoginOtp, sending],
+    [identifier, requestLoginOtp, sending, t],
   );
 
   const resend = useCallback(() => {
@@ -249,11 +252,11 @@ export default function VerifyOtpScreen() {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]}>
         <View style={styles.centre}>
-          <Text style={[styles.title, { color: c.textPrimary }]}>Nothing to verify</Text>
+          <Text style={[styles.title, { color: c.textPrimary }]}>{t('auth.verifyOtp.nothingToVerifyTitle')}</Text>
           <Text style={[styles.subtitle, { color: c.textSecondary }]}>
-            We do not know which number or address to check. Please sign in again.
+            {t('auth.verifyOtp.nothingToVerifyBody')}
           </Text>
-          <AppButton label="Back to sign in" onPress={() => router.replace('/(auth)/login')} />
+          <AppButton label={t('auth.verifyOtp.backToSignIn')} onPress={() => router.replace('/(auth)/login')} />
         </View>
       </SafeAreaView>
     );
@@ -274,7 +277,7 @@ export default function VerifyOtpScreen() {
           />
 
           <Text style={[styles.title, { color: c.textPrimary }]}>
-            {isNewAccount ? 'One last code' : 'Enter your code'}
+            {isNewAccount ? t('auth.verifyOtp.titleNewAccount') : t('auth.verifyOtp.title')}
           </Text>
           <Text style={[styles.subtitle, { color: c.textSecondary }]}>
             {/* The identifier lives here and the TRANSPORT lives in the notice
@@ -282,8 +285,8 @@ export default function VerifyOtpScreen() {
                 sent a code" here as well would be this screen asserting a
                 delivery it did not perform and cannot see. */}
             {isNewAccount
-              ? `Your business is created. Enter the sign-in code for ${identifier} so you can finish setting it up.`
-              : `Enter the 6-digit code for ${identifier}.`}
+              ? t('auth.verifyOtp.subtitleNewAccount', { identifier })
+              : t('auth.verifyOtp.subtitle', { identifier })}
           </Text>
 
           {/*
@@ -330,7 +333,7 @@ export default function VerifyOtpScreen() {
             <ActivityIndicator style={styles.spinner} />
           ) : (
             <AppButton
-              label="Verify and continue"
+              label={t('auth.verifyOtp.verify')}
               onPress={() => void submit(code)}
               disabled={code.length !== CODE_LENGTH}
             />
@@ -363,12 +366,12 @@ export default function VerifyOtpScreen() {
             style={styles.resend}
           >
             <Text style={{ color: cooldown > 0 || sending ? c.textDisabled : c.primary, fontWeight: '600' }}>
-              {cooldown > 0 ? `Send another code in ${cooldown}s` : 'Send another code'}
+              {cooldown > 0 ? t('auth.verifyOtp.resendIn', { seconds: cooldown }) : t('auth.verifyOtp.resend')}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.resend}>
-            <Text style={{ color: c.textSecondary }}>Use a different account</Text>
+            <Text style={{ color: c.textSecondary }}>{t('auth.verifyOtp.differentAccount')}</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

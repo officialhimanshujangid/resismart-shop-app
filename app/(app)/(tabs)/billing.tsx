@@ -4,6 +4,7 @@ import { ActivityIndicator, Button, Searchbar, SegmentedButtons, Surface, Text }
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, ColorScheme } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
@@ -12,7 +13,7 @@ import { formatPaise } from '../../../src/lib/money';
 import { documentsApi, documentStatusGroup } from '../../../src/features/billing/documents.api';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
 import {
-  DOCUMENT_TYPE_LABEL, DocumentDirection, PURCHASE_DOCUMENT_TYPES, PartnerDocumentRecord, SALES_DOCUMENT_TYPES,
+  DOCUMENT_TYPE_LABEL_KEY, DocumentDirection, PURCHASE_DOCUMENT_TYPES, PartnerDocumentRecord, SALES_DOCUMENT_TYPES,
 } from '../../../src/features/billing/types';
 import { DocumentStatusChip } from '../../../src/features/billing/components/StatusChip';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
@@ -32,11 +33,15 @@ import { apiErrorMessage } from '../../../src/api/axios';
 
 type FilterKey = 'ALL' | 'DRAFT' | 'UNPAID' | 'ISSUED';
 
-const FILTERS: { value: FilterKey; label: string }[] = [
-  { value: 'ALL', label: 'All' },
-  { value: 'ISSUED', label: 'Issued' },
-  { value: 'UNPAID', label: 'Unpaid' },
-  { value: 'DRAFT', label: 'Draft' },
+/**
+ * The filter VALUES are this screen's own state and are turned into a status
+ * CSV by `filterToStatus` below; only the button copy is looked up.
+ */
+const FILTERS: { value: FilterKey; labelKey: string }[] = [
+  { value: 'ALL', labelKey: 'billing.list.filterAll' },
+  { value: 'ISSUED', labelKey: 'billing.list.filterIssued' },
+  { value: 'UNPAID', labelKey: 'billing.list.filterUnpaid' },
+  { value: 'DRAFT', labelKey: 'billing.list.filterDraft' },
 ];
 
 function filterToStatus(filter: FilterKey): string | undefined {
@@ -47,6 +52,7 @@ function filterToStatus(filter: FilterKey): string | undefined {
 }
 
 export default function BillingScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -95,22 +101,22 @@ export default function BillingScreen() {
    * rather than firing it into a dead radio.
    */
   const loadError = query.isError
-    ? apiErrorMessage(query.error, 'Could not load your bills.')
+    ? apiErrorMessage(query.error, t('billing.list.loadFailed'))
     : query.isPending && query.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('billing.list.noConnection')
       : null;
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <Hero
         isDark={isDark}
-        eyebrow="Billing"
-        title="Your bills"
-        subtitle={online ? 'Raise, share and track every bill.' : 'No connection — bills save on this device.'}
+        eyebrow={t('billing.list.eyebrow')}
+        title={t('billing.list.title')}
+        subtitle={online ? t('billing.list.subtitleOnline') : t('billing.list.subtitleOffline')}
         style={styles.hero}
       >
         {query.data ? (
-          <GlassStat icon="file-document-outline" label="In this view" value={String(query.data.total)} />
+          <GlassStat icon="file-document-outline" label={t('billing.list.inThisView')} value={String(query.data.total)} />
         ) : null}
       </Hero>
 
@@ -118,14 +124,14 @@ export default function BillingScreen() {
         <Surface style={[styles.draftBanner, { backgroundColor: c.surfaceVariant }]} elevation={0}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.draftBannerTitle, { color: c.textPrimary }]}>
-              {pendingCount} bill{pendingCount === 1 ? '' : 's'} waiting to sync
+              {t('billing.list.waitingToSync', { count: pendingCount })}
             </Text>
             <Text style={[styles.draftBannerBody, { color: c.textSecondary }]}>
-              {syncing ? 'Syncing now…' : online ? 'Will sync shortly.' : 'Will sync when you are back online.'}
+              {syncing ? t('billing.list.syncingNow') : online ? t('billing.list.willSyncShortly') : t('billing.list.willSyncOnline')}
             </Text>
           </View>
           <Button mode="text" compact onPress={() => router.push('/(app)/billing/drafts')}>
-            View
+            {t('billing.list.view')}
           </Button>
         </Surface>
       )}
@@ -140,13 +146,13 @@ export default function BillingScreen() {
             disabled={invoiceCapacity.atLimit}
             style={styles.newInvoiceButton}
           >
-            New invoice
+            {t('billing.list.newInvoice')}
           </Button>
         </View>
       )}
 
       <Searchbar
-        placeholder="Search number or customer"
+        placeholder={t('billing.list.searchPlaceholder')}
         value={search}
         onChangeText={setSearch}
         style={[styles.search, { backgroundColor: c.surface }]}
@@ -158,9 +164,9 @@ export default function BillingScreen() {
           value={direction}
           onValueChange={(v) => setDirection(v as 'ALL' | DocumentDirection)}
           buttons={[
-            { value: 'ALL', label: 'All' },
-            { value: 'SALES', label: 'Sales' },
-            { value: 'PURCHASE', label: 'Purchase' },
+            { value: 'ALL', label: t('billing.list.dirAll') },
+            { value: 'SALES', label: t('billing.list.dirSales') },
+            { value: 'PURCHASE', label: t('billing.list.dirPurchase') },
           ]}
           density="small"
         />
@@ -170,7 +176,7 @@ export default function BillingScreen() {
         <SegmentedButtons
           value={filter}
           onValueChange={(v) => setFilter(v as FilterKey)}
-          buttons={FILTERS.map((f) => ({ value: f.value, label: f.label }))}
+          buttons={FILTERS.map((f) => ({ value: f.value, label: t(f.labelKey) }))}
           density="small"
         />
       </View>
@@ -181,11 +187,9 @@ export default function BillingScreen() {
         <ActivityIndicator style={{ marginTop: 32 }} />
       ) : rows.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>No bills here yet</Text>
+          <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('billing.list.emptyTitle')}</Text>
           <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
-            {canManage
-              ? 'Tap "New invoice" to bill your first customer.'
-              : 'Nothing has been billed in this view yet.'}
+            {canManage ? t('billing.list.emptyManage') : t('billing.list.emptyRead')}
           </Text>
         </View>
       ) : (
@@ -210,12 +214,13 @@ function DocumentRow({
   c: ColorScheme;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Pressable onPress={onPress}>
       <Surface style={[styles.row, { backgroundColor: c.surface }]} elevation={1}>
         <View style={styles.rowTop}>
           <Text style={[styles.rowNumber, { color: c.textPrimary }]}>
-            {item.number ?? `${DOCUMENT_TYPE_LABEL[item.type]} · draft`}
+            {item.number ?? t('billing.list.draftNumber', { type: t(DOCUMENT_TYPE_LABEL_KEY[item.type]) })}
           </Text>
           <Text style={[styles.rowAmount, { color: c.textPrimary }]}>{formatPaise(item.totals.grandPaise)}</Text>
         </View>

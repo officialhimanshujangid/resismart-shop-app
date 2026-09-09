@@ -2,6 +2,8 @@ import React from 'react';
 import { StyleSheet, View, TouchableOpacity, useColorScheme } from 'react-native';
 import { Text, Surface } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
+
 import { themeColors, radii } from '../constants/colors';
 
 /**
@@ -40,19 +42,30 @@ interface ContextPickerProps {
   onSelect: (profile: ProfileInfo) => void;
 }
 
-const roleLabels: Record<string, string> = {
-  admin: 'Administrator',
-  manager: 'Manager',
-  resident: 'Resident',
-  security: 'Security Guard',
-  staff: 'Staff',
-  owner: 'Owner',
-  PARTNER_ADMIN: 'Owner',
-  PARTNER_OWNER: 'Owner',
-  PARTNER_STAFF: 'Staff',
+/**
+ * WHAT A ROLE IS CALLED ON SCREEN — a catalogue key per role, not the words.
+ *
+ * The KEYS are the wire values (`profile.role`, as the API sends it — note the
+ * two spellings, lower-case society roles and `PARTNER_*` partner roles) and
+ * never move. Only the labels are translated, the same split
+ * `features/billing/types.ts` is the worked example of.
+ */
+const roleLabelKeys: Record<string, string> = {
+  admin: 'components.context.roleAdmin',
+  manager: 'components.context.roleManager',
+  resident: 'components.context.roleResident',
+  security: 'components.context.roleSecurity',
+  staff: 'components.context.roleStaff',
+  owner: 'components.context.roleOwner',
+  PARTNER_ADMIN: 'components.context.roleOwner',
+  PARTNER_OWNER: 'components.context.roleOwner',
+  PARTNER_STAFF: 'components.context.roleStaff',
 };
 
 export function ContextPicker({ profiles, onSelect }: ContextPickerProps) {
+  const { t } = useTranslation();
+  /** The role's own word, or the raw wire value when it is one this app has never heard of. */
+  const roleLabel = (role: string): string => (roleLabelKeys[role] ? t(roleLabelKeys[role]) : role);
   /**
    * Read at RENDER, not frozen into a module-level StyleSheet.
    *
@@ -93,18 +106,18 @@ export function ContextPicker({ profiles, onSelect }: ContextPickerProps) {
             </View>
             <View style={styles.info}>
               <Text style={[styles.type, { color: c.textSecondary }]}>
-                {profile.tenantType === 'SOCIETY' ? 'Society' : 'Partner'}
+                {t(profile.tenantType === 'SOCIETY' ? 'components.context.society' : 'components.context.partner')}
               </Text>
               {/* The NAME leads when there is one — it is what the person
                   recognises. The role drops to the caption beside it, and the
                   raw id is only printed when there is nothing better. */}
               <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>
-                {profile.tenantName || roleLabels[profile.role] || profile.role}
+                {profile.tenantName || roleLabel(profile.role)}
               </Text>
               <Text style={[styles.id, { color: c.textDisabled }]} numberOfLines={1}>
                 {profile.tenantName
-                  ? (roleLabels[profile.role] ?? profile.role)
-                  : `ID: ${profile.tenantId}`}
+                  ? roleLabel(profile.role)
+                  : t('components.context.id', { id: profile.tenantId })}
               </Text>
             </View>
             <MaterialCommunityIcons name="chevron-right" size={22} color={c.textSecondary} />

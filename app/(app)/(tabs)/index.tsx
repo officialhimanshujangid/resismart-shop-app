@@ -7,6 +7,8 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { useTranslation } from 'react-i18next';
+
 import { blockerFix, splitBlockers } from '../../../src/api/partner.api';
 import { themeColors, radii } from '../../../src/constants/colors';
 import { formatPaise } from '../../../src/lib/money';
@@ -19,7 +21,7 @@ import { MiniBars } from '../../../src/components/charts';
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction } from '../../../src/features/bookings/hooks';
-import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABELS } from '../../../src/features/bookings/booking.types';
+import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABEL_KEYS } from '../../../src/features/bookings/booking.types';
 import { slotConflictsOf } from '../../../src/features/bookings/booking.api';
 import { LIVE_STATUSES } from '../../../src/features/bookings/format';
 import { useLowStockProducts, usePendingOrders, useTodayAnalytics, useTodayBookings } from '../../../src/features/today/hooks';
@@ -63,14 +65,25 @@ interface TodayBanner {
   onAction?: () => void;
 }
 
-const CONFIRM_COPY: Partial<Record<BookingVerb, string>> = {
-  accept: 'Accept this booking?',
-  start: 'Start this job now?',
-  reach: 'Send the customer their completion code now?',
-  noShow: 'Mark this as nobody turning up? This closes the job.',
+/**
+ * Verbs whose confirmation is a native alert rather than the form sheet — see
+ * `BookingCard.CONFIRM_DIRECTLY`.
+ *
+ * Catalogue keys, and deliberately the SAME four entries `(tabs)/bookings.tsx`
+ * points at: Today runs the identical quick actions on the identical cards, so
+ * one pair of sentences serves both rather than two translations of the same
+ * question drifting apart. The verb keys are the wire values — see
+ * `VERB_LABEL_KEYS`.
+ */
+const CONFIRM_COPY_KEYS: Partial<Record<BookingVerb, string>> = {
+  accept: 'bookings.confirm.accept',
+  start: 'bookings.confirm.start',
+  reach: 'bookings.confirm.reach',
+  noShow: 'bookings.confirm.noShow',
 };
 
 export default function TodayScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
@@ -124,15 +137,15 @@ export default function TodayScreen() {
 
   const runQuick = useCallback(
     (booking: PartnerBookingView, verb: BookingVerb) => {
-      const prompt = CONFIRM_COPY[verb];
-      const fire = () => act(booking.id, verb).catch((e) => Alert.alert('Could not do that', apiErrorMessage(e)));
-      if (!prompt) return fire();
-      Alert.alert(VERB_LABELS[verb], prompt, [
-        { text: 'Not now', style: 'cancel' },
-        { text: VERB_LABELS[verb], onPress: fire },
+      const promptKey = CONFIRM_COPY_KEYS[verb];
+      const fire = () => act(booking.id, verb).catch((e) => Alert.alert(t('bookings.actionFailed'), apiErrorMessage(e)));
+      if (!promptKey) return fire();
+      Alert.alert(t(VERB_LABEL_KEYS[verb]), t(promptKey), [
+        { text: t('common.notNow'), style: 'cancel' },
+        { text: t(VERB_LABEL_KEYS[verb]), onPress: fire },
       ]);
     },
-    [act],
+    [act, t],
   );
 
   const submitForm = useCallback(
@@ -154,10 +167,10 @@ export default function TodayScreen() {
            */
           const named = slotConflictsOf(e);
           if (named.length) return setConflicts(named);
-          Alert.alert('Could not do that', apiErrorMessage(e));
+          Alert.alert(t('bookings.actionFailed'), apiErrorMessage(e));
         });
     },
-    [act, formTarget],
+    [act, formTarget, t],
   );
 
   const refreshing = bookingsQuery.isFetching || ordersQuery.isFetching || lowStockQuery.isFetching || analyticsQuery.isFetching;
@@ -168,17 +181,17 @@ export default function TodayScreen() {
   const banner = ((): TodayBanner | null => {
     if (failed) {
       return {
-        title: 'We could not check your access',
-        body: 'You are signed in, but we cannot tell what this business has switched on. Everything else stays hidden until we can.',
+        title: t('today.accessFailedTitle'),
+        body: t('today.accessFailedBody'),
         tone: 'warning',
-        action: 'Try again',
+        action: t('common.tryAgain'),
       };
     }
     if (!ready) return null;
     if (business?.status === 'SUSPENDED') {
       return {
-        title: 'This business is suspended',
-        body: 'ResiSmart has paused this account. Contact support to have it looked at.',
+        title: t('today.suspendedTitle'),
+        body: t('today.suspendedBody'),
         tone: 'warning',
       };
     }
@@ -221,21 +234,24 @@ export default function TodayScreen() {
        */
       const fix = blocking.map((b) => blockerFix(b.code)).find(Boolean);
       return {
-        title: 'Residents cannot find you yet',
+        title: t('today.notFoundTitle'),
+        // `reasons` are the SERVER's own blocker sentences, already written for
+        // the proprietor — interpolated verbatim, never re-worded here, exactly
+        // as `UsageMeter.tsx` states the trade for server-supplied text.
         body: reasons.length
-          ? `${reasons.join(' ')} Until this is sorted out, nobody can book or order from you.`
-          : 'Your business is not appearing in Services & shops yet.',
+          ? t('today.notFoundBody', { reasons: reasons.join(' ') })
+          : t('today.notFoundBodyNoReasons'),
         // The non-gating ones, under the heading that is true of them: they are
         // costing this partner customers, not hiding them. Printing them in the
         // list above put NOT_VERIFIED's "residents can find you and call you"
         // directly beneath "residents cannot find you yet".
         note: alsoCosting.length
-          ? `Also worth sorting out: ${alsoCosting.map((b) => b.message).join(' ')}`
+          ? t('today.alsoWorthSorting', { reasons: alsoCosting.map((b) => b.message).join(' ') })
           : undefined,
         tone: 'warning',
         // Nothing to offer when every blocker is one only ResiSmart can lift —
         // a suspension, or a profile sitting with a reviewer.
-        action: fix?.label,
+        action: fix ? t(fix.labelKey) : undefined,
         onAction: fix ? () => router.push(fix.href) : undefined,
       };
     }
@@ -247,8 +263,8 @@ export default function TodayScreen() {
      */
     if (entitlements.awaitingRole) {
       return {
-        title: 'Waiting for your permissions',
-        body: 'You are on this business’s staff list, but nobody has said yet what you may do. Ask the owner to set your role.',
+        title: t('today.awaitingRoleTitle'),
+        body: t('today.awaitingRoleBody'),
         tone: 'warning',
       };
     }
@@ -271,8 +287,10 @@ export default function TodayScreen() {
       const waiting = alsoCosting.find((b) => b.code === 'NOT_VERIFIED');
       if (waiting) {
         return {
-          title: 'You are live — we are still checking your documents',
-          body: `${waiting.message} There is nothing for you to do; we will let you know as soon as it is done.`,
+          title: t('today.checkingDocsTitle'),
+          // `waiting.message` is the server's own sentence — verbatim, for the
+          // reason the `reasons` interpolation above gives.
+          body: t('today.checkingDocsBody', { message: waiting.message }),
           tone: 'info',
         };
       }
@@ -306,22 +324,31 @@ export default function TodayScreen() {
   // app's floor. The revenue-first headline and the glass tiles only appear
   // once entitlements are settled and no banner is claiming the top of the
   // screen, so a suspended or unverified partner never reads a stale total.
-  const businessName = profile?.tenantName ?? user?.name ?? 'Your business';
+  const businessName = profile?.tenantName ?? user?.name ?? t('today.yourBusiness');
   // `showReports` as well as the modules: the numbers behind these tiles come
   // from an endpoint this person may not read, and a row of "—" that never
   // fills in is worse than a hero with nothing under it.
   const showStats = showReports && !blocked && (showBookings || showOrders || showCatalog);
   const showSale = showStats && (showBookings || showOrders);
-  const saleKpi = kpiOf('today_sale', "Today's sale", 'PAISE', 'UP');
-  const ordersKpi = kpiOf('today_orders', 'Orders today', 'COUNT', 'UP');
-  const pendingKpi = kpiOf('pending_decisions', 'Awaiting your decision', 'COUNT', 'DOWN');
-  const lowKpi = kpiOf('low_stock', 'Running low', 'COUNT', 'DOWN');
+  /**
+   * The `label` on each of these is the PLACEHOLDER half of `kpiOf` — the one
+   * used only while the board has not loaded, and the tiles below draw their own
+   * label prop rather than reading it. Translated all the same: a string that is
+   * only reachable in a loading state is exactly the one that ships in English
+   * because nobody saw it. When the board HAS loaded, `findKpi` returns the
+   * server's own Kpi and its `label` is server text — untouched, as everywhere
+   * else (see `UsageMeter.tsx`).
+   */
+  const saleKpi = kpiOf('today_sale', t('today.kpiSale'), 'PAISE', 'UP');
+  const ordersKpi = kpiOf('today_orders', t('today.kpiOrders'), 'COUNT', 'UP');
+  const pendingKpi = kpiOf('pending_decisions', t('today.kpiPending'), 'COUNT', 'DOWN');
+  const lowKpi = kpiOf('low_stock', t('today.kpiLowStock'), 'COUNT', 'DOWN');
   const kpiDelta = (k: Kpi): string | undefined =>
     k.deltaPercent !== null
       ? `${k.direction === 'UP' ? '▲' : k.direction === 'DOWN' ? '▼' : ''} ${Math.abs(k.deltaPercent).toFixed(1)}%`.trim()
       : undefined;
   const saleDelta = kpiDelta(saleKpi);
-  const heroSubtitle = showSale && saleDelta ? `${saleDelta} vs the day before` : undefined;
+  const heroSubtitle = showSale && saleDelta ? t('today.vsDayBefore', { delta: saleDelta }) : undefined;
   // Content padding (20×2) then card padding (18×2) — the width the trend chart
   // has to draw into on a solid card below the hero.
   const trendWidth = Dimensions.get('window').width - 40 - 36;
@@ -334,9 +361,11 @@ export default function TodayScreen() {
       >
         <Hero
           isDark={isDark}
-          eyebrow="Today"
+          // `tabs.today` rather than a second key: the eyebrow and the tab name
+          // this screen sits under are the same word for the same screen.
+          eyebrow={t('tabs.today')}
           title={businessName}
-          headline={showSale ? { value: formatKpiValue(saleKpi.value, saleKpi.unit), label: "today's sale" } : undefined}
+          headline={showSale ? { value: formatKpiValue(saleKpi.value, saleKpi.unit), label: t('today.saleHeadline') } : undefined}
           subtitle={heroSubtitle}
         >
           {showStats ? (
@@ -344,7 +373,7 @@ export default function TodayScreen() {
               {showOrders && (
                 <GlassStat
                   icon="package-variant-closed"
-                  label="Orders today"
+                  label={t('today.kpiOrders')}
                   value={formatKpiValue(ordersKpi.value, ordersKpi.unit)}
                   caption={kpiDelta(ordersKpi)}
                 />
@@ -352,14 +381,14 @@ export default function TodayScreen() {
               {(showBookings || showOrders) && (
                 <GlassStat
                   icon="clock-alert-outline"
-                  label="To action"
+                  label={t('today.statToAction')}
                   value={formatKpiValue(pendingKpi.value, pendingKpi.unit)}
                 />
               )}
               {showCatalog && (
                 <GlassStat
                   icon="alert-octagon-outline"
-                  label="Running low"
+                  label={t('today.kpiLowStock')}
                   value={formatKpiValue(lowKpi.value, lowKpi.unit)}
                 />
               )}
@@ -409,8 +438,8 @@ export default function TodayScreen() {
         {showSale && salesSpark.length > 0 && (
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <View style={styles.cardHeaderRow}>
-              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Sales trend</Text>
-              <Text style={[styles.cardBody, { color: c.textSecondary }]}>Last 14 days</Text>
+              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('today.salesTrend')}</Text>
+              <Text style={[styles.cardBody, { color: c.textSecondary }]}>{t('today.last14Days')}</Text>
             </View>
             <MiniBars
               c={c}
@@ -418,14 +447,14 @@ export default function TodayScreen() {
               width={trendWidth}
               height={72}
               valueFormatter={formatPaise}
-              label="Sales, last 14 days"
+              label={t('today.salesChartLabel')}
             />
           </Surface>
         )}
 
         {analyticsQuery.isError && (
           <Text style={[styles.errorHint, { color: c.error }]}>
-            {apiErrorMessage(analyticsQuery.error, "Could not load today's numbers.")}
+            {apiErrorMessage(analyticsQuery.error, t('today.numbersLoadFailed'))}
           </Text>
         )}
 
@@ -433,17 +462,25 @@ export default function TodayScreen() {
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <View style={styles.cardHeaderRow}>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-                Pending orders ({ordersQuery.data?.total ?? pendingOrders.length})
+                {t('today.pendingOrdersTitle', { count: ordersQuery.data?.total ?? pendingOrders.length })}
               </Text>
             </View>
             <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-              Waiting on you to accept or turn down.
+              {t('today.pendingOrdersBody')}
             </Text>
             {pendingOrders.slice(0, 3).map((o) => (
               <View key={o.id} style={styles.orderRow}>
                 <Text style={[styles.orderCode, { color: c.textPrimary }]}>{o.code}</Text>
                 <Text style={[styles.orderMeta, { color: c.textSecondary }]} numberOfLines={1}>
-                  {o.customer.name} · {o.itemCount} item{o.itemCount === 1 ? '' : 's'}
+                  {/* Was `item{n === 1 ? '' : 's'}` — an English `-s` suffix, which
+                      has no Hindi equivalent and which CLDR does not agree with
+                      even in English at zero. `orders.card.itemCount` is the
+                      plural the order cards already use, so the two counts of the
+                      same thing read the same way. */}
+                  {t('today.orderMeta', {
+                    name: o.customer.name,
+                    items: t('orders.card.itemCount', { count: o.itemCount }),
+                  })}
                 </Text>
                 <Text style={[styles.orderMoney, { color: c.textPrimary }]}>
                   {formatPaise(o.amounts.totalPaise)}
@@ -456,7 +493,7 @@ export default function TodayScreen() {
               onPress={() => router.push('/(app)/(tabs)/orders')}
               style={{ alignSelf: 'flex-start' }}
             >
-              Go to Orders
+              {t('today.goToOrders')}
             </Button>
           </Surface>
         )}
@@ -464,7 +501,7 @@ export default function TodayScreen() {
         {ready && !blocked && showCatalog && lowStock.length > 0 && (
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-              Low stock ({lowStockQuery.data?.total ?? lowStock.length})
+              {t('today.lowStockTitle', { count: lowStockQuery.data?.total ?? lowStock.length })}
             </Text>
             {lowStock.slice(0, 5).map((p) => (
               <View key={p._id} style={styles.orderRow}>
@@ -472,7 +509,7 @@ export default function TodayScreen() {
                   {p.name}
                 </Text>
                 <Text style={[styles.orderMoney, { color: p.stockQty <= 0 ? c.error : c.textSecondary }]}>
-                  {p.stockQty <= 0 ? 'Out of stock' : `${p.stockQty} left`}
+                  {p.stockQty <= 0 ? t('today.outOfStock') : t('today.stockLeft', { count: p.stockQty })}
                 </Text>
               </View>
             ))}
@@ -487,17 +524,17 @@ export default function TodayScreen() {
               onPress={() => router.push('/catalog')}
               style={{ alignSelf: 'flex-start' }}
             >
-              Manage catalogue
+              {t('today.manageCatalogue')}
             </Button>
           </Surface>
         )}
 
         {ready && !blocked && showBookings && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>Today&apos;s bookings</Text>
+            <Text style={[styles.sectionTitle, { color: c.textPrimary }]}>{t('today.bookingsSection')}</Text>
             {todaysBookings.length === 0 && !bookingsQuery.isLoading && (
               <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
-                <Text style={[styles.cardBody, { color: c.textSecondary }]}>Nothing on the diary today.</Text>
+                <Text style={[styles.cardBody, { color: c.textSecondary }]}>{t('today.noBookings')}</Text>
               </Surface>
             )}
             {todaysBookings.map((b) => (
@@ -515,9 +552,9 @@ export default function TodayScreen() {
 
         {ready && !blocked && !showBookings && !showOrders && !showCatalog && (
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Nothing switched on yet</Text>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('today.nothingOnTitle')}</Text>
             <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-              Turn on Bookings, Orders or Catalogue from Settings to see them here.
+              {t('today.nothingOnBody')}
             </Text>
           </Surface>
         )}

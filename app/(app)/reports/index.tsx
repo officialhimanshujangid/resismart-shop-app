@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, useColorScheme, View } from '
 import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
@@ -43,17 +44,35 @@ import { MiniBars, DonutRing, ProgressBar } from '../../../src/components/charts
  */
 type ReportTabKey = 'insights' | PartnerReportKey;
 
-const REPORT_TABS: { key: ReportTabKey; label: string }[] = [
-  { key: 'insights', label: 'Insights' },
-  { key: 'sales', label: 'Sales' },
-  { key: 'purchase', label: 'Purchase' },
-  { key: 'items', label: 'Items' },
-  { key: 'parties', label: 'Parties' },
-  { key: 'outstanding', label: 'Outstanding' },
-  { key: 'profit', label: 'Profit' },
-  { key: 'gstr1', label: 'GSTR-1' },
-  { key: 'gstr3b', label: 'GSTR-3B' },
+/**
+ * `key` is the WIRE value — it is the report name `reportsApi` and
+ * `exportReport` are switched on, and `EXPORT_ONLY` is written against — so it
+ * stays an English literal. Only `labelKey` is display.
+ */
+const REPORT_TABS: { key: ReportTabKey; labelKey: string }[] = [
+  { key: 'insights', labelKey: 'reports.tab.insights' },
+  { key: 'sales', labelKey: 'reports.tab.sales' },
+  { key: 'purchase', labelKey: 'reports.tab.purchase' },
+  { key: 'items', labelKey: 'reports.tab.items' },
+  { key: 'parties', labelKey: 'reports.tab.parties' },
+  { key: 'outstanding', labelKey: 'reports.tab.outstanding' },
+  { key: 'profit', labelKey: 'reports.tab.profit' },
+  { key: 'gstr1', labelKey: 'reports.tab.gstr1' },
+  { key: 'gstr3b', labelKey: 'reports.tab.gstr3b' },
 ];
+
+/**
+ * The three period presets. `id` is this screen's own React key and the label
+ * lookup; it is deliberately NOT the label, which used to be both — a
+ * translated label as a `key` changes identity the moment the language does.
+ */
+const PERIOD_PRESETS = [
+  { id: 'thisMonth', labelKey: 'reports.page.presetThisMonth', range: () => monthRange(0) },
+  { id: 'lastMonth', labelKey: 'reports.page.presetLastMonth', range: () => monthRange(1) },
+  // "This financial year", spelled out. The old "This year" meant the calendar
+  // year here and the April-start FY on the web — see `financialYearRange`.
+  { id: 'financialYear', labelKey: 'reports.page.presetFinancialYear', range: () => financialYearRange() },
+] as const;
 const EXPORT_ONLY = new Set<PartnerReportKey>(['gstr1', 'gstr3b']);
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
@@ -82,6 +101,7 @@ function financialYearRange(today = new Date()): { from: string; to: string } {
 }
 
 export default function ReportsScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   // Insights is the first tab AND the default — the charts a partner opens
@@ -125,7 +145,7 @@ export default function ReportsScreen() {
     try {
       await exportReport(key as PartnerReportKey, format, query);
     } catch (err) {
-      Alert.alert('Could not export that report', apiErrorMessage(err));
+      Alert.alert(t('reports.page.exportFailed'), apiErrorMessage(err));
     } finally {
       setExporting(null);
     }
@@ -135,25 +155,34 @@ export default function ReportsScreen() {
     try {
       const rows = await reportsApi.drift();
       if (rows.length === 0) {
-        Alert.alert('All clear', 'Every party balance matches the ledger.');
+        Alert.alert(t('reports.page.driftAllClearTitle'), t('reports.page.driftAllClearBody'));
         return;
       }
-      const lines = rows.slice(0, 8).map((r) => `${r.name}: off by ${formatPaise(Math.abs(r.driftPaise))}`).join('\n');
+      /* Assembled from KEYS, not concatenated English: the "(s)" this title used
+         to carry is `_one`/`_other` now, and the "…and N more" tail is its own
+         key so a translator can move it. `r.name` is the party's own name. */
+      const lines = rows
+        .slice(0, 8)
+        .map((r) => t('reports.page.driftLine', { name: r.name, amount: formatPaise(Math.abs(r.driftPaise)) }))
+        .join('\n');
       Alert.alert(
-        `${rows.length} balance(s) disagree with the ledger`,
-        `${lines}${rows.length > 8 ? `\n…and ${rows.length - 8} more` : ''}\n\nOpen each party and use "Rebuild balance" to fix it.`,
+        t('reports.page.driftTitle', { count: rows.length }),
+        t('reports.page.driftBody', {
+          lines,
+          more: rows.length > 8 ? t('reports.page.driftMore', { count: rows.length - 8 }) : '',
+        }),
       );
     } catch (err) {
-      Alert.alert('Could not check balances', apiErrorMessage(err));
+      Alert.alert(t('reports.page.driftCheckFailed'), apiErrorMessage(err));
     }
   };
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <Hero isDark={isDark} rounded={false} eyebrow="Business" title="Reports" />
+      <Hero isDark={isDark} rounded={false} eyebrow={t('reports.page.eyebrow')} title={t('reports.page.title')} />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
-        <ChipRow c={c} value={key} options={REPORT_TABS} onChange={setKey} />
+        <ChipRow c={c} value={key} options={REPORT_TABS.map((tab) => ({ key: tab.key, label: t(tab.labelKey) }))} onChange={setKey} />
 
         {/*
           `DateField`, not a raw `AppInput`. These three feed a GST period, and
@@ -163,12 +192,12 @@ export default function ReportsScreen() {
           no validation here to write: the invalid states stopped existing.
         */}
         {key === 'outstanding' ? (
-          <DateField label="As of" value={asOf} onChangeText={setAsOf} mode="date" />
+          <DateField label={t('reports.page.asOf')} value={asOf} onChangeText={setAsOf} mode="date" />
         ) : (
           <View style={{ gap: 8 }}>
             <View style={styles.periodRow}>
               <DateField
-                label="From"
+                label={t('reports.page.from')}
                 value={range.from}
                 onChangeText={(v) => setRange((r) => ({ ...r, from: v }))}
                 mode="date"
@@ -178,7 +207,7 @@ export default function ReportsScreen() {
                 style={styles.periodInput}
               />
               <DateField
-                label="To"
+                label={t('reports.page.to')}
                 value={range.to}
                 onChangeText={(v) => setRange((r) => ({ ...r, to: v }))}
                 mode="date"
@@ -187,16 +216,13 @@ export default function ReportsScreen() {
               />
             </View>
             <View style={styles.presetRow}>
-              {([
-                ['This month', () => setRange(monthRange(0))],
-                ['Last month', () => setRange(monthRange(1))],
-                // "This financial year", spelled out. The old "This year" meant
-                // the calendar year here and the April-start FY on the web —
-                // see `financialYearRange`.
-                ['This financial year', () => setRange(financialYearRange())],
-              ] as const).map(([label, apply]) => (
-                <Pressable key={label} onPress={apply} style={[styles.presetChip, { borderColor: c.border }]}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: c.primary }}>{label}</Text>
+              {PERIOD_PRESETS.map((preset) => (
+                <Pressable
+                  key={preset.id}
+                  onPress={() => setRange(preset.range())}
+                  style={[styles.presetChip, { borderColor: c.border }]}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: c.primary }}>{t(preset.labelKey)}</Text>
                 </Pressable>
               ))}
             </View>
@@ -208,8 +234,8 @@ export default function ReportsScreen() {
             ninth. */}
         {!isInsights && (
           <View style={styles.exportRow}>
-            <AppButton label="PDF" mode="outlined" onPress={() => doExport('pdf')} loading={exporting === 'pdf'} disabled={exporting !== null} style={styles.exportBtn} fullWidth={false} />
-            <AppButton label="Excel" mode="outlined" onPress={() => doExport('xlsx')} loading={exporting === 'xlsx'} disabled={exporting !== null} style={styles.exportBtn} fullWidth={false} />
+            <AppButton label={t('reports.page.pdf')} mode="outlined" onPress={() => doExport('pdf')} loading={exporting === 'pdf'} disabled={exporting !== null} style={styles.exportBtn} fullWidth={false} />
+            <AppButton label={t('reports.page.excel')} mode="outlined" onPress={() => doExport('xlsx')} loading={exporting === 'xlsx'} disabled={exporting !== null} style={styles.exportBtn} fullWidth={false} />
           </View>
         )}
 
@@ -217,31 +243,30 @@ export default function ReportsScreen() {
           insights.isPending ? (
             <Loading c={c} />
           ) : insights.isError ? (
-            <ErrorBlock c={c} message={apiErrorMessage(insights.error, 'Could not load your insights.')} onRetry={() => insights.refetch()} />
+            <ErrorBlock c={c} message={apiErrorMessage(insights.error, t('reports.page.insightsLoadFailed'))} onRetry={() => insights.refetch()} />
           ) : (
             <InsightsBody c={c} board={insights.data} />
           )
         ) : exportOnly ? (
           <Card c={c}>
             <Text style={{ color: c.textPrimary, fontWeight: '600' }}>
-              {key === 'gstr1' ? 'GSTR-1 — outward supplies' : 'GSTR-3B — summary return'}
+              {t(key === 'gstr1' ? 'reports.page.gstr1Title' : 'reports.page.gstr3bTitle')}
             </Text>
             <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 19 }}>
-              This return has more sections (B2B, B2CL, B2CS, exports, HSN summary) than a phone screen can show
-              usefully. Export it as PDF to read, or Excel to upload to the GST portal or hand to your CA.
+              {t('reports.page.gstrBody')}
             </Text>
           </Card>
         ) : data.isPending ? (
           <Loading c={c} />
         ) : data.isError ? (
-          <ErrorBlock c={c} message={apiErrorMessage(data.error, 'Could not load that report.')} onRetry={() => data.refetch()} />
+          <ErrorBlock c={c} message={apiErrorMessage(data.error, t('reports.page.reportLoadFailed'))} onRetry={() => data.refetch()} />
         ) : (
           // `isInsights` (checked above) has already excluded `'insights'`.
           <ReportBody c={c} reportKey={key as PartnerReportKey} data={data.data} />
         )}
 
-        <SectionLabel c={c}>Party balances</SectionLabel>
-        <AppButton label="Check for drift" mode="text" onPress={checkDrift} />
+        <SectionLabel c={c}>{t('reports.page.partyBalances')}</SectionLabel>
+        <AppButton label={t('reports.page.checkDrift')} mode="text" onPress={checkDrift} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -260,7 +285,8 @@ export default function ReportsScreen() {
  * period draws flat bars and an empty ring, never a blank tab.
  */
 function InsightsBody({ c, board }: { c: ReturnType<typeof themeColors>; board: AnalyticsBoard | undefined }) {
-  if (!board) return <EmptyBlock c={c} title="Nothing to show" />;
+  const { t } = useTranslation();
+  if (!board) return <EmptyBlock c={c} title={t('reports.page.nothingToShow')} />;
 
   const totalSales = findKpi(board, 'total_sales');
   const ordersCount = findKpi(board, 'orders_count');
@@ -292,37 +318,37 @@ function InsightsBody({ c, board }: { c: ReturnType<typeof themeColors>; board: 
   return (
     <>
       <Card c={c}>
-        <SummaryLine c={c} label="Total sales" value={formatKpiValue(totalSales?.value ?? null, 'PAISE')} bold />
-        <SummaryLine c={c} label="Orders" value={formatKpiValue(ordersCount?.value ?? null, 'COUNT')} />
-        <SummaryLine c={c} label="Bookings" value={formatKpiValue(bookingsCount?.value ?? null, 'COUNT')} />
-        <SummaryLine c={c} label="Average order value" value={formatKpiValue(aov?.value ?? null, 'PAISE')} />
+        <SummaryLine c={c} label={t('reports.insights.totalSales')} value={formatKpiValue(totalSales?.value ?? null, 'PAISE')} bold />
+        <SummaryLine c={c} label={t('reports.insights.orders')} value={formatKpiValue(ordersCount?.value ?? null, 'COUNT')} />
+        <SummaryLine c={c} label={t('reports.insights.bookings')} value={formatKpiValue(bookingsCount?.value ?? null, 'COUNT')} />
+        <SummaryLine c={c} label={t('reports.insights.averageOrderValue')} value={formatKpiValue(aov?.value ?? null, 'PAISE')} />
         <SummaryLine
           c={c}
-          label="Gross margin"
+          label={t('reports.insights.grossMargin')}
           value={formatKpiValue(marginValue, 'PERCENT')}
           tone={marginValue !== null && marginValue < 0 ? 'warn' : undefined}
         />
         <SummaryLine
           c={c}
-          label="Receivables outstanding"
+          label={t('reports.insights.receivablesOutstanding')}
           value={formatKpiValue(receivablesValue, 'PAISE')}
           tone={receivablesValue > 0 ? 'warn' : undefined}
         />
       </Card>
 
-      <SectionLabel c={c}>Sales trend</SectionLabel>
+      <SectionLabel c={c}>{t('reports.insights.salesTrend')}</SectionLabel>
       <Card c={c}>
         {hasSales ? (
           <MiniBars c={c} points={salesSeries?.points ?? []} height={90} width={280} />
         ) : (
-          <Text style={{ color: c.textSecondary, fontSize: 13 }}>No sales in this period.</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('reports.insights.noSales')}</Text>
         )}
       </Card>
 
-      <SectionLabel c={c}>Top items by revenue</SectionLabel>
+      <SectionLabel c={c}>{t('reports.insights.topItems')}</SectionLabel>
       {!topItems || topItems.rows.length === 0 ? (
         <Card c={c}>
-          <Text style={{ color: c.textSecondary, fontSize: 13 }}>No item sold in this period.</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('reports.insights.noItemSold')}</Text>
         </Card>
       ) : (
         <Card c={c} style={{ gap: 12 }}>
@@ -339,14 +365,16 @@ function InsightsBody({ c, board }: { c: ReturnType<typeof themeColors>; board: 
         </Card>
       )}
 
-      <SectionLabel c={c}>Receivables ageing</SectionLabel>
+      <SectionLabel c={c}>{t('reports.insights.receivablesAgeing')}</SectionLabel>
       <Card c={c} style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
         <DonutRing
           c={c}
           size={104}
           strokeWidth={14}
           centerValue={formatPaise(ageingTotal, { showDecimals: false })}
-          centerLabel="Outstanding"
+          centerLabel={t('reports.insights.outstandingCentre')}
+          /* `r.label` is the SERVER's bucket name ("0-30", "90+") — data on the
+             board, not copy this screen owns. */
           slices={ageingRows.map((r, i) => ({
             label: r.label,
             value: r.value,
@@ -355,7 +383,7 @@ function InsightsBody({ c, board }: { c: ReturnType<typeof themeColors>; board: 
         />
         <View style={{ flex: 1, gap: 8 }}>
           {ageingTotal <= 0 ? (
-            <Text style={{ color: c.textSecondary, fontSize: 12 }}>Nothing outstanding.</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('reports.insights.nothingOutstanding')}</Text>
           ) : (
             ageingRows.map((r, i) => (
               <View key={r.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -375,35 +403,49 @@ function InsightsBody({ c, board }: { c: ReturnType<typeof themeColors>; board: 
   );
 }
 
+/*
+ * Every `row.name`, `row.itemName`, `row.typeLabel`, `row.status`, `row.unit`,
+ * `bucket.label` and `notes[]` below is the SERVER's own text
+ * (`partner-report.service.ts`), printed back as it came. Only this screen's
+ * own frame around them is translated — the same trade `UsageMeter.tsx`
+ * documents for `capacity.noun`.
+ */
 function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>; reportKey: PartnerReportKey; data: unknown }) {
-  if (!data) return <EmptyBlock c={c} title="Nothing to show" />;
+  const { t } = useTranslation();
+  if (!data) return <EmptyBlock c={c} title={t('reports.page.nothingToShow')} />;
 
   if (reportKey === 'sales' || reportKey === 'purchase') {
     const r = data as RegisterReport;
     return (
       <>
         <Card c={c}>
-          <SummaryLine c={c} label="Grand total" value={formatPaise(r.totals.grandPaise)} bold />
-          <SummaryLine c={c} label="Received / paid" value={formatPaise(r.totals.settledPaise)} />
-          <SummaryLine c={c} label="Outstanding" value={formatPaise(r.totals.outstandingPaise)} tone={r.totals.outstandingPaise > 0 ? 'warn' : undefined} />
-          <SummaryLine c={c} label="Documents" value={String(r.totals.count)} />
+          <SummaryLine c={c} label={t('reports.body.grandTotal')} value={formatPaise(r.totals.grandPaise)} bold />
+          <SummaryLine c={c} label={t('reports.body.receivedPaid')} value={formatPaise(r.totals.settledPaise)} />
+          <SummaryLine c={c} label={t('reports.body.outstanding')} value={formatPaise(r.totals.outstandingPaise)} tone={r.totals.outstandingPaise > 0 ? 'warn' : undefined} />
+          <SummaryLine c={c} label={t('reports.body.documents')} value={String(r.totals.count)} />
         </Card>
         {r.rows.length === 0 ? (
-          <EmptyBlock c={c} title="No documents in this period" />
+          <EmptyBlock c={c} title={t('reports.body.noDocuments')} />
         ) : (
           <Card c={c} style={{ padding: 0 }}>
             {r.rows.slice(0, 50).map((row, i) => (
               <View key={row.documentId} style={[styles.docRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>
-                    {row.number || row.typeLabel} · {row.partyName}
+                    {t('reports.body.docTitle', { number: row.number || row.typeLabel, party: row.partyName })}
                   </Text>
-                  <Text style={{ color: c.textSecondary, fontSize: 11 }}>{row.typeLabel} · {row.status}</Text>
+                  <Text style={{ color: c.textSecondary, fontSize: 11 }}>
+                    {t('reports.body.docMeta', { type: row.typeLabel, status: row.status })}
+                  </Text>
                 </View>
                 <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(row.grandPaise)}</Text>
               </View>
             ))}
-            {r.rows.length > 50 && <Text style={{ color: c.textDisabled, fontSize: 11, padding: 12 }}>+{r.rows.length - 50} more — export for the full list.</Text>}
+            {r.rows.length > 50 && (
+              <Text style={{ color: c.textDisabled, fontSize: 11, padding: 12 }}>
+                {t('reports.body.moreRows', { count: r.rows.length - 50 })}
+              </Text>
+            )}
           </Card>
         )}
       </>
@@ -415,17 +457,20 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
     return (
       <>
         <Card c={c}>
-          <SummaryLine c={c} label="Revenue" value={formatPaise(r.totals.revenuePaise)} bold />
-          <SummaryLine c={c} label="Gross profit" value={formatPaise(r.totals.grossProfitPaise)} />
-          <SummaryLine c={c} label="Margin" value={`${(r.totals.marginBasisPoints / 100).toFixed(1)}%`} />
+          <SummaryLine c={c} label={t('reports.body.revenue')} value={formatPaise(r.totals.revenuePaise)} bold />
+          <SummaryLine c={c} label={t('reports.body.grossProfit')} value={formatPaise(r.totals.grossProfitPaise)} />
+          <SummaryLine c={c} label={t('reports.body.margin')} value={t('reports.body.percent', { percent: (r.totals.marginBasisPoints / 100).toFixed(1) })} />
         </Card>
-        {r.rows.length === 0 ? <EmptyBlock c={c} title="No sales in this period" /> : (
+        {r.rows.length === 0 ? <EmptyBlock c={c} title={t('reports.body.noSales')} /> : (
           <Card c={c} style={{ padding: 0 }}>
             {r.rows.slice(0, 50).map((row, i) => (
               <View key={row.key} style={[styles.docRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>{row.itemName}</Text>
-                  <Text style={{ color: c.textSecondary, fontSize: 11 }}>{row.qtySold} {row.unit} sold{!row.costKnown ? ' · no cost on record' : ''}</Text>
+                  <Text style={{ color: c.textSecondary, fontSize: 11 }}>
+                    {t('reports.body.itemMeta', { qty: row.qtySold, unit: row.unit })}
+                    {!row.costKnown ? t('reports.body.itemNoCost') : ''}
+                  </Text>
                 </View>
                 <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(row.revenuePaise)}</Text>
               </View>
@@ -441,17 +486,17 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
     return (
       <>
         <Card c={c}>
-          <SummaryLine c={c} label="Revenue" value={formatPaise(r.revenuePaise)} bold />
-          <SummaryLine c={c} label="Cost of sales" value={formatPaise(r.cogsPaise)} />
-          <SummaryLine c={c} label="Gross profit" value={formatPaise(r.grossProfitPaise)} tone={r.grossProfitPaise >= 0 ? 'good' : 'warn'} />
-          <SummaryLine c={c} label="Margin" value={`${(r.marginBasisPoints / 100).toFixed(1)}%`} />
+          <SummaryLine c={c} label={t('reports.body.revenue')} value={formatPaise(r.revenuePaise)} bold />
+          <SummaryLine c={c} label={t('reports.body.costOfSales')} value={formatPaise(r.cogsPaise)} />
+          <SummaryLine c={c} label={t('reports.body.grossProfit')} value={formatPaise(r.grossProfitPaise)} tone={r.grossProfitPaise >= 0 ? 'good' : 'warn'} />
+          <SummaryLine c={c} label={t('reports.body.margin')} value={t('reports.body.percent', { percent: (r.marginBasisPoints / 100).toFixed(1) })} />
         </Card>
         {r.notes.map((n, i) => (
           <Text key={i} style={{ color: c.textSecondary, fontSize: 12, lineHeight: 17 }}>{n}</Text>
         ))}
         {r.topByProfit.length > 0 && (
           <>
-            <SectionLabel c={c}>Top by profit</SectionLabel>
+            <SectionLabel c={c}>{t('reports.body.topByProfit')}</SectionLabel>
             <Card c={c} style={{ padding: 0 }}>
               {r.topByProfit.slice(0, 20).map((row, i) => (
                 <View key={row.key} style={[styles.docRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
@@ -468,13 +513,15 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
 
   if (reportKey === 'parties') {
     const r = data as PartyWiseReport;
-    return r.rows.length === 0 ? <EmptyBlock c={c} title="No trading in this period" /> : (
+    return r.rows.length === 0 ? <EmptyBlock c={c} title={t('reports.body.noTrading')} /> : (
       <Card c={c} style={{ padding: 0 }}>
         {r.rows.slice(0, 50).map((row, i) => (
           <View key={row.partyId} style={[styles.docRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>{row.name}</Text>
-              <Text style={{ color: c.textSecondary, fontSize: 11 }}>Sold {formatPaise(row.salesPaise)} · Bought {formatPaise(row.purchasePaise)}</Text>
+              <Text style={{ color: c.textSecondary, fontSize: 11 }}>
+                {t('reports.body.partyMeta', { sales: formatPaise(row.salesPaise), purchase: formatPaise(row.purchasePaise) })}
+              </Text>
             </View>
             <Text style={{ color: row.closingBalancePaise > 0 ? c.error : c.textSecondary, fontWeight: '600', fontSize: 13 }}>
               {formatPaise(Math.abs(row.closingBalancePaise))}
@@ -489,27 +536,40 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
   const r = data as AgeingReport;
   return (
     <>
-      <SectionLabel c={c}>Receivables — who owes you</SectionLabel>
+      <SectionLabel c={c}>{t('reports.body.receivablesSection')}</SectionLabel>
       <AgeingCard c={c} section={r.receivables} buckets={r.buckets} />
-      <SectionLabel c={c}>Payables — who you owe</SectionLabel>
+      <SectionLabel c={c}>{t('reports.body.payablesSection')}</SectionLabel>
       <AgeingCard c={c} section={r.payables} buckets={r.buckets} />
     </>
   );
 }
 
 function AgeingCard({ c, section, buckets }: { c: ReturnType<typeof themeColors>; section: AgeingReport['receivables']; buckets: AgeingReport['buckets'] }) {
-  if (section.rows.length === 0) return <Card c={c}><Text style={{ color: c.textSecondary, fontSize: 13 }}>Nothing open.</Text></Card>;
+  const { t } = useTranslation();
+  if (section.rows.length === 0) {
+    return <Card c={c}><Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('reports.body.nothingOpen')}</Text></Card>;
+  }
   return (
     <Card c={c} style={{ padding: 0 }}>
       <View style={styles.docRow}>
-        <Text style={{ color: c.textSecondary, fontSize: 11, fontWeight: '600', flex: 1 }}>TOTAL</Text>
+        <Text style={{ color: c.textSecondary, fontSize: 11, fontWeight: '600', flex: 1 }}>{t('reports.body.total')}</Text>
         <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 14 }}>{formatPaise(section.totals.netPaise)}</Text>
       </View>
       {section.rows.slice(0, 50).map((row, i) => (
         <View key={row.partyId} style={[styles.docRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }} numberOfLines={1}>{row.name}</Text>
-            <Text style={{ color: c.textSecondary, fontSize: 11 }}>Oldest {row.oldestDays}d · {buckets.map((b, bi) => `${b.label}: ${formatPaise(row.buckets[bi] ?? 0, { showDecimals: false })}`).join(' · ')}</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 11 }}>
+              {t('reports.body.ageingMeta', {
+                days: row.oldestDays,
+                buckets: buckets
+                  .map((b, bi) => t('reports.body.ageingBucket', {
+                    label: b.label,
+                    amount: formatPaise(row.buckets[bi] ?? 0, { showDecimals: false }),
+                  }))
+                  .join(' · '),
+              })}
+            </Text>
           </View>
           <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(row.netPaise)}</Text>
         </View>

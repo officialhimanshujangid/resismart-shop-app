@@ -2,7 +2,7 @@ export { useOrders, useOrder, useOrderTransition, useOrderReturnItems } from './
 export type { OrderReturnInput } from './hooks';
 export { ordersApi, filterKnownVerbs, verbNeedsReason, KNOWN_ORDER_VERBS } from './api';
 export type { KnownOrderVerb, OrderListPage, OrderReturnLine, OrderReturnPayload, OrderReturnResult } from './api';
-export { ORDER_STATUSES, ORDER_STATUS_LABELS, ORDER_VERB_LABELS } from './backend-mirror';
+export { ORDER_STATUSES, ORDER_STATUS_LABEL_KEYS, ORDER_VERB_LABEL_KEYS } from './backend-mirror';
 export type { PartnerOrder, OrderListFilters, OrderStatus, OrderVerb } from './types';
 export { useOrderReturnEligibility, hasReturnableItems, remainingQty } from './returnEligibility';
 export type { OrderReturnEligibility } from './returnEligibility';

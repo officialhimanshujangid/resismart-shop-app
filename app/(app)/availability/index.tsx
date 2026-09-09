@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, useColorScheme, Pressable } from 'react-n
 import { Text, ActivityIndicator, Switch, Snackbar, Button } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -30,37 +31,52 @@ const TIMEZONE_CHOICES = [
   'Asia/Kolkata', 'Asia/Dubai', 'Asia/Colombo', 'Asia/Kathmandu', 'Asia/Singapore', 'Europe/London', 'UTC',
 ];
 
+/**
+ * THE CHOICE TABLES CARRY I18N KEYS, NOT LABELS — `*_LABEL_KEY` shape, the
+ * worked example being `src/features/billing/types.ts`.
+ *
+ * `value` is the WIRE VALUE in every table below and must not be disturbed:
+ * `advanceBookingDays` and `cutoffMin` are whole numbers `PUT` back to
+ * `/partners/me/availability` and read by `booking-slots.service.ts` — the
+ * cutoff is also the line the cancellation-forfeit rule turns on. Only
+ * `labelKey` is read by a person.
+ */
 const ADVANCE_CHOICES = [
-  { value: 0, label: 'Today only' },
-  { value: 7, label: 'A week ahead' },
-  { value: 14, label: 'A fortnight' },
-  { value: 30, label: 'A month' },
-  { value: 90, label: 'Three months' },
-  { value: 365, label: 'A year' },
+  { value: 0, labelKey: 'availability.advance.d0' },
+  { value: 7, labelKey: 'availability.advance.d7' },
+  { value: 14, labelKey: 'availability.advance.d14' },
+  { value: 30, labelKey: 'availability.advance.d30' },
+  { value: 90, labelKey: 'availability.advance.d90' },
+  { value: 365, labelKey: 'availability.advance.d365' },
 ];
 
 const CUTOFF_CHOICES = [
-  { value: 0, label: 'No notice' },
-  { value: 30, label: '30 min' },
-  { value: 60, label: '1 hour' },
-  { value: 120, label: '2 hours' },
-  { value: 240, label: '4 hours' },
-  { value: 1440, label: 'A full day' },
+  { value: 0, labelKey: 'availability.cutoff.m0' },
+  { value: 30, labelKey: 'availability.cutoff.m30' },
+  { value: 60, labelKey: 'availability.cutoff.m60' },
+  { value: 120, labelKey: 'availability.cutoff.m120' },
+  { value: 240, labelKey: 'availability.cutoff.m240' },
+  { value: 1440, labelKey: 'availability.cutoff.m1440' },
 ];
 
 interface PresetSpec {
-  label: string;
+  labelKey: string;
   open: number[];
   windows: AvailabilityWindow[];
 }
 
+/**
+ * `open` (weekday indices) and `windows` (`HH:MM` strings) are both wire
+ * values — they land straight in `weekly[]`. Only `labelKey` is display.
+ */
 const PRESETS: PresetSpec[] = [
-  { label: 'Mon–Sat, 10–7', open: [1, 2, 3, 4, 5, 6], windows: [{ from: '10:00', to: '19:00' }] },
-  { label: 'Mon–Fri, 9–6', open: [1, 2, 3, 4, 5], windows: [{ from: '09:00', to: '18:00' }] },
-  { label: 'Every day, 9–9', open: [0, 1, 2, 3, 4, 5, 6], windows: [{ from: '09:00', to: '21:00' }] },
+  { labelKey: 'availability.preset.monSat', open: [1, 2, 3, 4, 5, 6], windows: [{ from: '10:00', to: '19:00' }] },
+  { labelKey: 'availability.preset.monFri', open: [1, 2, 3, 4, 5], windows: [{ from: '09:00', to: '18:00' }] },
+  { labelKey: 'availability.preset.everyDay', open: [0, 1, 2, 3, 4, 5, 6], windows: [{ from: '09:00', to: '21:00' }] },
 ];
 
 export default function AvailabilityScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -86,9 +102,9 @@ export default function AvailabilityScreen() {
       queryClient.setQueryData(qk.partner.me(), (prev: typeof meQuery.data) =>
         prev ? { ...prev, partner: { ...prev.partner, availableNow: next } } : prev,
       );
-      setSnackbar(next ? 'You are marked available for an immediate job.' : 'You are no longer marked available right now.');
+      setSnackbar(t(next ? 'availability.live.on' : 'availability.live.off'));
     } catch (e: unknown) {
-      setSnackbar(apiErrorMessage(e, 'Could not update your live availability'));
+      setSnackbar(apiErrorMessage(e, t('availability.live.failed')));
     } finally {
       setSavingAvailableNow(false);
     }
@@ -115,7 +131,9 @@ export default function AvailabilityScreen() {
   }, [availabilityQuery.isSuccess, availabilityQuery.data]);
 
   const dirty = useMemo(() => Boolean(draft) && JSON.stringify(draft) !== baseline, [draft, baseline]);
-  const problem = useMemo(() => (draft ? draftProblem(draft) : null), [draft]);
+  // `t` is a dependency: `draftProblem` renders its sentence through the
+  // translator, so the message has to be rebuilt when the language changes.
+  const problem = useMemo(() => (draft ? draftProblem(draft, t) : null), [draft, t]);
 
   const timezoneChoices = useMemo(() => {
     const set = new Set(TIMEZONE_CHOICES);
@@ -176,7 +194,7 @@ export default function AvailabilityScreen() {
         const next = draftFromRow(row, draft.timezone);
         setDraft(next);
         setBaseline(JSON.stringify(next));
-        setSnackbar('Your working hours are saved');
+        setSnackbar(t('availability.screen.saved'));
       },
       onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
     });
@@ -194,9 +212,9 @@ export default function AvailabilityScreen() {
     return (
       <View style={[styles.center, { backgroundColor: c.background, padding: 24 }]}>
         <Text style={{ color: c.textSecondary, textAlign: 'center', marginBottom: 12 }}>
-          We could not load your working hours.
+          {t('availability.screen.loadFailed')}
         </Text>
-        <Button mode="contained" onPress={() => availabilityQuery.refetch()}>Try again</Button>
+        <Button mode="contained" onPress={() => availabilityQuery.refetch()}>{t('common.tryAgain')}</Button>
       </View>
     );
   }
@@ -205,8 +223,7 @@ export default function AvailabilityScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={[styles.intro, { color: c.textSecondary }]}>
-          When residents can book you. Pick a week below, adjust anything that is not right, and save
-          — this is what decides the times they are offered.
+          {t('availability.screen.intro')}
         </Text>
 
         {/*
@@ -220,7 +237,7 @@ export default function AvailabilityScreen() {
         {!mayManage && (
           <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
             <Text style={[styles.readOnlyText, { color: c.textSecondary }]}>
-              View only — your role does not include managing bookings.
+              {t('availability.screen.readOnly')}
             </Text>
           </View>
         )}
@@ -234,34 +251,34 @@ export default function AvailabilityScreen() {
           >
             <View style={styles.activeRow}>
               <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600' }}>
-                Available for an immediate job right now
+                {t('availability.live.title')}
               </Text>
               <Switch value={availableNow} onValueChange={setLiveAvailability} disabled={savingAvailableNow} />
             </View>
             <Text style={[styles.hint, { color: c.textSecondary }]}>
-              A live switch, separate from the weekly hours below. Turn it on when you can head out on a job
-              straight away — residents looking for someone right now see you first. It does not change your
-              schedule, and stays on until you turn it off.
+              {t('availability.live.hint')}
             </Text>
           </View>
         )}
 
-        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>START FROM A COMMON WEEK</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('availability.screen.presetsLabel')}</Text>
         <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {PRESETS.map((p) => (
             <Pressable
-              key={p.label}
+              key={p.labelKey}
               onPress={() => applyPreset(p)}
               disabled={!mayManage}
               style={[styles.presetChip, { borderColor: mayManage ? c.primary : c.divider }]}
             >
-              <Text style={{ color: mayManage ? c.primary : c.textDisabled, fontSize: 12, fontWeight: '600' }}>{p.label}</Text>
+              <Text style={{ color: mayManage ? c.primary : c.textDisabled, fontSize: 12, fontWeight: '600' }}>{t(p.labelKey)}</Text>
             </Pressable>
           ))}
         </View>
 
         <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>
-          {openCount === 0 ? 'Nothing is bookable while every day is closed' : `Open ${openCount} of 7 days`}
+          {openCount === 0
+            ? t('availability.screen.allClosed')
+            : t('availability.screen.openCount', { count: openCount })}
         </Text>
         {draft.days.map((d) => (
           <DayCard
@@ -275,13 +292,13 @@ export default function AvailabilityScreen() {
           />
         ))}
 
-        <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 8 }]}>DAYS YOU ARE SHUT</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 8 }]}>{t('availability.screen.blackoutLabel')}</Text>
         <Text style={[styles.hint, { color: c.textSecondary }]}>
-          Festivals, holidays, a day off. Nothing can be booked on these, whatever the week above says.
+          {t('availability.screen.blackoutHint')}
         </Text>
         <View style={styles.chipRow}>
           {draft.blackoutDates.length === 0 && (
-            <Text style={{ color: c.textDisabled, fontSize: 12, fontStyle: 'italic' }}>None yet</Text>
+            <Text style={{ color: c.textDisabled, fontSize: 12, fontStyle: 'italic' }}>{t('availability.screen.blackoutNone')}</Text>
           )}
           {draft.blackoutDates.map((dstr) => (
             <View key={dstr} style={[styles.blackoutChip, { backgroundColor: c.surfaceVariant }]}>
@@ -296,14 +313,14 @@ export default function AvailabilityScreen() {
         </View>
         {mayManage && (
           <View style={styles.addBlackoutRow}>
-            <DateField label="Add a day" value={newBlackout} onChangeText={setNewBlackout} mode="date" style={styles.blackoutField} />
+            <DateField label={t('availability.screen.blackoutAdd')} value={newBlackout} onChangeText={setNewBlackout} mode="date" style={styles.blackoutField} />
             <Button mode="outlined" onPress={addBlackout} disabled={!newBlackout} compact style={styles.addBtn}>
-              Add
+              {t('common.add')}
             </Button>
           </View>
         )}
 
-        <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>HOW FAR AHEAD</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>{t('availability.screen.advanceLabel')}</Text>
         <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {ADVANCE_CHOICES.map((choice) => {
             const active = draft.advanceBookingDays === choice.value;
@@ -314,13 +331,13 @@ export default function AvailabilityScreen() {
                 disabled={!mayManage}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
-                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{choice.label}</Text>
+                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{t(choice.labelKey)}</Text>
               </Pressable>
             );
           })}
         </View>
 
-        <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>NOTICE BEFORE A SLOT</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>{t('availability.screen.cutoffLabel')}</Text>
         <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {CUTOFF_CHOICES.map((choice) => {
             const active = draft.cutoffMin === choice.value;
@@ -331,16 +348,16 @@ export default function AvailabilityScreen() {
                 disabled={!mayManage}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
-                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{choice.label}</Text>
+                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{t(choice.labelKey)}</Text>
               </Pressable>
             );
           })}
         </View>
         <Text style={[styles.hint, { color: c.textSecondary }]}>
-          The notice does two jobs: nothing can be booked inside it, and a customer who cancels inside it loses the advance.
+          {t('availability.screen.cutoffHint')}
         </Text>
 
-        <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>TIMES ON THIS SCREEN ARE</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 14 }]}>{t('availability.screen.timezoneLabel')}</Text>
         <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {timezoneChoices.map((tz) => {
             const active = draft.timezone === tz;
@@ -356,19 +373,22 @@ export default function AvailabilityScreen() {
             );
           })}
         </View>
+        {/* The IANA zone id itself (`Asia/Kolkata`) is the wire value — it is
+            `PUT` back as `timezone` and is what every hour above is resolved
+            against, so it stays exactly as it is in both languages. */}
         <Text style={[styles.hint, { color: c.textSecondary }]}>
-          Every hour above is read in this zone — including on a phone set to a different one.
+          {t('availability.screen.timezoneHint')}
         </Text>
 
         <View style={[styles.activeBox, { backgroundColor: draft.isActive ? c.surfaceVariant : c.warning + '18', borderColor: draft.isActive ? c.divider : c.warning }]}>
           <View style={styles.activeRow}>
-            <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600' }}>Taking bookings</Text>
+            {/* The same phrase `availability.problem.allClosed` quotes back at
+                the partner — one label for one switch, in both languages. */}
+            <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600' }}>{t('availability.screen.takingBookings')}</Text>
             <Switch value={draft.isActive} onValueChange={(v) => setDraft({ ...draft, isActive: v })} disabled={!mayManage} />
           </View>
           <Text style={[styles.hint, { color: c.textSecondary }]}>
-            {draft.isActive
-              ? 'Switch this off to stop new bookings without losing the hours you have set.'
-              : 'No new bookings are being taken. Everything you have set up is kept.'}
+            {t(draft.isActive ? 'availability.screen.takingOnHint' : 'availability.screen.takingOffHint')}
           </Text>
         </View>
 
@@ -386,7 +406,7 @@ export default function AvailabilityScreen() {
             disabled={saveAvailability.isPending || !!problem || (!dirty && baseline !== null)}
             style={styles.saveBtn}
           >
-            {saveAvailability.isPending ? 'Saving…' : 'Save these hours'}
+            {t(saveAvailability.isPending ? 'common.saving' : 'availability.screen.saveHours')}
           </Button>
         )}
       </ScrollView>

@@ -4,6 +4,7 @@ import { Text, Searchbar, ActivityIndicator, Snackbar } from 'react-native-paper
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
@@ -27,6 +28,7 @@ type Tab = 'on' | 'off';
  * already loaded rather than a request per keystroke.
  */
 export default function ServicesListScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -39,9 +41,11 @@ export default function ServicesListScreen() {
   const [q, setQ] = useState('');
   const [snackbar, setSnackbar] = useState<string | null>(null);
 
+  // `timer`, not `t`: this file holds a translator now, and a local `t` would
+  // shadow it inside the effect.
   useEffect(() => {
-    const t = setTimeout(() => setQ(searchInput.trim()), 300);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setQ(searchInput.trim()), 300);
+    return () => clearTimeout(timer);
   }, [searchInput]);
 
   const servicesQuery = useServices();
@@ -68,9 +72,9 @@ export default function ServicesListScreen() {
    * of firing it into a dead radio.
    */
   const loadError = servicesQuery.isError
-    ? apiErrorMessage(servicesQuery.error, 'Could not load your services.')
+    ? apiErrorMessage(servicesQuery.error, t('services.list.loadFailed'))
     : servicesQuery.isPending && servicesQuery.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('services.list.noConnection')
       : null;
 
   const goCreate = () => {
@@ -88,14 +92,18 @@ export default function ServicesListScreen() {
    */
   const confirmWithdraw = (service: PartnerServiceRow) => {
     Alert.alert(
-      `Stop offering "${service.name}"?`,
-      'Residents stop seeing it and it cannot be booked. Anything already booked keeps its own record of the name and price and goes ahead as agreed.',
+      // `service.name` is the partner's own text, interpolated untouched.
+      t('services.withdraw.title', { name: service.name }),
+      t('services.withdraw.body'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Stop offering it', style: 'destructive',
+          text: t('services.withdraw.confirm'), style: 'destructive',
           onPress: () => withdrawService.mutate(service._id, {
-            onSuccess: (res) => setSnackbar(res.message || 'Taken off your list'),
+            // `res.message` is the server's own confirmation and is shown as it
+            // arrives — see `UsageMeter.tsx` for the trade this app makes on
+            // server-supplied text. Only the fallback is ours to translate.
+            onSuccess: (res) => setSnackbar(res.message || t('services.withdraw.done')),
             onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
           }),
         },
@@ -108,12 +116,12 @@ export default function ServicesListScreen() {
       <Hero
         isDark={isDark}
         rounded={false}
-        eyebrow="Services"
-        headline={{ value: String(activeCount), label: 'offered' }}
-        subtitle={rows.length ? 'Your price list, at a glance' : 'Build your price list'}
+        eyebrow={t('services.list.eyebrow')}
+        headline={{ value: String(activeCount), label: t('services.list.headlineLabel') }}
+        subtitle={rows.length ? t('services.list.subtitleHas') : t('services.list.subtitleEmpty')}
       >
-        <GlassStat icon="format-list-bulleted" label="In your list" value={String(rows.length)} />
-        <GlassStat icon="archive-outline" label="No longer offered" value={String(rows.length - activeCount)} />
+        <GlassStat icon="format-list-bulleted" label={t('services.list.statInList')} value={String(rows.length)} />
+        <GlassStat icon="archive-outline" label={t('services.list.statWithdrawn')} value={String(rows.length - activeCount)} />
       </Hero>
 
       <View style={styles.headerBox}>
@@ -121,7 +129,7 @@ export default function ServicesListScreen() {
       </View>
 
       <Searchbar
-        placeholder="Search your services"
+        placeholder={t('services.list.searchPlaceholder')}
         value={searchInput}
         onChangeText={setSearchInput}
         style={[styles.search, { backgroundColor: c.surfaceVariant }]}
@@ -129,16 +137,19 @@ export default function ServicesListScreen() {
       />
 
       <View style={styles.tabRow}>
-        {(['on', 'off'] as Tab[]).map((t) => {
-          const active = t === tab;
+        {/* `key`, not `t` — the callback parameter here was called `t` and this
+            file holds a translator now; that is the shadow that has already
+            broken one screen in this app. */}
+        {(['on', 'off'] as Tab[]).map((key) => {
+          const active = key === tab;
           return (
             <Pressable
-              key={t}
-              onPress={() => setTab(t)}
+              key={key}
+              onPress={() => setTab(key)}
               style={[styles.tabChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
             >
               <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>
-                {t === 'on' ? 'Offered' : 'No longer offered'}
+                {key === 'on' ? t('services.list.tabOn') : t('services.list.tabOff')}
               </Text>
             </Pressable>
           );
@@ -168,12 +179,16 @@ export default function ServicesListScreen() {
             <View style={styles.emptyBox}>
               <MaterialCommunityIcons name="wrench-outline" size={30} color={c.textDisabled} />
               <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>
-                {q ? 'Nothing matched that' : tab === 'off' ? 'Everything you have is being offered' : 'No services yet'}
+                {q
+                  ? t('services.list.emptyNoMatch')
+                  : tab === 'off'
+                    ? t('services.list.emptyAllOffered')
+                    : t('services.list.emptyNone')}
               </Text>
               <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
                 {tab === 'on' && !q
-                  ? 'Add the first thing you sell. Give it a price and a length, and residents can book it once your working hours are set.'
-                  : 'Try a different search, or switch tabs above.'}
+                  ? t('services.list.emptyFirstBody')
+                  : t('services.list.emptyOtherBody')}
               </Text>
             </View>
           )
@@ -182,8 +197,14 @@ export default function ServicesListScreen() {
           activeCount > 0 ? (
             <Pressable onPress={() => router.push('/availability')} style={styles.footerNote}>
               <MaterialCommunityIcons name="clock-alert-outline" size={14} color={c.primary} />
+              {/* Three keys, not one with markup in it: the emphasised phrase
+                  sits in a different place in the Hindi sentence, so each
+                  language gets its own before/after halves around the same
+                  highlighted words. */}
               <Text style={[styles.footerNoteText, { color: c.textSecondary }]}>
-                Residents can only book these once your <Text style={{ color: c.primary, fontWeight: '600' }}>working hours</Text> are set.
+                {t('services.list.footerBefore')}
+                <Text style={{ color: c.primary, fontWeight: '600' }}>{t('services.list.footerLink')}</Text>
+                {t('services.list.footerAfter')}
               </Text>
             </Pressable>
           ) : null
@@ -197,7 +218,7 @@ export default function ServicesListScreen() {
           style={[styles.fab, { backgroundColor: cap.atLimit ? c.textDisabled : c.primary }]}
         >
           <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-          <Text style={styles.fabText}>Add a service</Text>
+          <Text style={styles.fabText}>{t('services.list.addService')}</Text>
         </Pressable>
       )}
 
@@ -218,13 +239,16 @@ function ServiceCardRow({
   onWithdraw: () => void;
   c: ReturnType<typeof themeColors>;
 }) {
+  const { t } = useTranslation();
   return (
     <View>
       <ServiceCard service={service} onPress={onPress} />
       {canManage && service.isActive && (
         <Pressable onPress={onWithdraw} disabled={withdrawing} style={styles.withdrawBtn}>
           <Text style={{ color: c.error, fontSize: 12, fontWeight: '600' }}>
-            {withdrawing ? 'Removing…' : 'Stop offering'}
+            {/* `services.form.stopOffering` is the same label the service form's
+                own footer button carries — one phrase for one action. */}
+            {withdrawing ? t('services.list.removing') : t('services.form.stopOffering')}
           </Text>
         </Pressable>
       )}

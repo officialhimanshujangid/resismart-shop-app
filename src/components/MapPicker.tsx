@@ -11,6 +11,7 @@ import MapView, {
   Region,
 } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { useTranslation } from 'react-i18next';
 
 import { ColorScheme, radii } from '../constants/colors';
 
@@ -111,6 +112,7 @@ interface MapPickerProps {
 }
 
 export function MapPicker({ c, point, onPick, onGpsFix, disabled = false }: MapPickerProps) {
+  const { t } = useTranslation();
   const { height: windowHeight } = useWindowDimensions();
   const mapRef = useRef<MapView>(null);
   const [permission, setPermission] = useState<PermissionState>('unasked');
@@ -216,12 +218,10 @@ export function MapPicker({ c, point, onPick, onGpsFix, disabled = false }: MapP
   const mapHeight = Math.round(Math.min(300, Math.max(180, windowHeight * 0.27)));
 
   const hint = !point
-    ? disabled
-      ? 'No pin has been set for this business yet.'
-      : 'Tap the map where your shop is, or use the button to take the pin from where you are standing.'
+    ? t(disabled ? 'components.map.noPinReadOnly' : 'components.map.noPin')
     : disabled
-      ? `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}`
-      : 'Drag the pin, or tap somewhere else on the map, to move it.';
+      ? t('components.map.coords', { lat: point.lat.toFixed(5), lng: point.lng.toFixed(5) })
+      : t('components.map.movePin');
 
   return (
     <View>
@@ -248,7 +248,7 @@ export function MapPicker({ c, point, onPick, onGpsFix, disabled = false }: MapP
           toolbarEnabled={false}
           scrollEnabled={!disabled}
           zoomEnabled
-          accessibilityLabel="Map showing where your business is"
+          accessibilityLabel={t('components.map.mapLabel')}
         >
           {point ? (
             <Marker
@@ -259,8 +259,8 @@ export function MapPicker({ c, point, onPick, onGpsFix, disabled = false }: MapP
                 emit(latitude, longitude);
               }}
               pinColor={c.primary}
-              title="Your business"
-              description="Residents are matched to you by distance from here"
+              title={t('components.map.markerTitle')}
+              description={t('components.map.markerDescription')}
             />
           ) : null}
         </MapView>
@@ -279,7 +279,7 @@ export function MapPicker({ c, point, onPick, onGpsFix, disabled = false }: MapP
             onPress={() => void takeGpsFix()}
             disabled={locating}
             accessibilityRole="button"
-            accessibilityLabel="Move the pin to where I am now"
+            accessibilityLabel={t('components.map.gpsButton')}
             style={({ pressed }) => [
               styles.gpsBtn,
               {
@@ -295,7 +295,7 @@ export function MapPicker({ c, point, onPick, onGpsFix, disabled = false }: MapP
               <MaterialCommunityIcons name="crosshairs-gps" size={19} color={c.primary} />
             )}
             <Text style={[styles.gpsLabel, { color: c.primary }]}>
-              {locating ? 'Locating…' : 'My location'}
+              {t(locating ? 'components.map.locating' : 'components.map.myLocation')}
             </Text>
           </Pressable>
         )}
@@ -305,13 +305,12 @@ export function MapPicker({ c, point, onPick, onGpsFix, disabled = false }: MapP
 
       {permission === 'denied' && (
         <Text style={[styles.hint, { color: c.warning }]}>
-          Location is off for RS Partner, so the button cannot find you — tapping the map or typing the two
-          numbers below still works.
+          {t('components.map.permissionDenied')}
         </Text>
       )}
       {permission === 'unavailable' && (
         <Text style={[styles.hint, { color: c.warning }]}>
-          Your phone could not get a fix just now. Indoors this is normal — place the pin on the map instead.
+          {t('components.map.permissionUnavailable')}
         </Text>
       )}
     </View>

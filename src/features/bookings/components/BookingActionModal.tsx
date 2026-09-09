@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Chip, Text, TextInput } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
+
 import { AssignableStaff, BookingConflictView, BookingVerb, PartnerBookingView } from '../booking.types';
-import { MAX_EXTEND_MIN, VERB_LABELS } from '../booking.types';
+import { MAX_EXTEND_MIN, VERB_LABEL_KEYS } from '../booking.types';
 import { useAssignableStaff, useBookingOverrun } from '../hooks';
-import { formatMinutes, formatTime } from '../format';
+import { formatMinutes, formatTime, Translate } from '../format';
 import { themeColors, radii } from '../../../constants/colors';
 
 /**
@@ -28,9 +30,19 @@ import { themeColors, radii } from '../../../constants/colors';
  */
 const EXTEND_CHIPS = [10, 15, 20, 30, 45, 60, 90, MAX_EXTEND_MIN];
 
-/** One appointment in the way, said as a partner would say it to themselves. */
-function conflictLine(x: BookingConflictView): string {
-  return `${formatTime(x.slotStart)} · ${x.customerName} · ${x.serviceName} (${x.code})`;
+/**
+ * One appointment in the way, said as a partner would say it to themselves.
+ * Assembled from a key rather than concatenated — the customer's name, the
+ * service's name and the code are the SERVER's data, but the frame around them
+ * is copy a translator has to be able to reorder.
+ */
+function conflictLine(x: BookingConflictView, t: Translate): string {
+  return t('bookings.action.conflictLine', {
+    time: formatTime(x.slotStart, t),
+    customer: x.customerName,
+    service: x.serviceName,
+    code: x.code,
+  });
 }
 
 interface Props {
@@ -89,15 +101,17 @@ function timeSlots(day: Date): Date[] {
   return out;
 }
 
-const dayLabel = (d: Date, idx: number) => {
-  if (idx === 0) return 'Today';
-  if (idx === 1) return 'Tomorrow';
-  return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
+// Weekday from `common.days`, never `toLocaleDateString` — see `format.ts`.
+const dayLabel = (d: Date, idx: number, t: Translate) => {
+  if (idx === 0) return t('bookings.format.today');
+  if (idx === 1) return t('bookings.format.tomorrow');
+  return t('bookings.format.dayShort', { weekday: t(`common.days.${d.getDay()}`), day: d.getDate() });
 };
 
 export function BookingActionModal({
   visible, verb, booking, isDark, submitting, conflicts, onDismiss, onSubmit,
 }: Props) {
+  const { t } = useTranslation();
   const c = themeColors(isDark);
   const [reason, setReason] = useState('');
   const [otp, setOtp] = useState('');
@@ -189,16 +203,16 @@ export function BookingActionModal({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
       <Pressable style={styles.backdrop} onPress={onDismiss}>
         <Pressable style={[styles.sheet, { backgroundColor: c.surface }]} onPress={(e) => e.stopPropagation()}>
-          <Text style={[styles.title, { color: c.textPrimary }]}>{VERB_LABELS[verb]}</Text>
+          <Text style={[styles.title, { color: c.textPrimary }]}>{t(VERB_LABEL_KEYS[verb])}</Text>
           <Text style={[styles.subtitle, { color: c.textSecondary }]}>
-            {booking.code} · {booking.serviceSnapshot.name}
+            {t('bookings.action.subtitle', { code: booking.code, service: booking.serviceSnapshot.name })}
           </Text>
 
           <ScrollView style={{ maxHeight: 380 }}>
             {verb === 'reject' && (
               <TextInput
                 mode="outlined"
-                label="Why can't you take this one?"
+                label={t('bookings.action.rejectLabel')}
                 value={reason}
                 onChangeText={setReason}
                 multiline
@@ -209,7 +223,7 @@ export function BookingActionModal({
             {verb === 'cancel' && (
               <TextInput
                 mode="outlined"
-                label="Reason (optional)"
+                label={t('bookings.action.cancelLabel')}
                 value={reason}
                 onChangeText={setReason}
                 multiline
@@ -220,7 +234,7 @@ export function BookingActionModal({
             {verb === 'note' && (
               <TextInput
                 mode="outlined"
-                label="Note for your team"
+                label={t('bookings.action.noteLabel')}
                 value={reason}
                 onChangeText={setReason}
                 multiline
@@ -231,15 +245,14 @@ export function BookingActionModal({
             {verb === 'complete' && booking.mode === 'AT_CUSTOMER' && (
               <>
                 <Text style={[styles.hint, { color: c.textSecondary }]}>
-                  {booking.completionOtpSentAt
-                    ? 'Ask the customer for the 6-digit code sent to them.'
-                    : 'Mark "I have reached" first — that is what sends the code.'}
+                  {t(booking.completionOtpSentAt ? 'bookings.action.otpSent' : 'bookings.action.otpNotSent')}
                 </Text>
                 <TextInput
                   mode="outlined"
-                  label="6-digit code"
+                  label={t('bookings.action.otpLabel')}
                   value={otp}
-                  onChangeText={(t) => setOtp(t.replace(/\D/g, '').slice(0, 6))}
+                  /* `next`, not `t` — the callback used to shadow the translator. */
+                  onChangeText={(next) => setOtp(next.replace(/\D/g, '').slice(0, 6))}
                   keyboardType="number-pad"
                   maxLength={6}
                   style={styles.input}
@@ -250,16 +263,16 @@ export function BookingActionModal({
             {verb === 'assign' && (
               <>
                 {staffQuery.isLoading && (
-                  <Text style={[styles.hint, { color: c.textSecondary }]}>Loading your team…</Text>
+                  <Text style={[styles.hint, { color: c.textSecondary }]}>{t('bookings.action.staffLoading')}</Text>
                 )}
                 {staffQuery.isError && (
                   <Text style={[styles.hint, { color: c.error }]}>
-                    You don&apos;t have access to the staff list. Ask an admin to assign this one.
+                    {t('bookings.action.staffDenied')}
                   </Text>
                 )}
                 {staffQuery.data?.length === 0 && !staffQuery.isLoading && !staffQuery.isError && (
                   <Text style={[styles.hint, { color: c.textSecondary }]}>
-                    Nobody on staff is set to take bookings yet — add that from Staff settings.
+                    {t('bookings.action.staffEmpty')}
                   </Text>
                 )}
                 <View style={styles.chipWrap}>
@@ -284,23 +297,23 @@ export function BookingActionModal({
                     so this is never a guess made on the phone. */}
                 {overrunQuery.isPending && (
                   <Text style={[styles.hint, { color: c.textSecondary }]}>
-                    Checking what is booked behind this one…
+                    {t('bookings.action.overrunChecking')}
                   </Text>
                 )}
                 {overrunQuery.isError && (
                   <Text style={[styles.hint, { color: c.error }]}>
-                    We could not check what is behind this job, so we cannot say how much room there is.
+                    {t('bookings.action.overrunFailed')}
                   </Text>
                 )}
                 {overrun && (
                   <Text style={[styles.hint, { color: overrun.runningOverMin > 0 ? c.warning : c.textSecondary }]}>
                     {overrun.runningOverMin > 0
-                      ? `This job is ${formatMinutes(overrun.runningOverMin)} past its agreed end.`
-                      : `${formatMinutes(overrun.remainingMin)} left of the booked time.`}
+                      ? t('bookings.action.pastEnd', { amount: formatMinutes(overrun.runningOverMin, t) })
+                      : t('bookings.action.timeLeft', { amount: formatMinutes(overrun.remainingMin, t) })}
                     {' '}
                     {overrun.capacity > 1
-                      ? `You can take ${overrun.capacity} at a time here.`
-                      : 'Your diary holds one job at a time here.'}
+                      ? t('bookings.action.capacityMany', { count: overrun.capacity })
+                      : t('bookings.action.capacityOne')}
                   </Text>
                 )}
 
@@ -311,14 +324,13 @@ export function BookingActionModal({
                     on the card. */}
                 {overrun && overrun.canExtendByMin === 0 ? (
                   <Text style={[styles.hint, { color: c.warning }]}>
-                    There is no room to run on — the time behind this job is taken. Move what is next with
-                    “{VERB_LABELS.reschedule}”, or finish up and let it start late.
+                    {t('bookings.action.noRoom', { reschedule: t(VERB_LABEL_KEYS.reschedule) })}
                   </Text>
                 ) : (
                   <>
                     <Text style={[styles.hint, { color: c.textSecondary, marginTop: 10 }]}>
-                      How much longer?
-                      {overrun ? ` Up to ${formatMinutes(overrun.canExtendByMin)}.` : ''}
+                      {t('bookings.action.howMuchLonger')}
+                      {overrun ? t('bookings.action.upTo', { amount: formatMinutes(overrun.canExtendByMin, t) }) : ''}
                     </Text>
                     <View style={styles.chipWrap}>
                       {extendOptions.map((m) => (
@@ -328,7 +340,7 @@ export function BookingActionModal({
                           onPress={() => setMinutes(m)}
                           style={styles.chip}
                         >
-                          {formatMinutes(m)}
+                          {formatMinutes(m, t)}
                         </Chip>
                       ))}
                     </View>
@@ -342,11 +354,11 @@ export function BookingActionModal({
                 {overrun && overrun.conflicts.length > 0 && (
                   <>
                     <Text style={[styles.hint, { color: c.textSecondary, marginTop: 10 }]}>
-                      Booked after this one:
+                      {t('bookings.action.bookedAfter')}
                     </Text>
                     {overrun.conflicts.map((x) => (
                       <Text key={x.id} style={[styles.hint, { color: c.textSecondary }]}>
-                        • {conflictLine(x)}
+                        {t('bookings.action.bullet', { line: conflictLine(x, t) })}
                       </Text>
                     ))}
                   </>
@@ -357,23 +369,22 @@ export function BookingActionModal({
                 {conflicts && conflicts.length > 0 && (
                   <>
                     <Text style={[styles.hint, { color: c.error, marginTop: 10 }]}>
-                      That much would run into work already booked:
+                      {t('bookings.action.wouldRunInto')}
                     </Text>
                     {conflicts.map((x) => (
                       <Text key={x.id} style={[styles.hint, { color: c.error }]}>
-                        • {conflictLine(x)}
+                        {t('bookings.action.bullet', { line: conflictLine(x, t) })}
                       </Text>
                     ))}
                     <Text style={[styles.hint, { color: c.textSecondary }]}>
-                      Ask for less time, move those with “{VERB_LABELS.reschedule}”, or finish up and let
-                      the next one start late.
+                      {t('bookings.action.askForLess', { reschedule: t(VERB_LABEL_KEYS.reschedule) })}
                     </Text>
                   </>
                 )}
 
                 <TextInput
                   mode="outlined"
-                  label="Why (optional — your team sees this)"
+                  label={t('bookings.action.whyLabel')}
                   value={reason}
                   onChangeText={setReason}
                   multiline
@@ -384,7 +395,7 @@ export function BookingActionModal({
 
             {verb === 'reschedule' && (
               <>
-                <Text style={[styles.hint, { color: c.textSecondary }]}>Day</Text>
+                <Text style={[styles.hint, { color: c.textSecondary }]}>{t('bookings.action.day')}</Text>
                 <View style={styles.chipWrap}>
                   {days.map((d, i) => (
                     <Chip
@@ -396,20 +407,23 @@ export function BookingActionModal({
                       }}
                       style={styles.chip}
                     >
-                      {dayLabel(d, i)}
+                      {dayLabel(d, i, t)}
                     </Chip>
                   ))}
                 </View>
-                <Text style={[styles.hint, { color: c.textSecondary, marginTop: 10 }]}>Time</Text>
+                <Text style={[styles.hint, { color: c.textSecondary, marginTop: 10 }]}>{t('bookings.action.time')}</Text>
                 <View style={styles.chipWrap}>
-                  {slots.map((t) => (
+                  {/* `s`, not `t` — the callback used to shadow the translator,
+                      and `formatTime` reads the clock out of the catalogue
+                      rather than out of `Intl`. */}
+                  {slots.map((s) => (
                     <Chip
-                      key={t.toISOString()}
-                      selected={slot?.getTime() === t.getTime()}
-                      onPress={() => setSlot(t)}
+                      key={s.toISOString()}
+                      selected={slot?.getTime() === s.getTime()}
+                      onPress={() => setSlot(s)}
                       style={styles.chip}
                     >
-                      {t.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                      {formatTime(s.toISOString(), t)}
                     </Chip>
                   ))}
                 </View>
@@ -419,7 +433,7 @@ export function BookingActionModal({
 
           <View style={styles.footer}>
             <Button mode="outlined" onPress={onDismiss} disabled={submitting} style={styles.footerBtn}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               mode="contained"
@@ -428,7 +442,7 @@ export function BookingActionModal({
               loading={submitting}
               style={styles.footerBtn}
             >
-              {VERB_LABELS[verb]}
+              {t(VERB_LABEL_KEYS[verb])}
             </Button>
           </View>
         </Pressable>

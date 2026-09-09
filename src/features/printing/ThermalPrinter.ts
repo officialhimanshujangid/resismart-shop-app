@@ -40,10 +40,21 @@ export interface PrintJob {
   label: string;
 }
 
+/**
+ * NO `label` HERE, and its absence is the point.
+ *
+ * There used to be one, documented as "shown on the print button". Nothing ever
+ * read it: the only caller is `billing/[id].tsx`, which labels its own button
+ * from the message catalogue (`billing.detail.print`) and calls `print()` and
+ * nothing else. So it was an English literal that no partner could ever see and
+ * that no translation pass could ever fix — and, worse, a slot the second
+ * implementation would have been obliged to fill with another one. The day a
+ * screen genuinely needs to name the printer it is about to use, that name
+ * belongs in `locales/`, keyed off `kind`, exactly like every other word this
+ * app shows.
+ */
 export interface ThermalPrinter {
   readonly kind: ThermalPrinterKind;
-  /** Shown on the print button so the partner knows what tapping it does — never a silent no-op. */
-  readonly label: string;
   isAvailable(): Promise<boolean>;
   print(job: PrintJob): Promise<void>;
 }

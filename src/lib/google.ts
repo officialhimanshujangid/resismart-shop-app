@@ -1,4 +1,5 @@
 import { GOOGLE_WEB_CLIENT_ID } from '../constants/app';
+import type { Translate } from '../features/services/duration';
 
 /**
  * Google Sign-In for the partner app, reduced to "give me an ID token".
@@ -90,7 +91,13 @@ const configureOnce = (mod: GoogleSdk): void => {
  */
 const DEVELOPER_ERROR_CODE = '10';
 
-/** Backing out of the sheet is a choice, not a failure worth a red banner. */
+/**
+ * Backing out of the sheet is a choice, not a failure worth a red banner.
+ *
+ * `'cancelled'` is a SENTINEL, not a sentence: both callers test
+ * `e instanceof GoogleCancelled` and show nothing at all, so this string never
+ * reaches a screen and is deliberately not translated.
+ */
 export class GoogleCancelled extends Error {
   constructor() { super('cancelled'); this.name = 'GoogleCancelled'; }
 }
@@ -100,13 +107,19 @@ export class GoogleCancelled extends Error {
  *
  * Throws `GoogleCancelled` on a deliberate back-out, and an Error with a
  * readable message otherwise.
+ *
+ * `t` is handed in — this is a plain module, not a component, and both callers
+ * (`(auth)/login.tsx`, `(auth)/register.tsx`) already hold a translator. Every
+ * message below is shown verbatim on a sign-in screen (`apiErrorMessage`
+ * returns `Error.message` before reaching its own fallback), so they are the
+ * partner's words, not a log line.
  */
-export async function getGoogleIdToken(): Promise<string> {
+export async function getGoogleIdToken(t: Translate): Promise<string> {
   const mod = loadSdk();
   if (!mod) {
-    throw new Error('Google sign-in needs a development build of this app, not Expo Go.');
+    throw new Error(t('auth.google.needsDevBuild'));
   }
-  if (!GOOGLE_WEB_CLIENT_ID) throw new Error('Google sign-in is not configured in this build.');
+  if (!GOOGLE_WEB_CLIENT_ID) throw new Error(t('auth.google.notConfigured'));
 
   configureOnce(mod);
 
@@ -131,16 +144,16 @@ export async function getGoogleIdToken(): Promise<string> {
     if (r.type === 'cancelled') throw new GoogleCancelled();
 
     const idToken = r.data?.idToken ?? r.idToken ?? null;
-    if (!idToken) throw new Error('Google did not return a sign-in token.');
+    if (!idToken) throw new Error(t('auth.google.noToken'));
     return idToken;
   } catch (e: unknown) {
     if (e instanceof GoogleCancelled) throw e;
     const code = (e as { code?: string })?.code;
     const codes = mod.statusCodes ?? {};
     if (code === codes.SIGN_IN_CANCELLED) throw new GoogleCancelled();
-    if (code === codes.IN_PROGRESS) throw new Error('A Google sign-in is already in progress.');
+    if (code === codes.IN_PROGRESS) throw new Error(t('auth.google.inProgress'));
     if (code === codes.PLAY_SERVICES_NOT_AVAILABLE) {
-      throw new Error('Google Play Services is not available on this device.');
+      throw new Error(t('auth.google.noPlayServices'));
     }
     /**
      * DEVELOPER_ERROR — Android's code 10, and the reason this branch exists.
@@ -160,12 +173,10 @@ export async function getGoogleIdToken(): Promise<string> {
      * "code 10" is the string that matches Google's own documentation.
      */
     if (code === DEVELOPER_ERROR_CODE) {
-      throw new Error(
-        'Google rejected this app build (DEVELOPER_ERROR, code 10). Its signing ' +
-          'certificate SHA-1 and package name are not registered on an Android OAuth ' +
-          'client in the same Google project as the web client id. Sign in with your ' +
-          'phone number instead.'
-      );
+      // `DEVELOPER_ERROR` and `code 10` stay verbatim inside the sentence in
+      // both catalogues: they are Google's own identifiers and the strings
+      // whoever diagnoses this will search their documentation for.
+      throw new Error(t('auth.google.developerError'));
     }
     /**
      * Everything left is genuinely unknown, so the code is carried out rather
@@ -174,8 +185,8 @@ export async function getGoogleIdToken(): Promise<string> {
      */
     throw new Error(
       code
-        ? `Google sign-in could not be completed (${code}).`
-        : 'Google sign-in could not be completed.'
+        ? t('auth.google.failedWithCode', { code })
+        : t('auth.google.failed')
     );
   }
 }

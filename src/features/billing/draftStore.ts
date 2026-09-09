@@ -124,7 +124,23 @@ async function syncDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
       patchDraft(draft.id, { serverDraftId });
     }
 
-    const { document } = await documentsApi.issue(serverDraftId);
+    /**
+     * DERIVED from the draft's own key, not minted here.
+     *
+     * `syncDraft` is the retry — it runs again on every reconnect, every
+     * foreground and every "Retry" tap — so a `newIdempotencyKey()` on this line
+     * would be a fresh key per attempt, which is the exact defeat
+     * `src/lib/idempotency.ts` is written about. `draft.idempotencyKey` is
+     * already persisted with the draft (`offlineDrafts.ts`), so deriving from it
+     * gives a key that is stable across attempts AND across app launches, which
+     * a `useRef` could not be — and this is the sync path that most often
+     * resumes after the process was killed.
+     *
+     * The `-issue` suffix is load-bearing. The middleware refuses a key seen on
+     * a different `route` with 422 (`idempotency.middleware.ts:168`), so the
+     * create key cannot simply be sent again here.
+     */
+    const { document } = await documentsApi.issue(serverDraftId, `${draft.idempotencyKey}-issue`);
     patchDraft(draft.id, {
       status: 'SYNCED',
       syncedDocumentId: document._id,

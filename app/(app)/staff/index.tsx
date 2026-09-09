@@ -3,6 +3,7 @@ import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
 import { Chip, FAB, IconButton, Text } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
@@ -12,8 +13,13 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { Hero, GlassStat } from '../../../src/components/Hero';
 import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 
-function nameOf(row: PartnerStaffRow): string {
-  return typeof row.userId === 'object' ? row.userId.name : 'Staff member';
+/**
+ * The staff member's own name where the row is populated, and a translated
+ * placeholder where it is not. `t` is handed in rather than read from a hook:
+ * this is a plain function, not a component, and both callers already hold one.
+ */
+function nameOf(row: PartnerStaffRow, t: (k: string) => string): string {
+  return typeof row.userId === 'object' ? row.userId.name : t('staff.list.unnamed');
 }
 function contactOf(row: PartnerStaffRow): string | undefined {
   return typeof row.userId === 'object' ? (row.userId.phone || row.userId.email) : undefined;
@@ -25,6 +31,7 @@ function roleNameOf(row: PartnerStaffRow): string | undefined {
 export default function StaffListScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { t } = useTranslation();
   const { can } = usePartnerEntitlements();
   const { capacity } = usePlanUsage();
   const canManage = can('STAFF', 'FULL');
@@ -40,21 +47,35 @@ export default function StaffListScreen() {
   const reactivate = useMutation({
     mutationFn: (id: string) => staffApi.reactivate(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.staff() }),
-    onError: (err) => Alert.alert('Could not bring them back', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('staff.list.reactivateFailed'), apiErrorMessage(err)),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => staffApi.remove(id),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.staff() }),
-    onError: (err) => Alert.alert('Could not remove them', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('staff.list.removeFailed'), apiErrorMessage(err)),
   });
 
   const confirmRemove = (row: PartnerStaffRow) => {
-    Alert.alert('Take off the staff list?', `${nameOf(row)} will lose access to this business. Their name stays on old bookings and invoices.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => remove.mutate(row._id) },
+    Alert.alert(t('staff.list.removeTitle'), t('staff.list.removeBody', { name: nameOf(row, t) }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('staff.list.removeConfirm'), style: 'destructive', onPress: () => remove.mutate(row._id) },
     ]);
   };
+
+  /**
+   * `_one`/`_other`, not an English `-s`: Hindi cannot pluralise by suffixing,
+   * and CLDR puts BOTH 0 and 1 in its `one` category.
+   */
+  const rosterLabel = t('staff.list.roster', { count: (list.data ?? []).filter((r) => r.isActive).length });
+  /**
+   * `noun` is the SERVER's word ("staff") and arrives in English — the same
+   * trade `UsageMeter.tsx` documents. The sentence around it is translated; the
+   * noun follows when the backend catalogue does.
+   */
+  const rosterSubtitle = cap.limit !== null
+    ? t('staff.list.capacity', { used: cap.used, limit: cap.limit, noun: cap.noun })
+    : t('staff.list.subtitle');
 
   const active = (list.data ?? []).filter((r) => r.isActive);
   const inactive = (list.data ?? []).filter((r) => !r.isActive);
@@ -64,9 +85,12 @@ export default function StaffListScreen() {
   const renderRow = (row: PartnerStaffRow) => (
     <View key={row._id} style={[styles.card, { backgroundColor: c.surface, opacity: row.isActive ? 1 : 0.7 }]}>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{nameOf(row)}</Text>
+        <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{nameOf(row, t)}</Text>
+        {/* `designation` is what the partner typed for this person's job, and the
+            contact is their own phone or email — both data on the record, shown
+            back as they were entered. */}
         <Text style={[styles.meta, { color: c.textSecondary }]} numberOfLines={1}>
-          {row.designation}{contactOf(row) ? ` · ${contactOf(row)}` : ''}
+          {row.designation}{contactOf(row) ? t('staff.list.contactSuffix', { contact: contactOf(row) }) : ''}
         </Text>
         <View style={styles.badgeRow}>
           <Chip
@@ -74,7 +98,7 @@ export default function StaffListScreen() {
             style={[styles.chip, { backgroundColor: c.surfaceVariant }]}
             textStyle={[styles.chipText, { color: c.textSecondary }]}
           >
-            {roleNameOf(row) || 'No role assigned'}
+            {roleNameOf(row) || t('staff.list.noRole')}
           </Chip>
           {row.canTakeBookings && (
             <Chip
@@ -83,7 +107,7 @@ export default function StaffListScreen() {
               style={[styles.chip, { backgroundColor: palette.brand[50] }]}
               textStyle={[styles.chipText, { color: palette.brand[600] }]}
             >
-              Takes bookings
+              {t('staff.list.takesBookings')}
             </Chip>
           )}
         </View>
@@ -108,14 +132,14 @@ export default function StaffListScreen() {
   return (
     <Screen
       c={c}
-      title="Staff"
+      title={t('staff.list.title')}
       right={canManage ? (
         <IconButton icon="shield-account-outline" size={22} onPress={() => router.push('/staff/roles')} />
       ) : undefined}
       floating={canManage ? (
         <FAB
           icon="plus"
-          label={cap.atLimit ? 'Limit reached' : 'Invite staff'}
+          label={cap.atLimit ? t('staff.list.limitReached') : t('staff.list.inviteStaff')}
           disabled={cap.atLimit}
           style={[styles.fab, { backgroundColor: cap.atLimit ? c.textDisabled : c.primary }]}
           color={c.textInverse}
@@ -125,14 +149,14 @@ export default function StaffListScreen() {
     >
       <Hero
         isDark={isDark}
-        eyebrow="Your team"
-        headline={list.data ? { value: String(active.length), label: active.length === 1 ? 'person on the roster' : 'people on the roster' } : undefined}
-        subtitle={cap.limit !== null ? `${cap.used} of ${cap.limit} ${cap.noun} used` : 'Invite the people who work here and give them a role.'}
+        eyebrow={t('staff.list.eyebrow')}
+        headline={list.data ? { value: String(active.length), label: rosterLabel } : undefined}
+        subtitle={rosterSubtitle}
       >
         {list.data ? (
           <>
-            <GlassStat icon="shield-account-outline" label="Roles in use" value={String(rolesInUse)} />
-            <GlassStat icon="calendar-check-outline" label="Take bookings" value={String(bookingReady)} />
+            <GlassStat icon="shield-account-outline" label={t('staff.list.statRoles')} value={String(rolesInUse)} />
+            <GlassStat icon="calendar-check-outline" label={t('staff.list.statBookings')} value={String(bookingReady)} />
           </>
         ) : null}
       </Hero>
@@ -140,19 +164,19 @@ export default function StaffListScreen() {
       {list.isPending ? (
         <Loading c={c} />
       ) : list.isError ? (
-        <ErrorBlock c={c} message={apiErrorMessage(list.error, 'Could not load your staff list.')} onRetry={() => list.refetch()} />
+        <ErrorBlock c={c} message={apiErrorMessage(list.error, t('staff.list.loadFailed'))} onRetry={() => list.refetch()} />
       ) : list.data && list.data.length > 0 ? (
         <View style={{ gap: 10 }}>
           {active.map(renderRow)}
           {inactive.length > 0 && (
             <>
-              <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>No longer here</Text>
+              <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('staff.list.noLongerHere')}</Text>
               {inactive.map(renderRow)}
             </>
           )}
         </View>
       ) : (
-        <EmptyBlock c={c} icon="account-tie-outline" title="Nobody invited yet" body="Add the people who work here, and give them a role." />
+        <EmptyBlock c={c} icon="account-tie-outline" title={t('staff.list.emptyTitle')} body={t('staff.list.emptyBody')} />
       )}
     </Screen>
   );

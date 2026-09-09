@@ -1,7 +1,7 @@
 export { useAvailability, useSaveAvailability } from './hooks';
 export { availabilityApi } from './api';
 export {
-  DAY_NAMES, DAY_SHORT, starterDraft, draftFromRow, bodyFromDraft, draftProblem, deviceTimezone,
+  DAY_NAME_KEYS, DAY_SHORT_KEYS, starterDraft, draftFromRow, bodyFromDraft, draftProblem, deviceTimezone,
 } from './types';
 export type { AvailabilityRow, AvailabilityDraft, AvailabilityDay, AvailabilityWindow, AvailabilityBreak } from './types';
 

@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, Modal, useColorScheme, Pressable } from '
 import { Text, ActivityIndicator, Divider, TextInput, Button, IconButton, HelperText } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { PartnerOrder } from '../types';
 import { OrderReturnLine, OrderReturnResult } from '../api';
@@ -35,6 +36,7 @@ interface RecordReturnModalProps {
  * third, … return is made.
  */
 export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnModalProps) {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const eligibility = useOrderReturnEligibility(order);
   const mutation = useOrderReturnItems();
@@ -102,7 +104,7 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
         <View style={[styles.header, { borderBottomColor: c.divider }]}>
           <Text style={[styles.headerTitle, { color: c.textPrimary }]}>
-            Record a return{order ? ` — ${order.code}` : ''}
+            {order ? t('orders.return.titleWithCode', { code: order.code }) : t('orders.return.title')}
           </Text>
           <Pressable onPress={onClose} hitSlop={10} disabled={mutation.isPending}>
             <MaterialCommunityIcons name="close" size={22} color={c.textSecondary} />
@@ -116,17 +118,15 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
         ) : noInvoice ? (
           <View style={styles.loadingBox}>
             <Text style={[styles.noInvoiceText, { color: c.textSecondary }]}>
-              No issued invoice was found for this order. Raise and issue the invoice before recording a return —
-              a credit note has to adjust a numbered invoice.
+              {t('orders.return.noInvoice')}
             </Text>
-            <Button mode="outlined" onPress={onClose} style={{ marginTop: 16 }}>Close</Button>
+            <Button mode="outlined" onPress={onClose} style={{ marginTop: 16 }}>{t('common.close')}</Button>
           </View>
         ) : (
           <>
             <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
               <Text style={[styles.intro, { color: c.textSecondary }]}>
-                Pick how many of each item came back. This raises a credit note for exactly what you enter here —
-                nothing else on the order changes.
+                {t('orders.return.intro')}
               </Text>
 
               {rows.map(({ item, already, max }) => {
@@ -142,9 +142,13 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
                         {item.snapshot.name}
                       </Text>
                       <Text style={[styles.itemMeta, { color: c.textSecondary }]}>
-                        Ordered {item.qty} {item.snapshot.unit}
-                        {already > 0 ? ` · ${already} already returned` : ''}
-                        {exhausted ? ' · fully returned' : ` · ${max} can still return`}
+                        {/* `snapshot.unit` is the unit stored on the order line —
+                            server data, and the same code the invoice prints. */}
+                        {t('orders.return.ordered', { qty: item.qty, unit: item.snapshot.unit })}
+                        {already > 0 ? t('orders.return.alreadyReturned', { count: already }) : ''}
+                        {exhausted
+                          ? t('orders.return.fullyReturned')
+                          : t('orders.return.canStillReturn', { count: max })}
                       </Text>
                     </View>
                     <View style={styles.stepperCol}>
@@ -180,19 +184,19 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
 
               <Divider style={{ marginVertical: 10, backgroundColor: c.divider }} />
 
-              <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>WHY ARE THESE COMING BACK</Text>
+              <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('orders.return.whyHeading')}</Text>
               <TextInput
                 mode="outlined"
                 value={reason}
                 onChangeText={setReason}
                 onBlur={() => setTouchedReason(true)}
-                placeholder="e.g. Damaged in transit, customer refused two items"
+                placeholder={t('orders.return.reasonPlaceholder')}
                 multiline
                 numberOfLines={3}
                 outlineStyle={styles.reasonOutline}
               />
               <HelperText type="error" visible={touchedReason && reasonTooShort}>
-                A couple of words at least — this stays on the credit note record.
+                {t('orders.return.reasonTooShort')}
               </HelperText>
 
               {serverError && (
@@ -204,7 +208,7 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
 
             <View style={[styles.footer, { borderTopColor: c.divider, backgroundColor: c.surface }]}>
               <Button mode="outlined" onPress={onClose} disabled={mutation.isPending} style={styles.footerBtn}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button
                 mode="contained"
@@ -214,8 +218,8 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
                 style={styles.footerBtn}
               >
                 {lines.length > 0
-                  ? `Confirm return (${lines.reduce((sum, l) => sum + l.qty, 0)})`
-                  : 'Confirm return'}
+                  ? t('orders.return.confirmCount', { count: lines.reduce((sum, l) => sum + l.qty, 0) })
+                  : t('orders.return.confirm')}
               </Button>
             </View>
           </>

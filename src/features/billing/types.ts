@@ -45,16 +45,28 @@ export type PartnerDocumentType = typeof PARTNER_DOCUMENT_TYPES[number];
 export const BILLING_SCREEN_DOCUMENT_TYPES = PARTNER_DOCUMENT_TYPES;
 export type BillingScreenDocumentType = PartnerDocumentType;
 
-export const DOCUMENT_TYPE_LABEL: Record<PartnerDocumentType, string> = {
-  TAX_INVOICE: 'Tax invoice',
-  QUOTATION: 'Quotation',
-  PROFORMA: 'Proforma invoice',
-  DELIVERY_CHALLAN: 'Delivery challan',
-  CREDIT_NOTE: 'Credit note',
-  SALES_RETURN: 'Sales return',
-  PURCHASE_INVOICE: 'Purchase invoice',
-  PURCHASE_ORDER: 'Purchase order',
-  DEBIT_NOTE: 'Debit note',
+/**
+ * WHAT A DOCUMENT TYPE IS CALLED ON SCREEN — a catalogue key per type, not the
+ * words.
+ *
+ * These ARE display labels and they ARE translated. The KEY of each entry is the
+ * `PartnerDocumentType` enum and never moves: it is what `type` carries in
+ * `POST /partners/me/documents`, what `PARTNER_DOCUMENT_BEHAVIOUR` and
+ * `CONVERSION_TARGETS` are keyed by, and what the server switches on.
+ *
+ * Contrast `GST_STATES` below, which looks like the same kind of table and is
+ * the exact opposite — see its header.
+ */
+export const DOCUMENT_TYPE_LABEL_KEY: Record<PartnerDocumentType, string> = {
+  TAX_INVOICE: 'billing.documentType.TAX_INVOICE',
+  QUOTATION: 'billing.documentType.QUOTATION',
+  PROFORMA: 'billing.documentType.PROFORMA',
+  DELIVERY_CHALLAN: 'billing.documentType.DELIVERY_CHALLAN',
+  CREDIT_NOTE: 'billing.documentType.CREDIT_NOTE',
+  SALES_RETURN: 'billing.documentType.SALES_RETURN',
+  PURCHASE_INVOICE: 'billing.documentType.PURCHASE_INVOICE',
+  PURCHASE_ORDER: 'billing.documentType.PURCHASE_ORDER',
+  DEBIT_NOTE: 'billing.documentType.DEBIT_NOTE',
 };
 
 // ──────────────────────────────────────────────────────────── behaviour
@@ -71,6 +83,13 @@ export type DocumentDirection = 'SALES' | 'PURCHASE';
 export type DocumentSettlement = 'IN' | 'OUT' | 'NONE';
 
 export interface DocumentBehaviour {
+  /**
+   * The BACKEND's own `label` field, mirrored verbatim from
+   * `PARTNER_DOCUMENT_BEHAVIOUR` — see the header. Not rendered anywhere in
+   * this app and therefore NOT translated: what a screen shows comes from
+   * `DOCUMENT_TYPE_LABEL_KEY`. Kept so this table stays a faithful copy and a
+   * future diff against the server is a comparison rather than a merge.
+   */
   label: string;
   direction: DocumentDirection;
   /** Which date field this type carries, if any. */
@@ -125,14 +144,22 @@ export const PARTNER_DOCUMENT_STATUSES = [
 ] as const;
 export type PartnerDocumentStatus = typeof PARTNER_DOCUMENT_STATUSES[number];
 
-export const STATUS_LABEL: Record<PartnerDocumentStatus, string> = {
-  DRAFT: 'Draft',
-  ISSUED: 'Issued',
-  PARTIALLY_PAID: 'Partially paid',
-  PAID: 'Paid',
-  CANCELLED: 'Cancelled',
-  CONVERTED: 'Converted',
-  EXPIRED: 'Expired',
+/**
+ * The status as a shopkeeper reads it — a catalogue key per status.
+ *
+ * Display only, like `DOCUMENT_TYPE_LABEL_KEY`. `PARTNER_DOCUMENT_STATUSES` is
+ * the wire value and stays English literals: `PARTIALLY_PAID` is what the
+ * server sends, what `serverStatusKind` switches on, and what a filter posts
+ * back.
+ */
+export const STATUS_LABEL_KEY: Record<PartnerDocumentStatus, string> = {
+  DRAFT: 'billing.status.DRAFT',
+  ISSUED: 'billing.status.ISSUED',
+  PARTIALLY_PAID: 'billing.status.PARTIALLY_PAID',
+  PAID: 'billing.status.PAID',
+  CANCELLED: 'billing.status.CANCELLED',
+  CONVERTED: 'billing.status.CONVERTED',
+  EXPIRED: 'billing.status.EXPIRED',
 };
 
 /** The party AS THEY WERE when the document was raised — see the server model for why this is snapshotted, not joined. */
@@ -155,6 +182,25 @@ export interface DocumentPartySnapshot {
  * error for a customer from another state. Names only, no codes: the server
  * turns a name into the two-digit code that decides the split, and a second
  * copy of that mapping here is a second answer to a tax question.
+ *
+ * ── NEVER TRANSLATE THIS LIST ─────────────────────────────────────────────
+ *
+ * These are not labels. Each string is SENT as `partySnapshot.placeOfSupply`
+ * and is matched by NAME — `GST_STATE_CODES` in `partner-tax.util.ts` on the
+ * server, and `stateKey()` in `taxPreview.ts:94-95` on this side — to produce
+ * the two-digit code that decides CGST+SGST versus IGST. A name the lookup does
+ * not recognise resolves to no code, and no code is treated as INTRA-state.
+ *
+ * So a Hindi state name here does not render a Hindi word next to an unchanged
+ * number. It silently puts the wrong tax split on a real invoice handed to a
+ * real customer, on every inter-state sale, with nothing on any screen saying
+ * so — a filing error, not a cosmetic bug. `DOCUMENT_TYPE_LABEL_KEY` and
+ * `STATUS_LABEL_KEY` above ARE display labels and ARE translated; this table
+ * sits in the same file and is the opposite kind of thing.
+ *
+ * If these ever need to READ in Hindi, the translation belongs beside the
+ * value in the picker (`billing/new.tsx`) and the ENGLISH name still has to be
+ * what is sent — it cannot be done by translating this array.
  */
 export const GST_STATES = [
   'Jammu and Kashmir', 'Himachal Pradesh', 'Punjab', 'Chandigarh', 'Uttarakhand', 'Haryana', 'Delhi',

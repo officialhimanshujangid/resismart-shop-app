@@ -129,24 +129,30 @@ export interface PartnerVisibilityBlocker {
  */
 export interface BlockerFix {
   href: Href;
-  /** Imperative, and short enough for a button. */
-  label: string;
+  /**
+   * A CATALOGUE KEY, imperative and short enough for a button — not the words.
+   *
+   * This is a plain function outside React, so it cannot hold a `t`. Returning
+   * the key keeps the mapping (code → screen → wording) in one place and leaves
+   * the two callers, both components, to render it.
+   */
+  labelKey: string;
 }
 
 export function blockerFix(code: PartnerVisibilityBlocker['code']): BlockerFix | undefined {
   switch (code) {
     case 'NOT_VERIFIED':
-      return { href: '/settings/verification', label: 'Send your documents in' };
+      return { href: '/settings/verification', labelKey: 'blockerFix.NOT_VERIFIED' };
     case 'NO_LOCATION':
-      return { href: '/settings/address', label: 'Set your address and pin' };
+      return { href: '/settings/address', labelKey: 'blockerFix.NO_LOCATION' };
     case 'NO_SERVICE_MODES':
-      return { href: '/settings/where-you-work', label: 'Say where you work' };
+      return { href: '/settings/where-you-work', labelKey: 'blockerFix.NO_SERVICE_MODES' };
     case 'NO_AVAILABILITY':
       // The wizard's opening hours are a marketing fact; the slot engine reads a
       // separate schedule, and without it every Book tap answers 409. This app
       // has that editor, so unlike the web the partner can fix it where they
       // were told about it.
-      return { href: '/availability', label: 'Set your working hours' };
+      return { href: '/availability', labelKey: 'blockerFix.NO_AVAILABILITY' };
     default:
       return undefined;
   }

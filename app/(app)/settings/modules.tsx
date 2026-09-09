@@ -3,6 +3,7 @@ import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 import { Button, Chip, Switch, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette } from '../../../src/constants/colors';
 import { usePartnerEntitlements, PARTNER_MODULE_INFO, planSells, PartnerModuleState } from '../../../src/hooks';
@@ -33,13 +34,18 @@ import { Card, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui
  * genuinely not a toggle, and is not drawn as one.
  */
 
-const MODULE_STATE_COPY: Record<PartnerModuleState, string> = {
-  ON: 'In use',
-  OFF: 'Switched off',
-  LOCKED: 'Not in your plan',
+/**
+ * The badge copy, by state. Catalogue keys rather than sentences: the STATE is
+ * an enum the server and `moduleStateOf` both read, so only the label moves.
+ */
+const MODULE_STATE_KEY: Record<PartnerModuleState, string> = {
+  ON: 'settings.modules.stateOn',
+  OFF: 'settings.modules.stateOff',
+  LOCKED: 'settings.modules.stateLocked',
 };
 
 export default function PartnerModulesScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
@@ -106,52 +112,51 @@ export default function PartnerModulesScreen() {
       // More menu, and every open screen's `can()`/`hasModule()`.
       await queryClient.invalidateQueries({ queryKey: qk.partner.modules() });
       refreshEntitlements();
-      Alert.alert('Saved', 'Your modules are updated.');
+      Alert.alert(t('settings.modules.savedTitle'), t('settings.modules.savedBody'));
     } catch (e: unknown) {
-      Alert.alert('Could not save your modules', apiErrorMessage(e));
+      Alert.alert(t('settings.modules.couldNotSave'), apiErrorMessage(e));
     } finally {
       setSaving(false);
     }
   };
 
-  if (gating) return <Screen c={c} title="Modules"><Loading c={c} label="Checking your access…" /></Screen>;
+  if (gating) return <Screen c={c} title={t('settings.modules.title')}><Loading c={c} label={t('settings.modules.checkingAccess')} /></Screen>;
 
   if (!mayManage) {
     return (
-      <Screen c={c} title="Modules">
-        <ErrorBlock
-          c={c}
-          message="Switching a module on or off changes what the whole business sells, so it needs the Settings permission at &quot;can change&quot;. Ask the owner if you need this."
-        />
+      <Screen c={c} title={t('settings.modules.title')}>
+        <ErrorBlock c={c} message={t('settings.modules.noPermission')} />
       </Screen>
     );
   }
 
   if (query.isError) {
-    return <Screen c={c} title="Modules"><ErrorBlock c={c} message={apiErrorMessage(query.error, 'We could not load your modules.')} onRetry={() => query.refetch()} /></Screen>;
+    return <Screen c={c} title={t('settings.modules.title')}><ErrorBlock c={c} message={apiErrorMessage(query.error, t('settings.modules.couldNotLoad'))} onRetry={() => query.refetch()} /></Screen>;
   }
 
-  if (query.isPending) return <Screen c={c} title="Modules"><Loading c={c} label="Loading your modules…" /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('settings.modules.title')}><Loading c={c} label={t('settings.modules.loadingModules')} /></Screen>;
 
   return (
     <Screen
       c={c}
-      title="Modules"
-      subtitle="Choose what this business uses"
+      title={t('settings.modules.title')}
+      subtitle={t('settings.modules.subtitle')}
       floating={
         dirty ? (
           <View style={[styles.bottomBar, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
-            <Button onPress={() => setChosen(baseline)} disabled={saving}>Undo</Button>
+            <Button onPress={() => setChosen(baseline)} disabled={saving}>{t('settings.modules.undo')}</Button>
             <Button mode="contained" onPress={save} loading={saving} disabled={saving} style={{ flex: 1 }}>
-              Save changes
+              {t('settings.modules.saveChanges')}
             </Button>
           </View>
         ) : undefined
       }
     >
       {PARTNER_MODULES.map((key) => {
-        const info = PARTNER_MODULE_INFO[key];
         const state = stateOf(key);
+        // `key` is the enum the server stores; only its LABEL is translated.
+        const label = t(`modules.${key}.label`);
+        const blurb = t(`modules.${key}.blurb`);
         const locked = state === 'LOCKED';
         return (
           <Card
@@ -162,7 +167,7 @@ export default function PartnerModulesScreen() {
             <View style={styles.headerRow}>
               <View style={{ flex: 1 }}>
                 <View style={styles.titleRow}>
-                  <Text style={{ fontSize: 15, fontWeight: '600', color: c.textPrimary }}>{info.label}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: c.textPrimary }}>{label}</Text>
                   <Chip
                     compact
                     style={[
@@ -176,10 +181,10 @@ export default function PartnerModulesScreen() {
                       color: state === 'ON' ? c.primary : state === 'OFF' ? c.textSecondary : palette.coral[600],
                     }}
                   >
-                    {MODULE_STATE_COPY[state]}
+                    {t(MODULE_STATE_KEY[state])}
                   </Chip>
                 </View>
-                <Text style={{ fontSize: 12.5, color: c.textSecondary, marginTop: 4, lineHeight: 17 }}>{info.blurb}</Text>
+                <Text style={{ fontSize: 12.5, color: c.textSecondary, marginTop: 4, lineHeight: 17 }}>{blurb}</Text>
               </View>
 
               {locked ? (
@@ -192,8 +197,7 @@ export default function PartnerModulesScreen() {
             {locked && (
               <View style={[styles.lockedFooter, { borderTopColor: palette.coral[100] }]}>
                 <Text style={{ fontSize: 11.5, color: palette.coral[600], flex: 1, lineHeight: 16 }}>
-                  Your current plan does not include this. Ask your ResiSmart contact to upgrade your plan —
-                  it switches on for everyone here straight away.
+                  {t('settings.modules.lockedNote')}
                 </Text>
               </View>
             )}
@@ -202,8 +206,7 @@ export default function PartnerModulesScreen() {
       })}
 
       <Text style={{ fontSize: 11, color: c.textDisabled, lineHeight: 16 }}>
-        Switching a module off does not change anybody&apos;s role. The permissions for it simply stop being
-        offered until it is back on, so a month away from Orders does not quietly reset who may handle them.
+        {t('settings.modules.footNote')}
       </Text>
     </Screen>
   );

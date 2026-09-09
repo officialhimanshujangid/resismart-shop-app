@@ -17,6 +17,7 @@ import { router } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '../../src/context/AuthContext';
 import {
@@ -89,41 +90,37 @@ import {
  * business rather than typing something they already know.
  */
 
-const STEPS = [
-  { n: 1, label: 'You' },
-  { n: 2, label: 'Where' },
-  { n: 3, label: 'What' },
-  { n: 4, label: 'How' },
-  { n: 5, label: 'Papers' },
-] as const;
+/**
+ * The five steps, as NUMBERS. The rail label is looked up per render — see the
+ * `t('auth.register.step…')` call in `StepRail`.
+ */
+const STEPS = [1, 2, 3, 4, 5] as const;
 
-const KIND_COPY: Record<PartnerKind, { title: string; blurb: string; icon: string }> = {
-  SERVICE: { title: 'Services', blurb: 'People book your time — repairs, cleaning, tuition.', icon: 'wrench-outline' },
-  RETAIL: { title: 'Products', blurb: 'People buy things from you — a shop or a counter.', icon: 'storefront-outline' },
-  BOTH: { title: 'Both', blurb: 'You sell products and you take bookings.', icon: 'star-four-points-outline' },
+/** Icon per `PartnerKind`. The title and blurb are catalogue keys, built from the kind. */
+const KIND_ICON: Record<PartnerKind, string> = {
+  SERVICE: 'wrench-outline',
+  RETAIL: 'storefront-outline',
+  BOTH: 'star-four-points-outline',
 };
 
 const RADIUS_CHOICES = [2, 5, 10, 15, 25, 50];
 
-const DOC_TYPES: { value: PartnerDocType; label: string }[] = [
-  { value: 'GST', label: 'GST certificate' },
-  { value: 'PAN', label: 'PAN card' },
-  { value: 'LICENSE', label: 'Licence' },
-  { value: 'SHOP_ACT', label: 'Shop act' },
-  { value: 'OTHER', label: 'Something else' },
-];
+/** The document TYPES, in offer order. Values are the server's enum; labels are looked up. */
+const DOC_TYPES: PartnerDocType[] = ['GST', 'PAN', 'LICENSE', 'SHOP_ACT', 'OTHER'];
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Seven days, by INDEX — `day` is what the server stores. Names come from `common.days`. */
+const DAY_INDEXES = [0, 1, 2, 3, 4, 5, 6];
 
 /** A sensible week for a shop, so nobody has to fill in seven rows to get going. */
 const defaultWeek = (): DayTiming[] =>
-  DAY_NAMES.map((_, day) => ({
+  DAY_INDEXES.map((day) => ({
     day,
     isOpen: day !== 0,
     windows: day !== 0 ? [{ from: '09:00', to: '21:00' }] : [],
   }));
 
 export default function RegisterScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { isAuthenticated, logout } = useAuth();
@@ -210,7 +207,7 @@ export default function RegisterScreen() {
     partner?.status === 'REJECTED'
       ? partner.verification?.note
         || partner.rejectionReason
-        || 'Our team asked for a correction before this can go live.'
+        || t('auth.register.defaultRejection')
       : '';
 
   /**
@@ -221,21 +218,21 @@ export default function RegisterScreen() {
    */
   const confirmSignOut = useCallback(() => {
     Alert.alert(
-      'Sign out',
-      'Everything you have saved so far is kept. You can sign back in and carry on from here.',
+      t('auth.register.signOutTitle'),
+      t('auth.register.signOutBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: () => { void logout(); } },
+        { text: t('auth.register.cancel'), style: 'cancel' },
+        { text: t('auth.register.signOut'), style: 'destructive', onPress: () => { void logout(); } },
       ],
     );
-  }, [logout]);
+  }, [logout, t]);
 
   if (isAuthenticated && statusLoading && !landed) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]}>
         <View style={styles.centre}>
           <ActivityIndicator />
-          <Text style={{ color: c.textSecondary, marginTop: 12 }}>Finding where you left off…</Text>
+          <Text style={{ color: c.textSecondary, marginTop: 12 }}>{t('auth.register.findingProgress')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -249,7 +246,7 @@ export default function RegisterScreen() {
             isDark={isDark}
             variant="brand"
             logoSize="small"
-            subtitle="Set up your business — saved as you go."
+            subtitle={t('auth.register.heroSubtitle')}
             style={styles.brandHero}
           />
 
@@ -259,7 +256,7 @@ export default function RegisterScreen() {
             <View style={[styles.notice, { backgroundColor: c.surface, borderColor: c.warning }]}>
               <MaterialCommunityIcons name="alert-outline" size={20} color={c.warning} />
               <View style={styles.flex}>
-                <Text style={[styles.noticeTitle, { color: c.textPrimary }]}>Before we can approve this</Text>
+                <Text style={[styles.noticeTitle, { color: c.textPrimary }]}>{t('auth.register.rejectionHeading')}</Text>
                 {/* The reviewer's own words, not a paraphrase — this is the
                     sentence support will quote back to them. */}
                 <Text style={[styles.note, { color: c.textSecondary }]}>{rejectionNote}</Text>
@@ -296,7 +293,7 @@ export default function RegisterScreen() {
           {step === 1 && !isAuthenticated && (
             <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.footerLink}>
               <Text style={{ color: c.textSecondary }}>
-                Already registered? <Text style={{ color: c.primary, fontWeight: '600' }}>Sign in</Text>
+                {t('auth.register.alreadyRegistered')}<Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.signIn')}</Text>
               </Text>
             </TouchableOpacity>
           )}
@@ -308,13 +305,13 @@ export default function RegisterScreen() {
             <View style={styles.exitRow}>
               {step > 1 ? (
                 <TouchableOpacity onPress={() => setStep((s) => Math.max(1, s - 1))} style={styles.footerLink}>
-                  <Text style={{ color: c.primary, fontWeight: '600' }}>← Back a step</Text>
+                  <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.backAStep')}</Text>
                 </TouchableOpacity>
               ) : (
                 <View />
               )}
               <TouchableOpacity onPress={confirmSignOut} style={styles.footerLink}>
-                <Text style={{ color: c.textSecondary }}>Sign out</Text>
+                <Text style={{ color: c.textSecondary }}>{t('auth.register.signOut')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -351,17 +348,18 @@ function StepRail({
   c: ColorScheme;
   onJump: (n: number) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.rail}>
-      {STEPS.map((s) => {
-        const done = s.n < current;
-        const active = s.n === current;
-        const reachable = s.n <= furthest;
+      {STEPS.map((n) => {
+        const done = n < current;
+        const active = n === current;
+        const reachable = n <= furthest;
         return (
           <TouchableOpacity
-            key={s.n}
+            key={n}
             style={styles.railItem}
-            onPress={() => onJump(s.n)}
+            onPress={() => onJump(n)}
             disabled={!reachable}
             activeOpacity={reachable ? 0.7 : 1}
           >
@@ -377,7 +375,7 @@ function StepRail({
               {done ? (
                 <MaterialCommunityIcons name="check" size={14} color={c.textInverse} />
               ) : (
-                <Text style={[styles.railNum, { color: active ? c.textInverse : c.textDisabled }]}>{s.n}</Text>
+                <Text style={[styles.railNum, { color: active ? c.textInverse : c.textDisabled }]}>{n}</Text>
               )}
             </View>
             {/* Five labels sharing the width of the screen. Capped at 1.3× and
@@ -388,7 +386,7 @@ function StepRail({
               numberOfLines={1}
               maxFontSizeMultiplier={1.3}
             >
-              {s.label}
+              {t(`auth.register.step${n}`)}
             </Text>
           </TouchableOpacity>
         );
@@ -455,6 +453,7 @@ function StepIdentity({
   isAuthenticated,
   onSaved,
 }: StepProps & { isAuthenticated: boolean }) {
+  const { t } = useTranslation();
   const { requestLoginOtp } = useAuth();
   const { data: existing } = useQuery({
     queryKey: qk.partner.me(),
@@ -492,10 +491,10 @@ function StepIdentity({
   if (isAuthenticated) {
     return (
       <View style={styles.step}>
-        <StepHeading c={c} title="Your business" blurb="The name residents will see when they find you." />
-        <AppInput label="Business name" value={name} onChangeText={setName} leftIcon="store-outline" />
+        <StepHeading c={c} title={t('auth.register.resumeTitle')} blurb={t('auth.register.resumeBlurb')} />
+        <AppInput label={t('auth.register.businessName')} value={name} onChangeText={setName} leftIcon="store-outline" />
         <AppButton
-          label="Save and continue"
+          label={t('auth.register.saveAndContinue')}
           loading={busy}
           disabled={name.trim().length < 2}
           onPress={async () => {
@@ -532,14 +531,16 @@ function StepIdentity({
     if (googling) return;
     setGoogling(true);
     try {
-      const idToken = await getGoogleIdToken();
+      const idToken = await getGoogleIdToken(t);
       const res = await authApi.googleVerifyContact(idToken);
       setEmail(res.data.email);
-      setTokens((t) => ({ ...t, email: res.data.verificationToken }));
-      show('Email verified with Google. Now verify your phone.');
+      // `prev`, not `t` — `t` is the translator in this scope, and the very
+      // next line calls it.
+      setTokens((prev) => ({ ...prev, email: res.data.verificationToken }));
+      show(t('auth.register.googleVerified'));
     } catch (e) {
       if (e instanceof GoogleCancelled) return;
-      show(apiErrorMessage(e, (e as Error)?.message ?? 'Could not verify with Google.'), true);
+      show(apiErrorMessage(e, (e as Error)?.message ?? t('auth.register.googleFailed')), true);
     } finally {
       setGoogling(false);
     }
@@ -596,7 +597,7 @@ function StepIdentity({
       setPhoneCode('');
       return true;
     } catch (e) {
-      const failed = otpDeliveryFailure(e);
+      const failed = otpDeliveryFailure(e, t);
       if (failed) {
         setPhoneDelivery({
           message: null,
@@ -669,7 +670,7 @@ function StepIdentity({
       // The business exists but there is no session, and steps 2–5 need one.
       const otp = await requestLoginOtp(phone.trim());
       if (!otp.success || !otp.delivery) {
-        show('Your business is created. Please sign in to finish setting it up.', true);
+        show(t('auth.register.createdSignIn'), true);
         setTimeout(() => router.replace('/(auth)/login'), 2000);
         return;
       }
@@ -714,13 +715,13 @@ function StepIdentity({
     <View style={styles.step}>
       <StepHeading
         c={c}
-        title="Start your business profile"
-        blurb="Five short steps. Everything is saved as you go, so you can stop and come back."
+        title={t('auth.register.step1Title')}
+        blurb={t('auth.register.step1Blurb')}
       />
 
-      <AppInput label="Business name" value={name} onChangeText={setName} leftIcon="store-outline" disabled={sent} />
+      <AppInput label={t('auth.register.businessName')} value={name} onChangeText={setName} leftIcon="store-outline" disabled={sent} />
       <AppInput
-        label="Mobile number"
+        label={t('auth.register.mobile')}
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
@@ -728,7 +729,7 @@ function StepIdentity({
         autoCapitalize="none"
       />
       <AppInput
-        label="Email address"
+        label={t('auth.register.email')}
         value={email}
         onChangeText={setEmail}
         keyboardType="email-address"
@@ -736,7 +737,7 @@ function StepIdentity({
         leftIcon="email-outline"
       />
       <AppInput
-        label="Password"
+        label={t('auth.register.password')}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -747,7 +748,7 @@ function StepIdentity({
       {!sent ? (
         <>
           <AppButton
-            label="Send verification codes"
+            label={t('auth.register.sendCodes')}
             loading={busy}
             disabled={!canSend || !!sendingPhone}
             // Wrapped: Paper hands `onPress` a gesture event, which would arrive
@@ -782,7 +783,7 @@ function StepIdentity({
           {isGoogleAvailable() && !tokens.email ? (
             <View style={{ marginTop: 12 }}>
               <AppButton
-                label="Verify email with Google"
+                label={t('auth.register.verifyWithGoogle')}
                 onPress={verifyEmailWithGoogle}
                 loading={googling}
                 icon="google"
@@ -798,24 +799,24 @@ function StepIdentity({
               notice below the boxes, next to the buttons that can move it. */}
           <Text style={[styles.note, { color: c.textSecondary }]}>{emailDelivery}</Text>
           <Text style={[styles.note, { color: c.textSecondary }]}>
-            Both are verified before the business is created — they both become ways to sign in.
+            {t('auth.register.bothVerified')}
           </Text>
           <AppInput
-            label="Code sent to your email"
+            label={t('auth.register.emailCode')}
             value={emailCode}
             onChangeText={setEmailCode}
             keyboardType="numeric"
             leftIcon="email-check-outline"
           />
           <AppInput
-            label="Code sent to your phone"
+            label={t('auth.register.phoneCode')}
             value={phoneCode}
             onChangeText={setPhoneCode}
             keyboardType="numeric"
             leftIcon="cellphone-check"
           />
           <AppButton
-            label="Create my business"
+            label={t('auth.register.createBusiness')}
             loading={busy}
             disabled={emailCode.length !== 6 || phoneCode.length !== 6}
             onPress={createAccount}
@@ -839,7 +840,7 @@ function StepIdentity({
             disabled={busy || !!sendingPhone}
             style={styles.footerLink}
           >
-            <Text style={{ color: c.primary, fontWeight: '600' }}>Send both codes again</Text>
+            <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.resendBoth')}</Text>
           </TouchableOpacity>
         </>
       )}
@@ -874,6 +875,7 @@ function StepIdentity({
  * may be completed.
  */
 function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
+  const { t } = useTranslation();
   const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
 
   const [address, setAddress] = useState('');
@@ -952,7 +954,7 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
 
   return (
     <View style={styles.step}>
-      <StepHeading c={c} title="Where you are" blurb="Residents find you by distance, so the pin matters more than the address." />
+      <StepHeading c={c} title={t('auth.register.step2Title')} blurb={t('auth.register.step2Blurb')} />
 
       {/* No marker until the partner places one, so "the map opened" and "the
           pin is set" can never look the same. `valid` below reads `coords`, not
@@ -967,14 +969,14 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
             carries the decimal point AND the minus sign on both platforms, and a
             coordinate needs both. */}
         <AppInput
-          label="Latitude"
+          label={t('auth.register.latitude')}
           value={latText}
           onChangeText={setLatText}
           keyboardType="numeric"
           style={styles.coordHalf}
         />
         <AppInput
-          label="Longitude"
+          label={t('auth.register.longitude')}
           value={lngText}
           onChangeText={setLngText}
           keyboardType="numeric"
@@ -984,16 +986,16 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
       <Text style={[styles.note, { color: c.textSecondary }]}>
         {latText || lngText
           ? coords
-            ? 'That is a valid point on the map.'
-            : 'Latitude is between -90 and 90, longitude between -180 and 180 — and (0, 0) is in the sea.'
-          : 'Typing here moves the pin above, so you can also copy the two numbers out of a maps app.'}
+            ? t('auth.register.pinValid')
+            : t('auth.register.pinInvalid')
+          : t('auth.register.pinEmpty')}
       </Text>
 
-      <AppInput label="Full address" value={address} onChangeText={setAddress} multiline leftIcon="map-outline" />
-      <AppInput label="City" value={city} onChangeText={setCity} leftIcon="city-variant-outline" />
-      <AppInput label="State" value={state} onChangeText={setState} leftIcon="map-marker-outline" />
+      <AppInput label={t('auth.register.fullAddress')} value={address} onChangeText={setAddress} multiline leftIcon="map-outline" />
+      <AppInput label={t('auth.register.city')} value={city} onChangeText={setCity} leftIcon="city-variant-outline" />
+      <AppInput label={t('auth.register.state')} value={state} onChangeText={setState} leftIcon="map-marker-outline" />
       <AppInput
-        label="Pincode"
+        label={t('auth.register.pincode')}
         value={pincode}
         onChangeText={setPincode}
         keyboardType="numeric"
@@ -1001,7 +1003,7 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
       />
 
       <AppButton
-        label="Save and continue"
+        label={t('auth.register.saveAndContinue')}
         loading={busy}
         disabled={!valid}
         onPress={async () => {
@@ -1034,6 +1036,7 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
 // ------------------------------------------------------------------- step 3
 
 function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
+  const { t } = useTranslation();
   const online = useIsOnline();
   const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
   const { data: categories, isPending } = useQuery({
@@ -1080,11 +1083,11 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
 
   return (
     <View style={styles.step}>
-      <StepHeading c={c} title="What you do" blurb="This decides what residents can search for, and which screens you get." />
+      <StepHeading c={c} title={t('auth.register.step3Title')} blurb={t('auth.register.step3Blurb')} />
 
       <View style={styles.cards}>
         {PARTNER_KINDS.map((k) => {
-          const copy = KIND_COPY[k];
+          // `k` is the enum posted as `kind`; only the words are looked up.
           const active = kind === k;
           return (
             <TouchableOpacity
@@ -1096,13 +1099,13 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
               ]}
             >
               <MaterialCommunityIcons
-                name={copy.icon as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
+                name={KIND_ICON[k] as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
                 size={26}
                 color={active ? c.primary : c.textDisabled}
               />
               <View style={styles.flex}>
-                <Text style={[styles.choiceTitle, { color: c.textPrimary }]}>{copy.title}</Text>
-                <Text style={[styles.note, { color: c.textSecondary }]}>{copy.blurb}</Text>
+                <Text style={[styles.choiceTitle, { color: c.textPrimary }]}>{t(`auth.register.kind${k}`)}</Text>
+                <Text style={[styles.note, { color: c.textSecondary }]}>{t(`auth.register.kind${k}Blurb`)}</Text>
               </View>
             </TouchableOpacity>
           );
@@ -1110,7 +1113,7 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
       </View>
 
       <Divider style={styles.divider} />
-      <Text style={[styles.label, { color: c.textPrimary }]}>Pick up to 10 categories</Text>
+      <Text style={[styles.label, { color: c.textPrimary }]}>{t('auth.register.pickCategories')}</Text>
       {/*
         A bare spinner here was a dead end on the registration path.
 
@@ -1127,7 +1130,7 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
         <View style={styles.spinner}>
           <ActivityIndicator />
           <Text style={[styles.note, { color: c.textSecondary, marginTop: 8, textAlign: 'center' }]}>
-            {online ? 'Loading the list…' : 'No connection — waiting for the network…'}
+            {online ? t('auth.register.loadingList') : t('auth.register.offlineList')}
           </Text>
         </View>
       ) : (
@@ -1141,13 +1144,12 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
       )}
       {isPending && !online && (
         <Text style={[styles.note, { color: c.textSecondary }]}>
-          We cannot load the list of work types without a connection. Nothing you have filled in is lost —
-          come back to this step once you are back on the network.
+          {t('auth.register.offlineListNote')}
         </Text>
       )}
 
       <AppButton
-        label="Save and continue"
+        label={t('auth.register.saveAndContinue')}
         loading={busy}
         disabled={picked.length === 0}
         onPress={async () => {
@@ -1179,6 +1181,7 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
  * a change of mind and be believed by the discovery query later.
  */
 function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
+  const { t } = useTranslation();
   const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
   const [modes, setModes] = useState<PartnerServiceMode[]>([]);
   const [radius, setRadius] = useState<number>(5);
@@ -1191,25 +1194,13 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
     if (p.serviceRadiusKm) setRadius(p.serviceRadiusKm);
   }, [existing]);
 
-  const choices: { modes: PartnerServiceMode[]; title: string; blurb: string; icon: string }[] = [
-    {
-      modes: ['AT_PARTNER'],
-      title: 'Customers come to me',
-      blurb: 'A shop, a clinic, a salon. Residents see your address and travel to you.',
-      icon: 'storefront-outline',
-    },
-    {
-      modes: ['AT_CUSTOMER'],
-      title: 'I go to the customer',
-      blurb: 'Home visits. Residents inside the distance you set below can book you.',
-      icon: 'moped-outline',
-    },
-    {
-      modes: ['AT_PARTNER', 'AT_CUSTOMER'],
-      title: 'Both',
-      blurb: 'Some jobs at your place, some at theirs. Residents choose when they book.',
-      icon: 'swap-horizontal',
-    },
+  // `modes` is the `PartnerServiceMode` enum the server stores and discovery
+  // tests; `key` names the copy, and `id` is a stable React key that does not
+  // change with the language the way a translated title would.
+  const choices: { id: string; modes: PartnerServiceMode[]; key: string; icon: string }[] = [
+    { id: 'atPartner', modes: ['AT_PARTNER'], key: 'AtPartner', icon: 'storefront-outline' },
+    { id: 'atCustomer', modes: ['AT_CUSTOMER'], key: 'AtCustomer', icon: 'moped-outline' },
+    { id: 'both', modes: ['AT_PARTNER', 'AT_CUSTOMER'], key: 'Both', icon: 'swap-horizontal' },
   ];
 
   const same = (a: PartnerServiceMode[], b: PartnerServiceMode[]) =>
@@ -1220,8 +1211,8 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
     <View style={styles.step}>
       <StepHeading
         c={c}
-        title="How you serve customers"
-        blurb="This one changes what the app does for you, so it is worth a moment."
+        title={t('auth.register.step4Title')}
+        blurb={t('auth.register.step4Blurb')}
       />
 
       <View style={styles.cards}>
@@ -1229,7 +1220,7 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
           const active = same(modes, choice.modes);
           return (
             <TouchableOpacity
-              key={choice.title}
+              key={choice.id}
               onPress={() => setModes(choice.modes)}
               style={[
                 styles.choiceCard,
@@ -1243,8 +1234,8 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
                 color={active ? c.primary : c.textDisabled}
               />
               <View style={styles.flex}>
-                <Text style={[styles.choiceTitle, { color: c.textPrimary }]}>{choice.title}</Text>
-                <Text style={[styles.note, { color: c.textSecondary }]}>{choice.blurb}</Text>
+                <Text style={[styles.choiceTitle, { color: c.textPrimary }]}>{t(`auth.register.mode${choice.key}`)}</Text>
+                <Text style={[styles.note, { color: c.textSecondary }]}>{t(`auth.register.mode${choice.key}Blurb`)}</Text>
               </View>
               <MaterialCommunityIcons
                 name={active ? 'radiobox-marked' : 'radiobox-blank'}
@@ -1258,11 +1249,11 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
 
       {travels && (
         <>
-          <Text style={[styles.label, { color: c.textPrimary }]}>How far do you travel?</Text>
+          <Text style={[styles.label, { color: c.textPrimary }]}>{t('auth.register.howFar')}</Text>
           <View style={styles.chips}>
             {RADIUS_CHOICES.map((km) => (
               <Chip key={km} selected={radius === km} onPress={() => setRadius(km)} style={styles.chip}>
-                {km} km
+                {t('auth.register.km', { km })}
               </Chip>
             ))}
           </View>
@@ -1270,7 +1261,7 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
       )}
 
       <AppButton
-        label="Save and continue"
+        label={t('auth.register.saveAndContinue')}
         loading={busy}
         disabled={modes.length === 0}
         onPress={async () => {
@@ -1312,6 +1303,7 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
  * the same dead end in longer words.
  */
 function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { onJump: (n: number) => void }) {
+  const { t } = useTranslation();
   const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
   const queryClient = useQueryClient();
 
@@ -1369,9 +1361,9 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
       });
       setDocs((d) => [...d, res.doc]);
       queryClient.setQueryData(qk.onboarding.status(), res.onboarding);
-      show('Document attached.');
+      show(t('auth.register.docAttached'));
     } catch (e) {
-      show(apiErrorMessage(e, 'That upload did not go through.'), true);
+      show(apiErrorMessage(e, t('auth.register.uploadFailed')), true);
     } finally {
       setUploading(false);
     }
@@ -1406,7 +1398,7 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
       });
       const res = await partnerApi.submitForReview();
       onSaved(res.onboarding);
-      show('Sent for verification. We will let you know as soon as it has been reviewed.');
+      show(t('auth.register.submitted'));
     } catch (e) {
       const body = (e as { response?: { data?: { missing?: OnboardingStatus['missing'] } } }).response?.data;
       if (body?.missing?.length) setMissing(body.missing);
@@ -1420,16 +1412,15 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
     <View style={styles.step}>
       <StepHeading
         c={c}
-        title="Papers and opening hours"
-        blurb="One document is enough to start. We check it before your profile goes live."
+        title={t('auth.register.step5Title')}
+        blurb={t('auth.register.step5Blurb')}
       />
 
-      <AppInput label="GSTIN (optional)" value={gst} onChangeText={setGst} autoCapitalize="characters" leftIcon="file-percent-outline" />
-      <AppInput label="PAN (optional)" value={pan} onChangeText={setPan} autoCapitalize="characters" leftIcon="card-account-details-outline" />
-      <AppInput label="Licence number (optional)" value={licence} onChangeText={setLicence} leftIcon="license" />
+      <AppInput label={t('auth.register.gstin')} value={gst} onChangeText={setGst} autoCapitalize="characters" leftIcon="file-percent-outline" />
+      <AppInput label={t('auth.register.pan')} value={pan} onChangeText={setPan} autoCapitalize="characters" leftIcon="card-account-details-outline" />
+      <AppInput label={t('auth.register.licence')} value={licence} onChangeText={setLicence} leftIcon="license" />
       <Text style={[styles.note, { color: c.textSecondary }]}>
-        We store only the first and last two characters of a PAN. The document you upload is the evidence a
-        reviewer actually looks at.
+        {t('auth.register.panNote')}
       </Text>
 
       {/**
@@ -1444,16 +1435,16 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
       {kycRequired && (
         <>
           <Divider style={styles.divider} />
-          <Text style={[styles.label, { color: c.textPrimary }]}>Documents</Text>
+          <Text style={[styles.label, { color: c.textPrimary }]}>{t('auth.register.documents')}</Text>
           <View style={styles.chips}>
-            {DOC_TYPES.map((t) => (
-              <Chip key={t.value} selected={docType === t.value} onPress={() => setDocType(t.value)} style={styles.chip}>
-                {t.label}
+            {DOC_TYPES.map((type) => (
+              <Chip key={type} selected={docType === type} onPress={() => setDocType(type)} style={styles.chip}>
+                {t(`auth.register.doc${type}`)}
               </Chip>
             ))}
           </View>
           <AppButton
-            label={uploading ? 'Uploading…' : 'Attach a photo or scan'}
+            label={uploading ? t('auth.register.uploading') : t('auth.register.attach')}
             mode="outlined"
             icon="upload"
             loading={uploading}
@@ -1474,14 +1465,16 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
       )}
 
       <Divider style={styles.divider} />
-      <Text style={[styles.label, { color: c.textPrimary }]}>Opening hours</Text>
+      <Text style={[styles.label, { color: c.textPrimary }]}>{t('auth.register.openingHours')}</Text>
       {week.map((day, i) => (
         <View key={day.day} style={[styles.dayRow, { borderColor: c.divider }]}>
           <Text style={[styles.dayName, { color: c.textPrimary }]} numberOfLines={1}>
-            {DAY_NAMES[day.day]}
+            {t(`common.days.${day.day}`)}
           </Text>
           <Text style={[styles.flex, { color: c.textSecondary }]}>
-            {day.isOpen ? day.windows.map((w) => `${w.from}–${w.to}`).join(', ') || 'No hours set' : 'Closed'}
+            {day.isOpen
+              ? day.windows.map((w) => `${w.from}–${w.to}`).join(', ') || t('auth.register.noHoursSet')
+              : t('auth.register.closed')}
           </Text>
           <Switch
             value={day.isOpen}
@@ -1503,7 +1496,7 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
 
       {missing.length > 0 && (
         <View style={[styles.missing, { backgroundColor: c.surface, borderColor: c.error }]}>
-          <Text style={[styles.label, { color: c.error }]}>Still needed — tap one to fix it</Text>
+          <Text style={[styles.label, { color: c.error }]}>{t('auth.register.stillNeeded')}</Text>
           {missing.map((m) => (
             <TouchableOpacity
               key={`${m.step}-${m.field}`}
@@ -1511,7 +1504,7 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
               style={styles.missingRow}
             >
               <Text style={[styles.flex, { color: c.textSecondary }]}>
-                • {m.message} <Text style={{ color: c.primary, fontWeight: '600' }}>Step {m.step}</Text>
+                • {m.message} <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.stepNumber', { step: m.step })}</Text>
               </Text>
               <MaterialCommunityIcons name="chevron-right" size={18} color={c.textDisabled} />
             </TouchableOpacity>
@@ -1519,7 +1512,7 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
         </View>
       )}
 
-      <AppButton label="Send for verification" loading={busy} onPress={saveAndSubmit} />
+      <AppButton label={t('auth.register.submit')} loading={busy} onPress={saveAndSubmit} />
     </View>
   );
 }

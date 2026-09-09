@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View, useColorScheme, Pressable } from 'react-native';
 import { Text, Switch, HelperText, IconButton, Portal, Modal } from 'react-native-paper';
 import { router, useLocalSearchParams, Href } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
@@ -34,6 +35,7 @@ import { BarcodeScannerView, ProductScanOutcome } from '../../../src/features/sc
  * (name, price, unit…) is lost while the camera is open.
  */
 export default function CreateProductScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const params = useLocalSearchParams<{ barcode?: string; returnTo?: string }>();
@@ -75,12 +77,12 @@ export default function CreateProductScreen() {
       // that the hard way after typing out a name and a price.
       setScannerOpen(false);
       Alert.alert(
-        'Already in your catalogue',
-        `"${outcome.product.name}" already carries this barcode.`,
+        t('catalog.form.barcodeTakenTitle'),
+        t('catalog.form.barcodeTakenBody', { name: outcome.product.name }),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           {
-            text: 'Open it',
+            text: t('catalog.form.barcodeTakenOpen'),
             onPress: () => router.push({ pathname: '/catalog/[id]', params: { id: outcome.product._id } }),
           },
         ],
@@ -97,8 +99,8 @@ export default function CreateProductScreen() {
     // person does after an error anyway — re-arms it. Deliberately not forced
     // by closing and reopening the modal here: that would throw away the
     // camera and the torch state for what is usually a one-second blip.
-    Alert.alert('Could not check that barcode', outcome.message);
-  }, []);
+    Alert.alert(t('catalog.form.barcodeCheckFailed'), outcome.message);
+  }, [t]);
 
   const goBackToOrigin = () => {
     if (params.returnTo) {
@@ -127,21 +129,21 @@ export default function CreateProductScreen() {
 
   const submit = () => {
     const nextErrors: Record<string, string> = {};
-    if (!name.trim()) nextErrors.name = 'A product needs a name.';
+    if (!name.trim()) nextErrors.name = t('catalog.form.nameRequired');
     const sellPaise = parseRupeesToPaise(sellPrice);
-    if (sellPaise === null) nextErrors.sellPrice = 'Enter a selling price.';
+    if (sellPaise === null) nextErrors.sellPrice = t('catalog.form.sellPriceRequired');
     const mrpPaise = mrp.trim() ? parseRupeesToPaise(mrp) : 0;
-    if (mrp.trim() && mrpPaise === null) nextErrors.mrp = 'That does not look like an amount.';
+    if (mrp.trim() && mrpPaise === null) nextErrors.mrp = t('catalog.form.amountInvalid');
     if (mrpPaise !== null && mrpPaise > 0 && sellPaise !== null && sellPaise > mrpPaise) {
-      nextErrors.sellPrice = 'Selling price cannot be above the MRP.';
+      nextErrors.sellPrice = t('catalog.form.sellAboveMrp');
     }
     const stockQtyNum = Number(stockQty || '0');
-    if (!Number.isFinite(stockQtyNum) || stockQtyNum < 0) nextErrors.stockQty = 'Opening stock cannot be negative.';
+    if (!Number.isFinite(stockQtyNum) || stockQtyNum < 0) nextErrors.stockQty = t('catalog.form.stockNegative');
     const taxRateNum = Number(taxRate || '0');
-    if (!Number.isFinite(taxRateNum) || taxRateNum < 0 || taxRateNum > 100) nextErrors.taxRate = 'Enter 0–100.';
+    if (!Number.isFinite(taxRateNum) || taxRateNum < 0 || taxRateNum > 100) nextErrors.taxRate = t('catalog.form.taxRateRange');
     const lowStockNum = lowStockAt.trim() ? Number(lowStockAt) : undefined;
     if (lowStockAt.trim() && (!Number.isFinite(lowStockNum) || (lowStockNum as number) < 0)) {
-      nextErrors.lowStockAt = 'Enter a whole number.';
+      nextErrors.lowStockAt = t('catalog.form.wholeNumber');
     }
 
     setErrors(nextErrors);
@@ -174,10 +176,10 @@ export default function CreateProductScreen() {
         onSuccess: goBackToOrigin,
         onError: (e: unknown) => {
           if (isUpgradeRequired(e)) {
-            Alert.alert('Plan limit reached', apiErrorMessage(e));
+            Alert.alert(t('catalog.form.planLimitTitle'), apiErrorMessage(e));
             return;
           }
-          Alert.alert('Could not add product', apiErrorMessage(e));
+          Alert.alert(t('catalog.form.createFailed'), apiErrorMessage(e));
         },
       },
     );
@@ -187,7 +189,7 @@ export default function CreateProductScreen() {
     return (
       <View style={[styles.deniedBox, { backgroundColor: c.background }]}>
         <Text style={{ color: c.textSecondary, textAlign: 'center' }}>
-          Your role does not include managing the catalog.
+          {t('catalog.form.deniedBody')}
         </Text>
       </View>
     );
@@ -197,22 +199,31 @@ export default function CreateProductScreen() {
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.body}>
       <UsageMeterBar cap={cap} c={c} />
 
-      <AppInput label="Product name" value={name} onChangeText={setName} error={errors.name} />
+      <AppInput label={t('catalog.form.name')} value={name} onChangeText={setName} error={errors.name} />
 
       <View style={styles.row2}>
-        <AppInput label="Selling price (₹)" value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" error={errors.sellPrice} style={styles.half} />
-        <AppInput label="MRP (₹, optional)" value={mrp} onChangeText={setMrp} keyboardType="numeric" error={errors.mrp} style={styles.half} />
+        <AppInput label={t('catalog.form.sellPrice')} value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" error={errors.sellPrice} style={styles.half} />
+        <AppInput label={t('catalog.form.mrp')} value={mrp} onChangeText={setMrp} keyboardType="numeric" error={errors.mrp} style={styles.half} />
       </View>
 
       <View style={styles.row2}>
-        <AppInput label="Tax rate %" value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" error={errors.taxRate} style={styles.half} />
+        <AppInput label={t('catalog.form.taxRate')} value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" error={errors.taxRate} style={styles.half} />
         <View style={[styles.half, styles.switchBox]}>
-          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>Price includes tax</Text>
+          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.priceIncludesTax')}</Text>
           <Switch value={taxInclusive} onValueChange={setTaxInclusive} />
         </View>
       </View>
 
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Unit</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('catalog.form.unit')}</Text>
+      {/*
+        The unit codes themselves are NOT translated, and this is the same
+        distinction `features/billing/types.ts` draws between a wire value and a
+        label. `PRODUCT_UNITS` comes from `api-contract.generated.ts`, is sent as
+        `unit` on the product, and is stored on every invoice line — which
+        `billing/[id].tsx` prints back verbatim as server data. A Hindi chip here
+        would mean the picker and the printed bill disagreed about the same
+        product, which is worse than an abbreviation both languages already read.
+      */}
       <View style={styles.unitRow}>
         {PRODUCT_UNITS.map((u) => {
           const active = u === unit;
@@ -232,45 +243,45 @@ export default function CreateProductScreen() {
           hand, and photographing it first is the natural order. Each photo
           uploads as it is picked rather than at save, so a bad connection costs
           one picture instead of the whole form. */}
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Photos</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('catalog.form.photos')}</Text>
       <ProductImages value={images} onChange={setImages} c={c} canManage={canManage} />
 
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Category</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('catalog.form.category')}</Text>
       <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={canManage} />
 
-      <AppInput label="SKU (optional)" value={sku} onChangeText={setSku} autoCapitalize="characters" />
+      <AppInput label={t('catalog.form.sku')} value={sku} onChangeText={setSku} autoCapitalize="characters" />
       <View style={styles.barcodeRow}>
-        <AppInput label="Barcode (optional)" value={barcode} onChangeText={setBarcode} autoCapitalize="characters" style={styles.barcodeInput} />
+        <AppInput label={t('catalog.form.barcode')} value={barcode} onChangeText={setBarcode} autoCapitalize="characters" style={styles.barcodeInput} />
         <IconButton
           icon="barcode-scan"
           mode="outlined"
           size={22}
           onPress={() => setScannerOpen(true)}
-          accessibilityLabel="Scan a barcode"
+          accessibilityLabel={t('catalog.form.scanBarcode')}
           style={styles.scanBtn}
         />
       </View>
-      <AppInput label="HSN code (optional)" value={hsnCode} onChangeText={setHsnCode} />
+      <AppInput label={t('catalog.form.hsn')} value={hsnCode} onChangeText={setHsnCode} />
 
       <View style={[styles.switchBox, { marginTop: 4 }]}>
-        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>Track stock for this product</Text>
+        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.trackStock')}</Text>
         <Switch value={trackStock} onValueChange={setTrackStock} />
       </View>
 
       {trackStock && (
         <View style={styles.row2}>
-          <AppInput label="Opening stock" value={stockQty} onChangeText={setStockQty} keyboardType="numeric" error={errors.stockQty} style={styles.half} />
-          <AppInput label="Low-stock alert at" value={lowStockAt} onChangeText={setLowStockAt} keyboardType="numeric" error={errors.lowStockAt} style={styles.half} />
+          <AppInput label={t('catalog.form.openingStock')} value={stockQty} onChangeText={setStockQty} keyboardType="numeric" error={errors.stockQty} style={styles.half} />
+          <AppInput label={t('catalog.form.lowStockAt')} value={lowStockAt} onChangeText={setLowStockAt} keyboardType="numeric" error={errors.lowStockAt} style={styles.half} />
         </View>
       )}
 
       {cap.atLimit && (
         <HelperText type="error" visible>
-          You are at your plan's product limit — remove or deactivate one first, or ask to upgrade.
+          {t('catalog.form.atLimit')}
         </HelperText>
       )}
 
-      <AppButton label="Save product" onPress={submit} loading={createProduct.isPending} disabled={cap.atLimit} />
+      <AppButton label={t('catalog.form.saveProduct')} onPress={submit} loading={createProduct.isPending} disabled={cap.atLimit} />
 
       <Portal>
         <Modal
@@ -279,10 +290,10 @@ export default function CreateProductScreen() {
           contentContainerStyle={[styles.scannerModal, { backgroundColor: c.background }]}
         >
           <View style={styles.scannerHeader}>
-            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600' }}>Scan barcode</Text>
-            <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel="Done scanning" />
+            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600' }}>{t('catalog.form.scannerTitle')}</Text>
+            <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel={t('catalog.form.scannerDone')} />
           </View>
-          <BarcodeScannerView active={scannerOpen} onResult={handleBarcodeScan} hint="Scan the barcode printed on the pack." />
+          <BarcodeScannerView active={scannerOpen} onResult={handleBarcodeScan} hint={t('catalog.form.scannerHint')} />
         </Modal>
       </Portal>
     </ScrollView>

@@ -5,8 +5,10 @@ import {
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
+import { formatI18nDate } from '../../../src/i18n';
 import { DateField } from '../../../src/components/DateField';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { formatPaise, parseRupeesToPaise } from '../../../src/lib/money';
@@ -18,7 +20,7 @@ import { paymentsApi } from '../../../src/features/payments/payments.api';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { toHref } from '../../../src/features/billing/routeHref';
 import {
-  PAYMENT_MODES, PAYMENT_MODE_LABEL, PaymentDirection, PaymentMode, SETTLEABLE_TYPES, outstandingOf,
+  PAYMENT_MODES, PAYMENT_MODE_LABEL_KEY, PaymentDirection, PaymentMode, SETTLEABLE_TYPES, outstandingOf,
 } from '../../../src/features/payments/types';
 
 /**
@@ -46,6 +48,7 @@ function toIso(value: string): string {
 }
 
 export default function NewPaymentScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const params = useLocalSearchParams<{ direction?: string }>();
@@ -82,7 +85,8 @@ export default function NewPaymentScreen() {
   }, [direction]);
 
   useEffect(() => {
-    const t = setTimeout(async () => {
+    // `handle`, not `t` — this file holds a translator now.
+    const handle = setTimeout(async () => {
       if (!partyQuery.trim()) {
         setPartyResults([]);
         return;
@@ -98,7 +102,7 @@ export default function NewPaymentScreen() {
         setPartySearching(false);
       }
     }, 300);
-    return () => clearTimeout(t);
+    return () => clearTimeout(handle);
   }, [partyQuery, direction]);
 
   const loadDocs = useCallback(async (partyId: string) => {
@@ -207,19 +211,19 @@ export default function NewPaymentScreen() {
       // retry happens, and a retry of the same payment must carry the same key —
       // otherwise the second attempt after a timeout that actually landed is a
       // second payment.
-      setErrorMessage(apiErrorMessage(e, 'Could not record this payment.'));
+      setErrorMessage(apiErrorMessage(e, t('payments.new.saveFailed')));
     } finally {
       setSaving(false);
     }
-  }, [canSave, party, alloc, direction, mode, amountPaise, reference, receivedAt]);
+  }, [canSave, party, alloc, direction, mode, amountPaise, reference, receivedAt, t]);
 
   if (!canManage) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]}>
         <View style={styles.deniedBox}>
-          <Text style={[styles.deniedTitle, { color: c.textPrimary }]}>You can view payments, not record them</Text>
+          <Text style={[styles.deniedTitle, { color: c.textPrimary }]}>{t('payments.new.deniedTitle')}</Text>
           <Text style={[styles.deniedBody, { color: c.textSecondary }]}>
-            Ask an admin to grant Billing at Full access.
+            {t('payments.new.deniedBody')}
           </Text>
         </View>
       </SafeAreaView>
@@ -229,8 +233,8 @@ export default function NewPaymentScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
       <View style={styles.topBar}>
-        <Button onPress={() => router.back()} compact>Close</Button>
-        <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>Record a payment</Text>
+        <Button onPress={() => router.back()} compact>{t('common.close')}</Button>
+        <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>{t('payments.new.title')}</Text>
         <View style={{ width: 56 }} />
       </View>
 
@@ -239,27 +243,31 @@ export default function NewPaymentScreen() {
           value={direction}
           onValueChange={(v) => setDirection(v as PaymentDirection)}
           density="small"
+          // `value` is the wire `direction` on `POST /partners/me/payments` and
+          // never moves; only the label is translated.
           buttons={[
-            { value: 'IN', label: 'Money in' },
-            { value: 'OUT', label: 'Money out' },
+            { value: 'IN', label: t('payments.new.moneyIn') },
+            { value: 'OUT', label: t('payments.new.moneyOut') },
           ]}
         />
 
         <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
-          <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{direction === 'IN' ? 'Customer' : 'Supplier'}</Text>
+          <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{direction === 'IN' ? t('payments.new.customer') : t('payments.new.supplier')}</Text>
           {party ? (
             <View style={styles.selectedPartyRow}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.selectedPartyName, { color: c.textPrimary }]}>{party.name}</Text>
                 {!!party.phone && <Text style={[styles.selectedPartyMeta, { color: c.textSecondary }]}>{party.phone}</Text>}
               </View>
-              <Button mode="text" compact onPress={() => setParty(null)}>Change</Button>
+              <Button mode="text" compact onPress={() => setParty(null)}>{t('payments.new.change')}</Button>
             </View>
           ) : (
             <View>
               <TextInput
                 mode="outlined"
-                placeholder="Search by name or phone"
+                // The same catalogue entry `billing/new.tsx`'s party picker uses
+                // — one search box, one sentence, in both places it appears.
+                placeholder={t('billing.new.searchParty')}
                 value={partyQuery}
                 onChangeText={setPartyQuery}
                 outlineStyle={{ borderRadius: radii.field }}
@@ -280,7 +288,7 @@ export default function NewPaymentScreen() {
           <View style={styles.row2}>
             <TextInput
               mode="outlined"
-              label="Amount (₹)"
+              label={t('payments.new.amount')}
               keyboardType="decimal-pad"
               value={amountRupees}
               onChangeText={setAmountRupees}
@@ -292,30 +300,33 @@ export default function NewPaymentScreen() {
             value={mode}
             onValueChange={(v) => setMode(v as PaymentMode)}
             density="small"
-            buttons={PAYMENT_MODES.map((m) => ({ value: m, label: PAYMENT_MODE_LABEL[m] }))}
+            buttons={PAYMENT_MODES.map((m) => ({ value: m, label: t(PAYMENT_MODE_LABEL_KEY[m]) }))}
           />
           <TextInput
             mode="outlined"
-            label="Reference (optional)"
-            placeholder="Cheque no., UTR, UPI ref…"
+            label={t('payments.new.reference')}
+            placeholder={t('payments.new.referencePlaceholder')}
             value={reference}
             onChangeText={setReference}
             outlineStyle={{ borderRadius: radii.field }}
             style={{ backgroundColor: 'transparent' }}
           />
-          <DateField label="Received at" value={receivedAt} onChangeText={setReceivedAt} mode="datetime" />
+          <DateField label={t('payments.new.receivedAt')} value={receivedAt} onChangeText={setReceivedAt} mode="datetime" />
         </Surface>
 
         <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
           <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-            Apply against {direction === 'IN' ? 'their' : 'your'} open documents
+            {/* Two whole sentences rather than one with `their`/`your` slotted
+                in: a possessive is not a substitutable word in Hindi, and a
+                key that interpolates one cannot be translated correctly. */}
+            {direction === 'IN' ? t('payments.new.applyAgainstIn') : t('payments.new.applyAgainstOut')}
           </Text>
           {!party ? (
-            <Text style={{ color: c.textSecondary, fontSize: 12 }}>Pick a party to see what is outstanding.</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('payments.new.pickParty')}</Text>
           ) : loadingDocs ? (
             <ActivityIndicator style={{ alignSelf: 'flex-start', marginVertical: 8 }} />
           ) : docs.length === 0 ? (
-            <Text style={{ color: c.textSecondary, fontSize: 12 }}>Nothing outstanding — this whole amount goes on account.</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('payments.new.nothingOutstanding')}</Text>
           ) : (
             docs.map((d) => {
               const checked = d._id in alloc;
@@ -323,10 +334,17 @@ export default function NewPaymentScreen() {
                 <View key={d._id} style={[styles.docRow, { borderColor: c.divider }]}>
                   <Checkbox status={checked ? 'checked' : 'unchecked'} onPress={() => toggleDoc(d, !checked)} />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.docNumber, { color: c.textPrimary }]}>{d.number ?? 'Draft'}</Text>
+                    {/* `d.number` is the server's own document number, verbatim;
+                        `billing.status.DRAFT` is the same word the Billing list
+                        already uses for a document that has not got one yet. */}
+                    <Text style={[styles.docNumber, { color: c.textPrimary }]}>{d.number ?? t('billing.status.DRAFT')}</Text>
                     <Text style={[styles.docMeta, { color: c.textSecondary }]}>
-                      {new Date(d.documentDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                      {' · outstanding '}{formatPaise(outstandingOf(d))}
+                      {/* `formatI18nDate`, not `toLocaleDateString('en-IN')` —
+                          see `src/i18n/index.ts#formatI18nDate`. */}
+                      {t('payments.new.docMeta', {
+                        date: formatI18nDate(d.documentDate, t),
+                        amount: formatPaise(outstandingOf(d)),
+                      })}
                     </Text>
                   </View>
                   {checked && (
@@ -355,7 +373,7 @@ export default function NewPaymentScreen() {
         >
           <View style={styles.totalsRow}>
             <Text style={{ color: overAllocated ? c.error : c.textSecondary, fontWeight: '600', fontSize: 12 }}>
-              {overAllocated ? 'Allocated more than the payment' : 'Left on account'}
+              {overAllocated ? t('payments.new.overAllocated') : t('payments.new.leftOnAccount')}
             </Text>
             <Text style={{ color: overAllocated ? c.error : c.textPrimary, fontWeight: '600', fontSize: 13 }}>
               {overAllocated ? formatPaise(allocatedPaise - amountPaise) : formatPaise(onAccountPaise)}
@@ -378,7 +396,7 @@ export default function NewPaymentScreen() {
           onPress={handleSave}
           style={{ borderRadius: radii.field }}
         >
-          Save payment
+          {t('payments.new.save')}
         </Button>
       </View>
 

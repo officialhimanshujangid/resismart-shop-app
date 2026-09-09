@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View, useColorScheme, Pressable } from 'react-native';
 import { Text, Switch, ActivityIndicator } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -16,8 +17,10 @@ import {
   CategoryPicker, ProductImages, StockAdjustModal,
 } from '../../../src/features/catalog';
 import type { StockAdjustTarget } from '../../../src/features/catalog';
+import { formatI18nDate } from '../../../src/i18n';
 
 export default function ProductDetailScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -68,19 +71,19 @@ export default function ProductDetailScreen() {
 
   const save = () => {
     const nextErrors: Record<string, string> = {};
-    if (!name.trim()) nextErrors.name = 'A product needs a name.';
+    if (!name.trim()) nextErrors.name = t('catalog.form.nameRequired');
     const sellPaise = parseRupeesToPaise(sellPrice);
-    if (sellPaise === null) nextErrors.sellPrice = 'Enter a selling price.';
+    if (sellPaise === null) nextErrors.sellPrice = t('catalog.form.sellPriceRequired');
     const mrpPaise = mrp.trim() ? parseRupeesToPaise(mrp) : 0;
-    if (mrp.trim() && mrpPaise === null) nextErrors.mrp = 'That does not look like an amount.';
+    if (mrp.trim() && mrpPaise === null) nextErrors.mrp = t('catalog.form.amountInvalid');
     if (mrpPaise !== null && mrpPaise > 0 && sellPaise !== null && sellPaise > mrpPaise) {
-      nextErrors.sellPrice = 'Selling price cannot be above the MRP.';
+      nextErrors.sellPrice = t('catalog.form.sellAboveMrp');
     }
     const taxRateNum = Number(taxRate || '0');
-    if (!Number.isFinite(taxRateNum) || taxRateNum < 0 || taxRateNum > 100) nextErrors.taxRate = 'Enter 0–100.';
+    if (!Number.isFinite(taxRateNum) || taxRateNum < 0 || taxRateNum > 100) nextErrors.taxRate = t('catalog.form.taxRateRange');
     const lowStockNum = lowStockAt.trim() ? Number(lowStockAt) : undefined;
     if (lowStockAt.trim() && (!Number.isFinite(lowStockNum) || (lowStockNum as number) < 0)) {
-      nextErrors.lowStockAt = 'Enter a whole number.';
+      nextErrors.lowStockAt = t('catalog.form.wholeNumber');
     }
 
     setErrors(nextErrors);
@@ -107,21 +110,21 @@ export default function ProductDetailScreen() {
         images,
         categoryId: categoryId ?? null,
       },
-      { onError: (e: unknown) => Alert.alert('Could not save changes', apiErrorMessage(e)) },
+      { onError: (e: unknown) => Alert.alert(t('catalog.form.saveFailed'), apiErrorMessage(e)) },
     );
   };
 
   const confirmDeactivate = () => {
     if (!productQuery.data) return;
     Alert.alert(
-      'Take off sale?',
-      `"${productQuery.data.name}" will stop appearing for residents. You can still find it here and switch it back on.`,
+      t('catalog.detail.takeOffSaleTitle'),
+      t('catalog.detail.takeOffSaleBody', { name: productQuery.data.name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Take off sale', style: 'destructive',
+          text: t('catalog.detail.takeOffSale'), style: 'destructive',
           onPress: () => deactivateProduct.mutate(id, {
-            onError: (e: unknown) => Alert.alert('Could not do that', apiErrorMessage(e)),
+            onError: (e: unknown) => Alert.alert(t('catalog.detail.actionFailed'), apiErrorMessage(e)),
             onSuccess: () => router.back(),
           }),
         },
@@ -130,7 +133,7 @@ export default function ProductDetailScreen() {
   };
 
   const reactivate = () => {
-    updateProduct.mutate({ isActive: true }, { onError: (e: unknown) => Alert.alert('Could not do that', apiErrorMessage(e)) });
+    updateProduct.mutate({ isActive: true }, { onError: (e: unknown) => Alert.alert(t('catalog.detail.actionFailed'), apiErrorMessage(e)) });
   };
 
   /**
@@ -142,9 +145,9 @@ export default function ProductDetailScreen() {
    * (see `lib/queryClient.ts`) holds the request rather than firing it.
    */
   const loadError = productQuery.isError
-    ? apiErrorMessage(productQuery.error, 'Could not load this product.')
+    ? apiErrorMessage(productQuery.error, t('catalog.detail.loadFailed'))
     : productQuery.isPending && productQuery.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('catalog.detail.noConnection')
       : null;
 
   if (loadError) {
@@ -169,10 +172,10 @@ export default function ProductDetailScreen() {
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.body}>
       {!product.isActive && (
         <View style={[styles.offSaleBanner, { backgroundColor: c.textDisabled + '22' }]}>
-          <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>This product is off sale.</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{t('catalog.detail.offSale')}</Text>
           {canManage && (
             <Pressable onPress={reactivate}>
-              <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>Turn back on</Text>
+              <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>{t('catalog.detail.turnBackOn')}</Text>
             </Pressable>
           )}
         </View>
@@ -181,16 +184,16 @@ export default function ProductDetailScreen() {
       {!canManage && (
         <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
           <Text style={[styles.readOnlyText, { color: c.textSecondary }]}>
-            View only — your role does not include managing the catalogue.
+            {t('catalog.form.readOnlyBanner')}
           </Text>
         </View>
       )}
 
       <View style={[styles.stockCard, { backgroundColor: c.surface, borderColor: c.divider }]}>
         <View>
-          <Text style={[styles.stockLabel, { color: c.textSecondary }]}>On hand</Text>
+          <Text style={[styles.stockLabel, { color: c.textSecondary }]}>{t('catalog.detail.onHand')}</Text>
           <Text style={[styles.stockValue, { color: c.textPrimary }]}>
-            {product.trackStock ? product.stockQty : 'Not tracked'}
+            {product.trackStock ? product.stockQty : t('catalog.detail.notTracked')}
           </Text>
         </View>
         {canManage && product.trackStock && (
@@ -198,27 +201,29 @@ export default function ProductDetailScreen() {
             onPress={() => setStockTarget({ productId: product._id, productName: product.name, currentQty: product.stockQty })}
             style={[styles.adjustBtn, { borderColor: c.primary }]}
           >
-            <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>Adjust stock</Text>
+            <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('catalog.detail.adjustStock')}</Text>
           </Pressable>
         )}
       </View>
 
-      <AppInput label="Product name" value={name} onChangeText={setName} error={errors.name} disabled={!canManage} />
+      <AppInput label={t('catalog.form.name')} value={name} onChangeText={setName} error={errors.name} disabled={!canManage} />
 
       <View style={styles.row2}>
-        <AppInput label="Selling price (₹)" value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" error={errors.sellPrice} style={styles.half} disabled={!canManage} />
-        <AppInput label="MRP (₹, optional)" value={mrp} onChangeText={setMrp} keyboardType="numeric" error={errors.mrp} style={styles.half} disabled={!canManage} />
+        <AppInput label={t('catalog.form.sellPrice')} value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" error={errors.sellPrice} style={styles.half} disabled={!canManage} />
+        <AppInput label={t('catalog.form.mrp')} value={mrp} onChangeText={setMrp} keyboardType="numeric" error={errors.mrp} style={styles.half} disabled={!canManage} />
       </View>
 
       <View style={styles.row2}>
-        <AppInput label="Tax rate %" value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" error={errors.taxRate} style={styles.half} disabled={!canManage} />
+        <AppInput label={t('catalog.form.taxRate')} value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" error={errors.taxRate} style={styles.half} disabled={!canManage} />
         <View style={[styles.half, styles.switchBox]}>
-          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>Price includes tax</Text>
+          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.priceIncludesTax')}</Text>
           <Switch value={taxInclusive} onValueChange={setTaxInclusive} disabled={!canManage} />
         </View>
       </View>
 
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Unit</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('catalog.form.unit')}</Text>
+      {/* The unit CODES are not translated — see `catalog/create.tsx`'s note on
+          why: they are the wire value and are printed on every invoice line. */}
       {/* `disabled`, not an `onPress` that evaluates to `false`: every field
           above already refuses a viewer visibly (`AppInput disabled`), and the
           unit chips were the one control on this screen that took the tap and
@@ -243,31 +248,31 @@ export default function ProductDetailScreen() {
           leaving without pressing Save leaves an orphan in the bucket and no
           reference to it — the cheaper of the two failures, and the same trade
           `ProductImages`'s remove path documents. */}
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Photos</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('catalog.form.photos')}</Text>
       <ProductImages value={images} onChange={setImages} c={c} canManage={canManage} />
 
-      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Category</Text>
+      <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('catalog.form.category')}</Text>
       <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={canManage} />
 
-      <AppInput label="SKU (optional)" value={sku} onChangeText={setSku} autoCapitalize="characters" disabled={!canManage} />
-      <AppInput label="Barcode (optional)" value={barcode} onChangeText={setBarcode} autoCapitalize="characters" disabled={!canManage} />
-      <AppInput label="HSN code (optional)" value={hsnCode} onChangeText={setHsnCode} disabled={!canManage} />
+      <AppInput label={t('catalog.form.sku')} value={sku} onChangeText={setSku} autoCapitalize="characters" disabled={!canManage} />
+      <AppInput label={t('catalog.form.barcode')} value={barcode} onChangeText={setBarcode} autoCapitalize="characters" disabled={!canManage} />
+      <AppInput label={t('catalog.form.hsn')} value={hsnCode} onChangeText={setHsnCode} disabled={!canManage} />
 
       <View style={[styles.switchBox, { marginTop: 4 }]}>
-        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>Track stock for this product</Text>
+        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.trackStock')}</Text>
         <Switch value={trackStock} onValueChange={setTrackStock} disabled={!canManage} />
       </View>
 
       {trackStock && (
-        <AppInput label="Low-stock alert at" value={lowStockAt} onChangeText={setLowStockAt} keyboardType="numeric" error={errors.lowStockAt} disabled={!canManage} />
+        <AppInput label={t('catalog.form.lowStockAt')} value={lowStockAt} onChangeText={setLowStockAt} keyboardType="numeric" error={errors.lowStockAt} disabled={!canManage} />
       )}
 
       {canManage && (
         <>
-          <AppButton label="Save changes" onPress={save} loading={updateProduct.isPending} />
+          <AppButton label={t('catalog.form.saveChanges')} onPress={save} loading={updateProduct.isPending} />
           {product.isActive && (
             <AppButton
-              label="Take off sale"
+              label={t('catalog.detail.takeOffSale')}
               mode="outlined"
               onPress={confirmDeactivate}
               loading={deactivateProduct.isPending}
@@ -278,7 +283,7 @@ export default function ProductDetailScreen() {
       )}
 
       <Text style={[styles.mrpNote, { color: c.textDisabled }]}>
-        Sells for {formatPaise(product.sellPaise)} · updated {new Date(product.updatedAt).toLocaleDateString('en-IN')}
+        {t('catalog.detail.footnote', { price: formatPaise(product.sellPaise), date: formatI18nDate(product.updatedAt, t) })}
       </Text>
 
       <StockAdjustModal
@@ -291,7 +296,7 @@ export default function ProductDetailScreen() {
             { id: stockTarget.productId, ...input },
             {
               onSuccess: () => setStockTarget(null),
-              onError: (e: unknown) => Alert.alert('Could not adjust stock', apiErrorMessage(e)),
+              onError: (e: unknown) => Alert.alert(t('catalog.detail.adjustFailed'), apiErrorMessage(e)),
             },
           );
         }}

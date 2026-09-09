@@ -4,6 +4,7 @@ import { Text, Searchbar, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
@@ -25,6 +26,7 @@ import type { Product } from '../../../src/features/catalog';
 const PAGE_LIMIT = 30;
 
 export default function CatalogListScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -39,9 +41,10 @@ export default function CatalogListScreen() {
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<Product[]>([]);
 
+  // `handle`, not `t` — the local used to shadow the translator.
   useEffect(() => {
-    const t = setTimeout(() => setQ(searchInput.trim()), 300);
-    return () => clearTimeout(t);
+    const handle = setTimeout(() => setQ(searchInput.trim()), 300);
+    return () => clearTimeout(handle);
   }, [searchInput]);
 
   // Any filter change starts the accumulated list over at page 1.
@@ -100,9 +103,9 @@ export default function CatalogListScreen() {
    * radio, which without this would be an unexplained spinner.
    */
   const loadError = productsQuery.isError
-    ? apiErrorMessage(productsQuery.error, 'Could not load your products.')
+    ? apiErrorMessage(productsQuery.error, t('catalog.list.loadFailed'))
     : productsQuery.isPending && productsQuery.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('catalog.list.noConnection')
       : null;
 
   const goCreate = useCallback(() => {
@@ -124,14 +127,16 @@ export default function CatalogListScreen() {
   );
 
   const heroSubtitle = lowStockOnly
-    ? 'Showing items running low'
+    ? t('catalog.list.subtitleLowStock')
     : q || categoryId
-      ? 'Showing your current filter'
-      : 'Your full product list';
+      ? t('catalog.list.subtitleFiltered')
+      : t('catalog.list.subtitleAll');
 
   const chips = useMemo(
-    () => [{ _id: undefined as string | undefined, name: 'All' }, ...categories.filter((cat) => cat.isActive)],
-    [categories],
+    // Only the "All" pseudo-chip is copy; every other name is a category the
+    // partner created, shown back as they typed it.
+    () => [{ _id: undefined as string | undefined, name: t('catalog.list.allCategories') }, ...categories.filter((cat) => cat.isActive)],
+    [categories, t],
   );
 
   return (
@@ -139,19 +144,21 @@ export default function CatalogListScreen() {
       <Hero
         isDark={isDark}
         rounded={false}
-        eyebrow="Catalog"
+        eyebrow={t('catalog.list.eyebrow')}
         // The server's `total`, not `rows.length`: now that the list pages, the
         // loaded count is "how far you have scrolled", which is not what a shop
         // wants to read off its own catalogue header.
-        headline={{ value: String(total), label: total === 1 ? 'product' : 'products' }}
+        // `_one`/`_other`, not an English `-s`: Hindi cannot pluralise by
+        // suffixing, and CLDR puts BOTH 0 and 1 in its `one` category.
+        headline={{ value: String(total), label: t('catalog.list.product', { count: total }) }}
         subtitle={heroSubtitle}
       >
-        <GlassStat icon="alert-octagon-outline" label="Running low" value={String(lowCount)} />
-        <GlassStat icon="tag-outline" label="Categories" value={String(activeCategoryCount)} />
+        <GlassStat icon="alert-octagon-outline" label={t('catalog.list.statRunningLow')} value={String(lowCount)} />
+        <GlassStat icon="tag-outline" label={t('catalog.list.statCategories')} value={String(activeCategoryCount)} />
       </Hero>
 
       <Searchbar
-        placeholder="Search products, SKU or barcode"
+        placeholder={t('catalog.list.searchPlaceholder')}
         value={searchInput}
         onChangeText={setSearchInput}
         style={[styles.search, { backgroundColor: c.surfaceVariant }]}
@@ -186,7 +193,7 @@ export default function CatalogListScreen() {
           >
             <MaterialCommunityIcons name="alert-outline" size={13} color={lowStockOnly ? '#fff' : c.textSecondary} />
             <Text style={{ color: lowStockOnly ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600', marginLeft: 4 }}>
-              Low stock
+              {t('catalog.list.lowStock')}
             </Text>
           </Pressable>
         }
@@ -214,9 +221,9 @@ export default function CatalogListScreen() {
           ) : (
             <View style={styles.emptyBox}>
               <MaterialCommunityIcons name="package-variant-closed" size={30} color={c.textDisabled} />
-              <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>No products yet</Text>
+              <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('catalog.list.emptyTitle')}</Text>
               <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
-                {canManage ? 'Add your first product, or scan a barcode to start.' : 'Nothing has been added to the catalog yet.'}
+                {t(canManage ? 'catalog.list.emptyManage' : 'catalog.list.emptyRead')}
               </Text>
             </View>
           )
@@ -234,7 +241,7 @@ export default function CatalogListScreen() {
               style={[styles.scanBtn, { borderColor: c.primary }]}
             >
               <MaterialCommunityIcons name="barcode-scan" size={18} color={c.primary} />
-              <Text style={[styles.scanBtnText, { color: c.primary }]}>Scan</Text>
+              <Text style={[styles.scanBtnText, { color: c.primary }]}>{t('catalog.list.scan')}</Text>
             </Pressable>
             <Pressable
               onPress={goCreate}
@@ -242,7 +249,7 @@ export default function CatalogListScreen() {
               style={[styles.createBtn, { backgroundColor: cap.atLimit ? c.textDisabled : c.primary }]}
             >
               <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-              <Text style={styles.createBtnText}>Add product</Text>
+              <Text style={styles.createBtnText}>{t('catalog.list.addProduct')}</Text>
             </Pressable>
           </View>
         </View>

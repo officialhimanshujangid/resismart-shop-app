@@ -34,12 +34,19 @@ export type PaymentDirection = typeof PAYMENT_DIRECTIONS[number];
 export const PAYMENT_MODES = ['CASH', 'UPI', 'CARD', 'BANK', 'ONLINE'] as const;
 export type PaymentMode = typeof PAYMENT_MODES[number];
 
-export const PAYMENT_MODE_LABEL: Record<PaymentMode, string> = {
-  CASH: 'Cash',
-  UPI: 'UPI',
-  CARD: 'Card',
-  BANK: 'Bank transfer',
-  ONLINE: 'Online',
+/**
+ * WHAT A PAYMENT MODE IS CALLED ON SCREEN — a catalogue key per mode, not the
+ * words. Same distinction `billing/types.ts` draws in its own headers, and the
+ * same reason: `PAYMENT_MODES` above is the WIRE value (`mode` on
+ * `POST /partners/me/payments`, and what `createPaymentSchema` validates), so
+ * those literals never move. This table is display only.
+ */
+export const PAYMENT_MODE_LABEL_KEY: Record<PaymentMode, string> = {
+  CASH: 'payments.mode.CASH',
+  UPI: 'payments.mode.UPI',
+  CARD: 'payments.mode.CARD',
+  BANK: 'payments.mode.BANK',
+  ONLINE: 'payments.mode.ONLINE',
 };
 
 export const PAYMENT_STATUSES = ['RECORDED', 'CANCELLED'] as const;
@@ -80,9 +87,18 @@ export interface PaymentRecord {
   updatedAt: string;
 }
 
-/** `payment.partyId.name` when populated, a placeholder otherwise — never throws on the unpopulated shape `create`/`cancel` return. */
+/**
+ * `payment.partyId.name` when populated, EMPTY otherwise — never throws on the
+ * unpopulated shape `create`/`cancel` return.
+ *
+ * It used to return the literal `'Party'`, and that word could not stay here:
+ * this is a plain module with no `t` and no hook, so a placeholder written at
+ * this level is English on a Hindi screen with nothing to reveal it. Returning
+ * `''` hands the decision to the caller, which has a translator —
+ * `payments/index.tsx` falls back to `payments.list.unknownParty`.
+ */
 export const partyNameOf = (payment: PaymentRecord): string =>
-  typeof payment.partyId === 'object' && payment.partyId !== null ? payment.partyId.name : 'Party';
+  typeof payment.partyId === 'object' && payment.partyId !== null ? payment.partyId.name : '';
 
 export const partyIdOf = (payment: PaymentRecord): string =>
   typeof payment.partyId === 'object' && payment.partyId !== null ? payment.partyId._id : payment.partyId;

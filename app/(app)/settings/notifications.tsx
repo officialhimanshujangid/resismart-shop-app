@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert, StyleSheet, Switch, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, palette } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -9,6 +10,7 @@ import { qk } from '../../../src/lib/queryKeys';
 import { settingsApi } from '../../../src/api/settings.api';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { Card, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { formatI18nDate } from '../../../src/i18n';
 
 /**
  * WhatsApp opt-in — DPDP consent, not a display preference. `optedIn` is
@@ -17,6 +19,7 @@ import { Card, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/fe
  * comment on why: it is the signed-in person's number that agreed.
  */
 export default function WhatsAppSettingsScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -28,41 +31,41 @@ export default function WhatsAppSettingsScreen() {
   const save = useMutation({
     mutationFn: (optedIn: boolean) => settingsApi.whatsapp.setOptIn(optedIn),
     onSuccess: (data) => queryClient.setQueryData(qk.whatsappSettings(), data),
-    onError: (err) => Alert.alert('Could not save', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('settings.whatsapp.couldNotSave'), apiErrorMessage(err)),
   });
 
-  if (query.isPending) return <Screen c={c} title="WhatsApp alerts"><Loading c={c} /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('settings.whatsapp.title')}><Loading c={c} /></Screen>;
   if (query.isError || !query.data) {
-    return <Screen c={c} title="WhatsApp alerts"><ErrorBlock c={c} message={apiErrorMessage(query.error, 'Could not load this.')} onRetry={() => query.refetch()} /></Screen>;
+    return <Screen c={c} title={t('settings.whatsapp.title')}><ErrorBlock c={c} message={apiErrorMessage(query.error, t('settings.whatsapp.couldNotLoad'))} onRetry={() => query.refetch()} /></Screen>;
   }
 
   const w = query.data;
 
   return (
-    <Screen c={c} title="WhatsApp alerts">
+    <Screen c={c} title={t('settings.whatsapp.title')}>
       {!w.configured && (
         <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>Not wired up yet</Text>
-          <Text style={{ color: c.textSecondary, fontSize: 13 }}>WhatsApp is not connected on this install. This switch will do nothing until it is.</Text>
+          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>{t('settings.whatsapp.notWiredTitle')}</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('settings.whatsapp.notWiredBody')}</Text>
         </Card>
       )}
       {w.configured && !w.available && (
         <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>Not on your plan</Text>
-          <Text style={{ color: c.textSecondary, fontSize: 13 }}>Upgrade your plan to receive alerts on WhatsApp.</Text>
+          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>{t('settings.whatsapp.notOnPlanTitle')}</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('settings.whatsapp.notOnPlanBody')}</Text>
         </Card>
       )}
       {!w.phone && (
         <Card c={c}>
-          <Text style={{ color: c.textSecondary, fontSize: 13 }}>Add a phone number to your account before turning this on.</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('settings.whatsapp.needPhone')}</Text>
         </Card>
       )}
 
       <Card c={c}>
         <View style={styles.switchRow}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: c.textPrimary, fontSize: 15, fontWeight: '600' }}>Send me alerts on WhatsApp</Text>
-            {w.phone && <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>To {w.phone}</Text>}
+            <Text style={{ color: c.textPrimary, fontSize: 15, fontWeight: '600' }}>{t('settings.whatsapp.sendMe')}</Text>
+            {w.phone && <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>{t('settings.whatsapp.to', { phone: w.phone })}</Text>}
           </View>
           <Switch
             value={w.optedIn}
@@ -71,16 +74,16 @@ export default function WhatsAppSettingsScreen() {
           />
         </View>
         {w.optedInAt && w.optedIn && (
-          <Text style={{ color: c.textDisabled, fontSize: 11 }}>Agreed on {new Date(w.optedInAt).toLocaleDateString('en-IN')}</Text>
+          <Text style={{ color: c.textDisabled, fontSize: 11 }}>{t('settings.whatsapp.agreedOn', { date: formatI18nDate(w.optedInAt, t) })}</Text>
         )}
         {w.optedOutAt && !w.optedIn && (
-          <Text style={{ color: c.textDisabled, fontSize: 11 }}>Turned off on {new Date(w.optedOutAt).toLocaleDateString('en-IN')}</Text>
+          <Text style={{ color: c.textDisabled, fontSize: 11 }}>{t('settings.whatsapp.turnedOffOn', { date: formatI18nDate(w.optedOutAt, t) })}</Text>
         )}
       </Card>
 
-      <SectionLabel c={c}>What you'll get</SectionLabel>
+      <SectionLabel c={c}>{t('settings.whatsapp.whatYouGet')}</SectionLabel>
       {w.events.length === 0 ? (
-        <Text style={{ color: c.textSecondary, fontSize: 13 }}>Nothing configured yet.</Text>
+        <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('settings.whatsapp.nothingConfigured')}</Text>
       ) : (
         <Card c={c} style={{ padding: 0 }}>
           {w.events.map((e, i) => (

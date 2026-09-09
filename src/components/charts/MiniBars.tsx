@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 
+import { useTranslation } from 'react-i18next';
 import { ColorScheme } from '../../constants/colors';
 
 /**
@@ -29,7 +30,7 @@ export function MiniBars({
   height = 64,
   width = 260,
   radius = 3,
-  label = 'Bar chart',
+  label,
   valueFormatter,
   accessibilityLabel,
 }: {
@@ -47,6 +48,10 @@ export function MiniBars({
   /** Full override for the screen-reader summary. */
   accessibilityLabel?: string;
 }) {
+  const { t } = useTranslation();
+  // `?? t(…)` inside the component, never a default parameter — see the note at
+  // the top of `ChartStates.tsx`.
+  const shownLabel = label ?? t('components.chart.barsLabel');
   const describeValue = (v: number) => (valueFormatter ? valueFormatter(v) : String(v));
 
   if (points.length === 0) {
@@ -55,7 +60,7 @@ export function MiniBars({
         style={{ height, width }}
         accessible
         accessibilityRole="image"
-        accessibilityLabel={accessibilityLabel ?? `${label}, no data yet`}
+        accessibilityLabel={accessibilityLabel ?? t('components.chart.noData', { label: shownLabel })}
       />
     );
   }
@@ -71,9 +76,16 @@ export function MiniBars({
   const innerH = height - PAD * 2;
 
   const lastValue = values[values.length - 1];
+  /* `_one`/`_other`, not an English `-s` on "bars": Hindi cannot pluralise by
+     suffixing, and CLDR puts BOTH 0 and 1 in its `one` category. */
   const defaultA11yLabel = allZero
-    ? `${label}, no activity in this period`
-    : `${label}, ${n} bars, latest ${describeValue(lastValue)}, highest ${describeValue(max)}`;
+    ? t('components.chart.noActivity', { label: shownLabel })
+    : t('components.chart.barsSummary', {
+      label: shownLabel,
+      count: n,
+      latest: describeValue(lastValue),
+      highest: describeValue(max),
+    });
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={accessibilityLabel ?? defaultA11yLabel}>

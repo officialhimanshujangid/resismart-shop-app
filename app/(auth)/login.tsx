@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -15,6 +15,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { useAuth, LoginResult } from '../../src/context/AuthContext';
 import { ProfileInfo } from '../../src/api/auth.api';
@@ -26,6 +27,7 @@ import { Hero } from '../../src/components/Hero';
 import { ContextPicker } from '../../src/components/ContextPicker';
 import { LoadingOverlay } from '../../src/components/LoadingOverlay';
 import { themeColors } from '../../src/constants/colors';
+import { useLanguage } from '../../src/i18n/useLanguage';
 
 /**
  * This screen FOLLOWS THE SYSTEM THEME, like every other screen in the app.
@@ -58,18 +60,23 @@ import { themeColors } from '../../src/constants/colors';
  * here can only invent refusals the server would not have made.
  */
 const DIGITS_ONLY = /^\+?[0-9\s\-().]+$/;
-const identifierSchema = z
-  .string()
-  .trim()
-  .min(1, 'Enter your email address or mobile number')
-  .refine(
-    (v) => z.string().email().safeParse(v).success
-      || (DIGITS_ONLY.test(v) && v.replace(/\D/g, '').length >= 10),
-    'Enter your email address or your 10-digit mobile number',
-  );
 
-const loginSchema = z.object({
-  identifier: identifierSchema,
+/**
+ * Built from `t` rather than declared at module load, because a zod message is
+ * a STRING captured when the schema is constructed — a module-level schema
+ * would freeze whichever language happened to be current when this file was
+ * first imported, and then keep showing it after the toggle below was tapped.
+ */
+const buildLoginSchema = (t: (key: string) => string) => z.object({
+  identifier: z
+    .string()
+    .trim()
+    .min(1, t('auth.login.identifierRequired'))
+    .refine(
+      (v) => z.string().email().safeParse(v).success
+        || (DIGITS_ONLY.test(v) && v.replace(/\D/g, '').length >= 10),
+      t('auth.login.identifierInvalid'),
+    ),
   /**
    * NO length floor, and that is deliberate rather than an omission — the same
    * call `auth.validator.ts` documents on its own `password: z.string()`.
@@ -78,12 +85,23 @@ const loginSchema = z.object({
    * be locked out by its own sign-in form, with a message that tells anybody
    * holding the phone how long the password is.
    */
-  password: z.string().min(1, 'Password is required'),
+  password: z.string().min(1, t('auth.login.passwordRequired')),
 });
 
-type LoginFormData = z.infer<typeof loginSchema>;
+type LoginFormData = z.infer<ReturnType<typeof buildLoginSchema>>;
 
 export default function LoginScreen() {
+  const { t } = useTranslation();
+  /**
+   * The toggle has to be HERE and not only in Settings.
+   *
+   * A phone whose Android is in English, held by somebody who reads Hindi, opens
+   * on `deviceLanguage()` — English — and the settings screen that carries the
+   * other toggle is on the far side of this form. Signed out, nothing is sent to
+   * the server (`language-sync.ts` refuses without a token); the choice is
+   * stored on the device and asserted at the first sign-in.
+   */
+  const { toggle } = useLanguage();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { login, selectContext, requestLoginOtp, loginWithGoogle } = useAuth();
@@ -116,10 +134,10 @@ export default function LoginScreen() {
     if (googling) return;
     setGoogling(true);
     try {
-      const idToken = await getGoogleIdToken();
+      const idToken = await getGoogleIdToken(t);
       const result = await loginWithGoogle(idToken);
       if (!result.success) {
-        setSnackbar({ visible: true, message: result.error ?? 'Google sign-in failed.', error: true });
+        setSnackbar({ visible: true, message: result.error ?? t('auth.login.googleFailed'), error: true });
         return;
       }
       if (result.requiresContextSelection) {
@@ -131,7 +149,7 @@ export default function LoginScreen() {
     } catch (e) {
       // Backing out of Google's sheet is a choice, not an error.
       if (e instanceof GoogleCancelled) return;
-      setSnackbar({ visible: true, message: (e as Error)?.message ?? 'Google sign-in failed.', error: true });
+      setSnackbar({ visible: true, message: (e as Error)?.message ?? t('auth.login.googleFailed'), error: true });
     } finally {
       setGoogling(false);
     }
@@ -141,6 +159,10 @@ export default function LoginScreen() {
   const [pendingProfiles, setPendingProfiles] = useState<ProfileInfo[]>([]);
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
+
+  // Rebuilt when the language changes, so a validation message already on
+  // screen is not left in the language the reader has just left.
+  const loginSchema = useMemo(() => buildLoginSchema(t), [t]);
 
   const {
     control,
@@ -181,7 +203,7 @@ export default function LoginScreen() {
         await sendCode(data.identifier);
         return;
       }
-      showSnack(result.error ?? 'Login failed. Please try again.', true);
+      showSnack(result.error ?? t('auth.login.loginFailed'), true);
     } finally {
       setIsLoading(false);
     }
@@ -211,7 +233,7 @@ export default function LoginScreen() {
   const sendCode = async (identifier: string) => {
     const to = identifier.trim();
     if (!to) {
-      showSnack('Enter your email address or mobile number first.', true);
+      showSnack(t('auth.login.enterIdentifierFirst'), true);
       return;
     }
     if (sendingCode) return;
@@ -219,7 +241,7 @@ export default function LoginScreen() {
     try {
       const result = await requestLoginOtp(to);
       if (!result.success || !result.delivery) {
-        showSnack(result.error ?? 'Could not send a code. Please try again.', true);
+        showSnack(result.error ?? t('auth.login.codeFailed'), true);
         return;
       }
       const { message, deliveredVia, alternatives, whatsappAvailable } = result.delivery;
@@ -260,7 +282,7 @@ export default function LoginScreen() {
     setContextModal(false);
     setPendingProfiles([]);
     setPendingUserId(null);
-    showSnack('No profile chosen. Sign in again to pick one.');
+    showSnack(t('auth.login.noProfileChosen'));
   };
 
   const handleContextSelect = async (profile: ProfileInfo) => {
@@ -278,7 +300,7 @@ export default function LoginScreen() {
       // not write the session down (`SessionPersistError`) carries the only
       // sentence telling the partner what to do, and it would have been shown
       // here as the generic "Context selection failed."
-      showSnack(apiErrorMessage(err, 'Context selection failed.'), true);
+      showSnack(apiErrorMessage(err, t('auth.login.contextFailed')), true);
     } finally {
       setContextLoading(false);
     }
@@ -307,14 +329,22 @@ export default function LoginScreen() {
             variant="brand"
             logoSize="large"
             rounded={false}
-            subtitle="Your bookings, orders and billing in one place."
+            subtitle={t('auth.login.heroSubtitle')}
           />
 
           <View style={[styles.card, { backgroundColor: c.surface, shadowColor: c.shadow }]}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Welcome back</Text>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('auth.login.title')}</Text>
             <Text style={[styles.cardSubtitle, { color: c.textSecondary }]}>
-              Sign in to your partner account
+              {t('auth.login.subtitle')}
             </Text>
+
+            {/* Labelled in the OTHER language, always — a reader who cannot read
+                the current one has to be able to read the way out of it. */}
+            <TouchableOpacity onPress={toggle} style={styles.languageLink} activeOpacity={0.7}>
+              <Text style={[styles.linkText, { color: c.primary }]} accessibilityRole="button">
+                {t('auth.login.switchLanguage')}
+              </Text>
+            </TouchableOpacity>
 
             <View style={styles.form}>
               <Controller
@@ -322,7 +352,7 @@ export default function LoginScreen() {
                 name="identifier"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <AppInput
-                    label="Email or mobile number"
+                    label={t('auth.login.identifier')}
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -342,7 +372,7 @@ export default function LoginScreen() {
                 name="password"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <AppInput
-                    label="Password"
+                    label={t('auth.login.password')}
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -363,11 +393,11 @@ export default function LoginScreen() {
                 {/* `primary`, not `primaryLight`: `brand[400]` is only 2.99:1
                     on white and is a dark-mode / fill colour, never light-mode
                     link text. See the ramp note in `constants/colors.ts`. */}
-                <Text style={[styles.linkText, { color: c.primary }]}>Forgot password?</Text>
+                <Text style={[styles.linkText, { color: c.primary }]}>{t('auth.login.forgot')}</Text>
               </TouchableOpacity>
 
               <AppButton
-                label="Sign in"
+                label={t('auth.login.signIn')}
                 onPress={handleSubmit(onSubmit)}
                 loading={isLoading}
                 icon="login"
@@ -380,7 +410,7 @@ export default function LoginScreen() {
             {isGoogleAvailable() ? (
               <View style={styles.googleRow}>
                 <AppButton
-                  label="Continue with Google"
+                  label={t('auth.login.google')}
                   onPress={signInWithGoogle}
                   loading={googling}
                   icon="google"
@@ -417,8 +447,8 @@ export default function LoginScreen() {
                     ]}
                   >
                     {sendingCode
-                      ? `Sending a code to ${sendingCode}…`
-                      : 'Sign in with a one-time code instead'}
+                      ? t('auth.login.sendingCode', { target: sendingCode })
+                      : t('auth.login.otpLink')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -427,8 +457,8 @@ export default function LoginScreen() {
             <View style={styles.footer}>
               <TouchableOpacity onPress={() => router.push('/(auth)/register')} activeOpacity={0.7}>
                 <Text style={[styles.footerText, { color: c.textSecondary }]}>
-                  New to ResiSmart?{' '}
-                  <Text style={[styles.footerLink, { color: c.primary }]}>Register your business</Text>
+                  {t('auth.login.newHere')}
+                  <Text style={[styles.footerLink, { color: c.primary }]}>{t('auth.login.register')}</Text>
                 </Text>
               </TouchableOpacity>
             </View>
@@ -446,13 +476,13 @@ export default function LoginScreen() {
           onDismiss={cancelContextSelection}
           contentContainerStyle={[styles.modal, { backgroundColor: c.surface }]}
         >
-          <Text style={[styles.modalTitle, { color: c.textPrimary }]}>Select Your Profile</Text>
+          <Text style={[styles.modalTitle, { color: c.textPrimary }]}>{t('auth.login.modalTitle')}</Text>
           <Text style={[styles.modalSubtitle, { color: c.textSecondary }]}>
-            You have multiple profiles. Please select one to continue.
+            {t('auth.login.modalSubtitle')}
           </Text>
           <Divider style={styles.divider} />
           {contextLoading ? (
-            <LoadingOverlay visible message="Selecting profile..." />
+            <LoadingOverlay visible message={t('auth.login.selectingProfile')} />
           ) : (
             <>
               <ContextPicker profiles={pendingProfiles} onSelect={handleContextSelect} />
@@ -460,7 +490,7 @@ export default function LoginScreen() {
                   on screen said so — which is how the dead end above went
                   unnoticed. */}
               <TouchableOpacity onPress={cancelContextSelection} activeOpacity={0.7} style={styles.modalCancel}>
-                <Text style={[styles.linkText, styles.centred, { color: c.textSecondary }]}>Cancel</Text>
+                <Text style={[styles.linkText, styles.centred, { color: c.textSecondary }]}>{t('auth.login.cancel')}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -472,7 +502,7 @@ export default function LoginScreen() {
         onDismiss={() => setSnackbar((s) => ({ ...s, visible: false }))}
         duration={4000}
         style={{ backgroundColor: snackbar.error ? c.error : c.success }}
-        action={{ label: 'Dismiss', onPress: () => setSnackbar((s) => ({ ...s, visible: false })) }}
+        action={{ label: t('auth.login.dismiss'), onPress: () => setSnackbar((s) => ({ ...s, visible: false })) }}
       >
         {snackbar.message}
       </Snackbar>
@@ -520,6 +550,7 @@ const styles = StyleSheet.create({
   cardSubtitle: { fontSize: 14, marginBottom: 28 },
   form: { gap: 4 },
   forgotLink: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 8, paddingVertical: 4 },
+  languageLink: { alignSelf: 'flex-start', marginTop: -18, marginBottom: 20, paddingVertical: 4 },
   signInButton: { marginTop: 8 },
   otpLink: { alignSelf: 'stretch', paddingVertical: 14 },
   linkText: { fontWeight: '600', fontSize: 14 },

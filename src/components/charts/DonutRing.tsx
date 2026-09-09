@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Text } from 'react-native-paper';
 
+import { useTranslation } from 'react-i18next';
 import { ColorScheme } from '../../constants/colors';
 
 /**
@@ -28,7 +29,7 @@ export function DonutRing({
   strokeWidth = 16,
   centerLabel,
   centerValue,
-  label = 'Breakdown',
+  label,
   legend = true,
   accessibilityLabel,
 }: {
@@ -47,6 +48,7 @@ export function DonutRing({
   /** Full override for the screen-reader summary. */
   accessibilityLabel?: string;
 }) {
+  const { t } = useTranslation();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const total = slices.reduce((sum, s) => sum + Math.max(0, s.value), 0);
@@ -67,12 +69,23 @@ export function DonutRing({
   // Screen-reader summary — every slice's share as text, so the split is
   // reachable without reading colour. The visible legend below repeats this.
   const nonZero = slices.filter((s) => s.value > 0);
+  /* Each slice's own `label` is the caller's word for that slice and is already
+     translated where it is passed in; only the frame around it is looked up. */
+  /* `?? t(…)` HERE, not `label = t(…)` in the parameter list: a translator
+     called in a default parameter is evaluated once when the module loads and
+     freezes the chart's name in whatever language happened to be active then.
+     The same shape `MiniBars.tsx:54` and `ProgressBar.tsx:47` already use. */
+  const shownLabel = label ?? t('components.chart.donutLabel');
   const defaultA11yLabel =
     total <= 0
-      ? `${label}, no data yet`
-      : `${label}${centerValue ? `, ${centerValue}` : ''}: ${nonZero
-          .map((s) => `${s.label} ${Math.round((s.value / total) * 100)}%`)
-          .join(', ')}`;
+      ? t('components.chart.noData', { label: shownLabel })
+      : t('components.chart.donutSummary', {
+        label: shownLabel,
+        centre: centerValue ? t('components.chart.donutCentre', { value: centerValue }) : '',
+        slices: nonZero
+          .map((s) => t('components.chart.donutSlice', { label: s.label, percent: Math.round((s.value / total) * 100) }))
+          .join(', '),
+      });
 
   return (
     <View

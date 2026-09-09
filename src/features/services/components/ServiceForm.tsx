@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View, Pressable, useColorScheme } from 'react-native';
 import { Text, Switch, SegmentedButtons, HelperText, Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../constants/colors';
 import { AppInput } from '../../../components/AppInput';
@@ -9,9 +10,10 @@ import { AppButton } from '../../../components/AppButton';
 import { parseRupeesToPaise, paiseToInput, formatPaise } from '../../../lib/money';
 import {
   ServiceFormInput, ServiceMode, ServicePriceType, PartnerServiceRow, PartnerCategoryLite,
-  SERVICE_MODES, SERVICE_PRICE_TYPES, MODE_LABEL, PRICE_TYPE_LABEL, PRICE_TYPE_HINT,
+  SERVICE_MODES, SERVICE_PRICE_TYPES, MODE_LABEL_KEY, PRICE_TYPE_LABEL_KEY, PRICE_TYPE_HINT_KEY,
   MIN_DURATION_MIN, MAX_DURATION_MIN, MIN_SERVICE_CAPACITY, MAX_SERVICE_CAPACITY,
 } from '../types';
+import { durationLabel } from '../duration';
 
 /**
  * One service, added or changed — the mobile twin of the web `ServiceDialog`.
@@ -56,13 +58,6 @@ interface Draft {
 
 const DURATION_CHIPS = [15, 30, 45, 60, 90, 120, 180];
 
-const durationLabel = (min: number): string => {
-  if (min < 60) return `${min} min`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${h} hr${h === 1 ? '' : 's'}${m ? ` ${m} min` : ''}`;
-};
-
 const draftFromRow = (row: PartnerServiceRow | null, fallbackModes: readonly ServiceMode[]): Draft => ({
   name: row?.name ?? '',
   description: row?.description ?? '',
@@ -101,6 +96,7 @@ export function ServiceForm({
     onReoffer: () => void;
   };
 }) {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
 
@@ -139,19 +135,19 @@ export function ServiceForm({
   })();
 
   const problem = ((): string | null => {
-    if (worksNowhere) return 'Set where your business works in Settings before you offer a service.';
-    if (draft.name.trim().length < 2) return 'Give the service a name residents will recognise.';
-    if (!quoted && pricePaise === null) return 'That price is not an amount — try 499 or 499.50.';
-    if (draft.advance && advancePaise === null) return 'That advance is not an amount.';
-    if (draft.visitCharge && visitPaise === null) return 'That visit charge is not an amount.';
-    if (draft.durationMin < MIN_DURATION_MIN) return `A job has to be at least ${MIN_DURATION_MIN} minutes long.`;
-    if (draft.durationMin > MAX_DURATION_MIN) return 'Longer than a working day is not a booking, it is a project.';
+    if (worksNowhere) return t('services.form.worksNowhere');
+    if (draft.name.trim().length < 2) return t('services.form.nameTooShort');
+    if (!quoted && pricePaise === null) return t('services.form.priceInvalid');
+    if (draft.advance && advancePaise === null) return t('services.form.advanceInvalid');
+    if (draft.visitCharge && visitPaise === null) return t('services.form.visitInvalid');
+    if (draft.durationMin < MIN_DURATION_MIN) return t('services.form.durationTooShort', { min: MIN_DURATION_MIN });
+    if (draft.durationMin > MAX_DURATION_MIN) return t('services.form.durationTooLong');
     if (draft.dedicated && capacityValue === null) {
-      return `How many fit at once has to be a whole number between ${MIN_SERVICE_CAPACITY} and ${MAX_SERVICE_CAPACITY}.`;
+      return t('services.form.capacityInvalid', { min: MIN_SERVICE_CAPACITY, max: MAX_SERVICE_CAPACITY });
     }
-    if (!draft.modes.length) return 'Say where this happens.';
+    if (!draft.modes.length) return t('services.form.modeRequired');
     if (draft.priceType === 'FIXED' && (advancePaise || 0) > (pricePaise || 0)) {
-      return 'The advance cannot be more than the price of the service.';
+      return t('services.form.advanceOverPrice');
     }
     return null;
   })();
@@ -203,21 +199,21 @@ export function ServiceForm({
       {!canManage && (
         <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
           <Text style={[styles.readOnlyText, { color: c.textSecondary }]}>
-            View only — your role does not include managing your services.
+            {t('services.form.readOnlyBanner')}
           </Text>
         </View>
       )}
 
       <AppInput
-        label="What is it called?"
-        placeholder="AC servicing, deep clean, haircut…"
+        label={t('services.form.name')}
+        placeholder={t('services.form.namePlaceholder')}
         value={draft.name}
         onChangeText={(v) => set('name', v)}
         disabled={!canManage}
       />
 
       <AppInput
-        label="What it includes (optional)"
+        label={t('services.form.description')}
         value={draft.description}
         onChangeText={(v) => set('description', v)}
         multiline
@@ -240,10 +236,12 @@ export function ServiceForm({
         rather than the only tappable option.
       */}
       <View>
-        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>KIND OF WORK</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('services.form.categorySection')}</Text>
         <View style={styles.chipRow}>
-          <Chip label="Not set" active={!draft.categoryId} onPress={() => set('categoryId', '')} disabled={!canManage} c={c} />
-          {orphanCategory && <Chip label="Current setting" active onPress={() => {}} c={c} />}
+          {/* Only these two chips are copy; `cat.name` below is the category the
+              platform named, shown back as it came. */}
+          <Chip label={t('services.form.categoryNotSet')} active={!draft.categoryId} onPress={() => set('categoryId', '')} disabled={!canManage} c={c} />
+          {orphanCategory && <Chip label={t('services.form.categoryCurrent')} active onPress={() => {}} c={c} />}
           {categories.map((cat) => (
             <Chip key={cat._id} label={cat.name} active={draft.categoryId === cat._id}
               onPress={() => set('categoryId', cat._id)} disabled={!canManage} c={c} />
@@ -251,14 +249,13 @@ export function ServiceForm({
         </View>
         {categories.length === 0 && (
           <Text style={[styles.hint, { color: c.textSecondary }]}>
-            The list of work types is not available right now. Whatever this service is set to is kept unless
-            you change it here.
+            {t('services.form.categoryUnavailable')}
           </Text>
         )}
       </View>
 
       <View>
-        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>HOW IT IS PRICED</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('services.form.priceSection')}</Text>
         <SegmentedButtons
           value={draft.priceType}
           onValueChange={(v) => set('priceType', v as ServicePriceType)}
@@ -266,15 +263,17 @@ export function ServiceForm({
           // Paper's own per-button `disabled`, so a viewer's tap is refused by
           // the control rather than absorbed by the handler. Same reason as the
           // `Chip`s above and the fields below.
-          buttons={SERVICE_PRICE_TYPES.map((t) => ({ value: t, label: PRICE_TYPE_LABEL[t], disabled: !canManage }))}
+          /* `pt`, not `t` — the callback used to shadow the translator. The
+             `value` stays the wire literal; only the label is looked up. */
+          buttons={SERVICE_PRICE_TYPES.map((pt) => ({ value: pt, label: t(PRICE_TYPE_LABEL_KEY[pt]), disabled: !canManage }))}
         />
-        <Text style={[styles.hint, { color: c.textSecondary }]}>{PRICE_TYPE_HINT[draft.priceType]}</Text>
+        <Text style={[styles.hint, { color: c.textSecondary }]}>{t(PRICE_TYPE_HINT_KEY[draft.priceType])}</Text>
       </View>
 
       {!quoted && (
         <AppInput
-          label="Price (₹)"
-          placeholder="499"
+          label={t('services.form.price')}
+          placeholder={t('services.form.pricePlaceholder')}
           value={draft.price}
           onChangeText={(v) => set('price', v)}
           keyboardType="numeric"
@@ -283,22 +282,22 @@ export function ServiceForm({
       )}
 
       <View>
-        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>HOW LONG IT TAKES</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('services.form.durationSection')}</Text>
         <View style={styles.chipRow}>
           {DURATION_CHIPS.map((m) => (
-            <Chip key={m} label={durationLabel(m)} active={draft.durationMin === m}
+            <Chip key={m} label={durationLabel(m, t)} active={draft.durationMin === m}
               onPress={() => set('durationMin', m)} disabled={!canManage} c={c} />
           ))}
         </View>
         <AppInput
-          label="Minutes"
+          label={t('services.form.minutes')}
           value={String(draft.durationMin)}
           onChangeText={(v) => set('durationMin', Number(v) || 0)}
           keyboardType="numeric"
           disabled={!canManage}
         />
         <Text style={[styles.hint, { color: c.textSecondary }]}>
-          The time blocked out in your diary, so nobody else is booked on top.
+          {t('services.form.durationHint')}
         </Text>
       </View>
 
@@ -321,16 +320,14 @@ export function ServiceForm({
         which is the opposite of what it does.
       */}
       <View>
-        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>HOW MANY AT ONCE</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('services.form.capacitySection')}</Text>
         <View style={styles.switchBox}>
           <View style={{ flex: 1, paddingRight: 12 }}>
             <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>
-              This one has its own space or kit
+              {t('services.form.dedicated')}
             </Text>
             <Text style={[styles.hint, { color: c.textSecondary }]}>
-              {draft.dedicated
-                ? 'Booked against its own resource, not your shop’s general capacity.'
-                : 'Off — it shares however many people your working hours allow at a time.'}
+              {t(draft.dedicated ? 'services.form.dedicatedOn' : 'services.form.dedicatedOff')}
             </Text>
           </View>
           <Switch
@@ -342,29 +339,26 @@ export function ServiceForm({
         {draft.dedicated && (
           <>
             <AppInput
-              label="How many of these at the same time"
+              label={t('services.form.capacity')}
               value={draft.capacity}
               onChangeText={(v) => set('capacity', v.replace(/\D/g, '').slice(0, 3))}
               keyboardType="numeric"
               disabled={!canManage}
             />
             <Text style={[styles.hint, { color: c.textSecondary }]}>
-              Say you have five chairs and one massage room. Leave the haircuts off this switch so they use
-              the five, and set the massage to 1 — the room is counted on its own, and a busy shop floor
-              never makes it look full. Five chairs plus one room is six customers at once.
+              {t('services.form.capacityHint')}
             </Text>
           </>
         )}
       </View>
 
       <View>
-        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>WHERE IT HAPPENS</Text>
+        <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('services.form.whereSection')}</Text>
         {worksNowhere ? (
           <View style={[styles.lockBox, { backgroundColor: c.warning + '18', borderColor: c.warning }]}>
             <MaterialCommunityIcons name="lock-outline" size={16} color={c.warning} />
             <Text style={[styles.lockText, { color: c.textPrimary }]}>
-              Your business has not said where it works, so there is nowhere to offer this yet. Set it in
-              Settings → Business details, then come back.
+              {t('services.form.whereLocked')}
             </Text>
           </View>
         ) : (
@@ -375,7 +369,7 @@ export function ServiceForm({
                 return (
                   <Chip
                     key={m}
-                    label={MODE_LABEL[m]}
+                    label={t(MODE_LABEL_KEY[m])}
                     active={on}
                     onPress={() => set('modes', on ? draft.modes.filter((x) => x !== m) : [...draft.modes, m])}
                     disabled={!canManage}
@@ -386,7 +380,9 @@ export function ServiceForm({
             </View>
             {allowedModes && allowedModes.length > 0 && allowedModes.length < SERVICE_MODES.length && (
               <Text style={[styles.hint, { color: c.textSecondary }]}>
-                Your business is set up for {allowedModes.map((m) => MODE_LABEL[m].toLowerCase()).join(' and ')} only.
+                {t('services.form.modesLimited', {
+                  modes: allowedModes.map((m) => t(MODE_LABEL_KEY[m]).toLowerCase()).join(t('services.form.modesJoin')),
+                })}
               </Text>
             )}
           </>
@@ -395,8 +391,8 @@ export function ServiceForm({
 
       {travels && (
         <AppInput
-          label="Visit charge (₹, optional)"
-          placeholder="0"
+          label={t('services.form.visitCharge')}
+          placeholder={t('services.form.zero')}
           value={draft.visitCharge}
           onChangeText={(v) => set('visitCharge', v)}
           keyboardType="numeric"
@@ -405,8 +401,8 @@ export function ServiceForm({
       )}
 
       <AppInput
-        label="Advance to hold the slot (₹, optional)"
-        placeholder="0"
+        label={t('services.form.advance')}
+        placeholder={t('services.form.zero')}
         value={draft.advance}
         onChangeText={(v) => set('advance', v)}
         keyboardType="numeric"
@@ -416,14 +412,19 @@ export function ServiceForm({
       {!quoted && total > 0 && (
         <View style={[styles.summaryBox, { backgroundColor: c.surfaceVariant }]}>
           <Text style={[styles.summaryText, { color: c.textPrimary }]}>
-            A customer booking this{travels ? ' as a home visit' : ''} is billed {formatPaise(total)}
-            {advancePaise ? `, of which ${formatPaise(advancePaise)} is taken up front.` : '.'}
+            {t('services.form.summary', {
+              visit: travels ? t('services.form.summaryVisit') : '',
+              total: formatPaise(total),
+              advance: advancePaise
+                ? t('services.form.summaryAdvance', { amount: formatPaise(advancePaise) })
+                : t('services.form.summaryNoAdvance'),
+            })}
           </Text>
         </View>
       )}
 
       <View style={styles.switchBox}>
-        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>Offered to residents</Text>
+        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('services.form.offered')}</Text>
         <Switch value={draft.isActive} onValueChange={(v) => set('isActive', v)} disabled={!canManage} />
       </View>
 
@@ -445,11 +446,11 @@ export function ServiceForm({
             textColor={c.error}
             style={styles.footerBtn}
           >
-            Stop offering
+            {t('services.form.stopOffering')}
           </Button>
         ) : (
           <Button mode="outlined" onPress={footer.onReoffer} style={styles.footerBtn}>
-            Offer it again
+            {t('services.form.offerAgain')}
           </Button>
         )
       )}

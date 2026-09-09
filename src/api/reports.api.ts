@@ -1,6 +1,7 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { apiClient, ApiEnvelope, unwrap } from './axios';
+import i18n from '../i18n';
 
 /**
  * `/partners/me/reports` — the eight business reports plus the party-balance
@@ -13,6 +14,16 @@ import { apiClient, ApiEnvelope, unwrap } from './axios';
  * as the server's `report()` registry guarantees (spec: "the file a partner
  * downloads is the screen they downloaded it from").
  */
+
+/**
+ * `i18n.t` on the singleton rather than a `t` handed in by the screen — nothing
+ * in this module is a React component, so there is no hook to read, and
+ * `exportReport`'s only caller reaches the sentence below through
+ * `apiErrorMessage`, which prefers a thrown message over the fallback it passes.
+ * `features/billing/pdf.ts` records the same reasoning at length; this is the
+ * second module to need it, not a second translator.
+ */
+const t = (key: string, vars?: Record<string, string>): string => i18n.t(key, vars ?? {});
 
 export const PARTNER_REPORT_KEYS = [
   'sales', 'purchase', 'gstr1', 'gstr3b', 'items', 'parties', 'outstanding', 'profit',
@@ -268,7 +279,13 @@ export async function exportReport(
 
   const canShare = await Sharing.isAvailableAsync();
   if (!canShare) {
-    throw new Error('Sharing is not available on this device. The file was downloaded but could not be opened.');
+    throw new Error(t('reports.share.sharingUnavailable'));
   }
-  await Sharing.shareAsync(file.uri, { mimeType, dialogTitle: `${key} report` });
+  // The report's own name, from the SAME catalogue entry the chip row on
+  // `reports/index.tsx` reads — so the share sheet and the tab the partner
+  // tapped to get here cannot end up calling the report two different things.
+  await Sharing.shareAsync(file.uri, {
+    mimeType,
+    dialogTitle: t('reports.share.dialogTitle', { label: t(`reports.tab.${key}`) }),
+  });
 }

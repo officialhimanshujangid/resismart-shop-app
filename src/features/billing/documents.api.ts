@@ -71,11 +71,16 @@ export const documentsApi = {
       .then((r) => unwrap(r.data)),
 
   /**
-   * A DRAFT. `idempotencyKey` is sent as a header so a future server that adds
-   * idempotency-store support to this route needs no client change — today the
-   * server does not read it (see `bugsSpotted`), so the durability this app
-   * promises comes from never re-issuing a draft it has already issued, not
-   * from this header alone.
+   * A DRAFT.
+   *
+   * The header is no longer speculative: the route carries
+   * `idempotent('partner-document.create')`
+   * (`backend/src/routes/partner-document.routes.ts:64`), so a retry with this
+   * key is replayed from the server's stored answer rather than creating a
+   * second draft. The client-side promise — never re-`create` a draft that
+   * already has a `serverDraftId` — still stands on top of it, because the two
+   * cover different halves: the server dedupes one intent across attempts, the
+   * draft store dedupes one intent across app launches.
    */
   create: (payload: CreateDocumentPayload, idempotencyKey: string) =>
     apiClient
@@ -91,9 +96,30 @@ export const documentsApi = {
   remove: (id: string) =>
     apiClient.delete<ApiEnvelope<unknown>>(`/partners/me/documents/${id}`).then((r) => r.data),
 
-  issue: (id: string) =>
+  /**
+   * Turn a draft into a NUMBERED, immutable tax document.
+   *
+   * This is the single highest-stakes retry in the app, and it was the one
+   * create call here sending no key. The body is `{}` and the subject is in the
+   * URL, so the server's fingerprint is over `{ params: { id }, body: {} }` —
+   * which is exactly what makes the key mandatory rather than decorative:
+   * `idempotent()` is a no-op without one (`idempotency.middleware.ts:122`), so
+   * an `issue` that half-sent and was retried could draw a SECOND statutory
+   * invoice number for one bill. That is the failure
+   * `models/idempotency-key.model.ts` was written about.
+   *
+   * `idempotencyKey` comes from the CALLER for the usual reason, and here the
+   * caller has something better than a fresh string: an `issue` intent is
+   * identified by the draft it issues, so both call sites derive a key that is
+   * stable across every attempt at that one draft rather than minting per try.
+   */
+  issue: (id: string, idempotencyKey: string) =>
     apiClient
-      .post<ApiEnvelope<PartnerDocumentRecord> & { message: string }>(`/partners/me/documents/${id}/issue`, {})
+      .post<ApiEnvelope<PartnerDocumentRecord> & { message: string }>(
+        `/partners/me/documents/${id}/issue`,
+        {},
+        withIdempotency(idempotencyKey),
+      )
       .then((r) => ({ document: unwrap(r.data), message: r.data.message })),
 
   cancel: (id: string, reason?: string) =>

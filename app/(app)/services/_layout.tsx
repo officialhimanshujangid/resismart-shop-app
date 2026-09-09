@@ -2,6 +2,8 @@ import React from 'react';
 import { View, useColorScheme } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 import { Stack, Redirect } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 
@@ -20,6 +22,7 @@ import { usePartnerEntitlements } from '../../../src/hooks';
  * receptionist who only answers the phone the power to rewrite every price.
  */
 export default function ServicesLayout() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { ready, hasModule, can } = usePartnerEntitlements();
@@ -46,9 +49,11 @@ export default function ServicesLayout() {
         contentStyle: { backgroundColor: c.background },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Services' }} />
-      <Stack.Screen name="create" options={{ title: 'Add a service', presentation: 'modal' }} />
-      <Stack.Screen name="[id]" options={{ title: 'Service' }} />
+      {/* `name` is the route segment and never moves; only the header title is
+          translated. */}
+      <Stack.Screen name="index" options={{ title: t('services.nav.list') }} />
+      <Stack.Screen name="create" options={{ title: t('services.nav.create'), presentation: 'modal' }} />
+      <Stack.Screen name="[id]" options={{ title: t('services.nav.detail') }} />
     </Stack>
   );
 }

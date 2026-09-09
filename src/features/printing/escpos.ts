@@ -42,7 +42,32 @@ export interface EscPosLineItem {
   name: string;
   /** Pre-formatted, e.g. "2 x ₹45.00". Money is formatted by `formatPaise` before it reaches here — this file has no opinion on currency. */
   qtyAndRate: string;
-  /** Pre-formatted line total, e.g. "₹90.00". */
+  /**
+   * Pre-formatted TAXABLE VALUE for this line, e.g. "₹90.00" — the base, NOT
+   * what the customer pays for the item.
+   *
+   * THE CONVENTION, stated here because this file cannot enforce it and the
+   * model builder does not exist yet. `buildEscPosReceipt` prints these amounts
+   * above `Subtotal` / `Tax` / `TOTAL`, so the column has to be summable INTO
+   * the subtotal: it must be the same basis `subtotalLabel` is, which on every
+   * document this app raises is `totals.subPaise` — the sum of the taxable
+   * values (`partner-tax.util.ts`). Fill it from the stored line's
+   * `taxablePaise`, never `totalPaise` and never `qty × rate`.
+   *
+   * Putting the tax-inclusive line total here instead is the mistake three
+   * other screens in this repo shipped and were fixed for — the mobile invoice
+   * detail card, the billing composer and the order sheet — because on the
+   * default inclusive-priced product it prints a column that already contains
+   * the GST, above a Subtotal that does not and a Tax row that then appears to
+   * charge it a second time. Three true figures reconciling to nothing, on
+   * paper the customer is holding. It is worse here than on a screen: a
+   * receipt has no caption room and cannot be scrolled back to.
+   *
+   * Those screens print the base in the column and carry the rest as a second
+   * line under the item ("+ ₹18.00 tax → ₹118.00"). A receipt has `name` and
+   * `qtyAndRate` free above the amount and can say the same thing there if the
+   * builder wants it; what it must not do is change what this field means.
+   */
   amount: string;
 }
 
@@ -142,6 +167,10 @@ export function buildEscPosReceipt(model: EscPosReceiptModel): Uint8Array {
   }
 
   w.line(rule(columns));
+  // Subtotal + Tax = TOTAL, and the item column above sums to Subtotal — which
+  // holds only if every `item.amount` was filled with the line's TAXABLE value.
+  // See `EscPosLineItem.amount` for the convention and for what breaks when a
+  // builder reaches for the tax-inclusive line total instead.
   w.line(twoColumn('Subtotal', model.subtotalLabel, columns));
   w.line(twoColumn('Tax', model.taxLabel, columns));
   w.cmd(CMD.BOLD_ON);

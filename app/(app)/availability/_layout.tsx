@@ -2,6 +2,8 @@ import React from 'react';
 import { View, useColorScheme } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 import { Stack, Redirect } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 
@@ -17,6 +19,7 @@ import { usePartnerEntitlements } from '../../../src/hooks';
  * permission (`BOOKINGS_*`), not `CATALOG_*`.
  */
 export default function AvailabilityLayout() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { ready, hasModule, can } = usePartnerEntitlements();
@@ -43,7 +46,9 @@ export default function AvailabilityLayout() {
         contentStyle: { backgroundColor: c.background },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Working hours' }} />
+      {/* `name` is the route segment and never moves; only the header title is
+          translated — the same split `services/_layout.tsx` draws. */}
+      <Stack.Screen name="index" options={{ title: t('availability.nav.title') }} />
     </Stack>
   );
 }

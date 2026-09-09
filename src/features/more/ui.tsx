@@ -4,6 +4,7 @@ import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { ColorScheme, radii } from '../../constants/colors';
 import { useIsOnline } from '../../hooks/useIsOnline';
@@ -41,11 +42,12 @@ export function Screen({
    */
   floating?: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <View style={styles.header}>
         {back ? (
-          <IconButton icon="chevron-left" size={26} onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Back" />
+          <IconButton icon="chevron-left" size={26} onPress={() => router.back()} style={styles.backBtn} accessibilityLabel={t('common.back')} />
         ) : (
           <View style={styles.backSpacer} />
         )}
@@ -81,26 +83,28 @@ export function Screen({
  * appended to: "Loading your payments…" is not what is happening, and the
  * reason is the same on every screen.
  */
-export function Loading({ c, label = 'Loading…' }: { c: ColorScheme; label?: string }) {
+export function Loading({ c, label }: { c: ColorScheme; label?: string }) {
+  const { t } = useTranslation();
   const online = useIsOnline();
   return (
     <View style={styles.centerBlock}>
       <ActivityIndicator size="large" color={c.primary} />
       <Text style={[styles.centerText, { color: c.textSecondary }]}>
-        {online ? label : 'No connection — waiting for the network…'}
+        {online ? (label ?? t('common.loading')) : t('common.offlineWaiting')}
       </Text>
     </View>
   );
 }
 
 export function ErrorBlock({ c, message, onRetry }: { c: ColorScheme; message: string; onRetry?: () => void }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.centerBlock}>
       <MaterialCommunityIcons name="alert-circle-outline" size={32} color={c.error} />
       <Text style={[styles.centerText, { color: c.textPrimary }]}>{message}</Text>
       {onRetry ? (
         <Pressable onPress={onRetry} style={[styles.retryBtn, { borderColor: c.primary }]}>
-          <Text style={{ color: c.primary, fontWeight: '600' }}>Try again</Text>
+          <Text style={{ color: c.primary, fontWeight: '600' }}>{t('common.tryAgain')}</Text>
         </Pressable>
       ) : null}
     </View>

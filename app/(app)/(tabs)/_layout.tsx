@@ -3,6 +3,7 @@ import { useColorScheme } from 'react-native';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
@@ -54,6 +55,7 @@ const tabIcon =
  * business whose plan includes bookings.
  */
 export default function TabsLayout() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const insets = useSafeAreaInsets();
@@ -136,20 +138,25 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: 'Today', tabBarIcon: tabIcon('view-dashboard-outline') }}
+        options={{ title: t('tabs.today'), tabBarIcon: tabIcon('view-dashboard-outline') }}
       />
 
+      {/* The three module tabs take their names from `modules.<KEY>.label`,
+          the same catalogue entries the More menu, Settings → Modules and the
+          plan screen read. A module that is called one thing on its tab and
+          another in the menu that sells it is the drift that four separate
+          copies of the word invite. */}
       <Tabs.Protected guard={showBookings}>
         <Tabs.Screen
           name="bookings"
-          options={{ title: 'Bookings', tabBarIcon: tabIcon('calendar-check-outline') }}
+          options={{ title: t('modules.BOOKINGS.label'), tabBarIcon: tabIcon('calendar-check-outline') }}
         />
       </Tabs.Protected>
 
       <Tabs.Protected guard={showOrders}>
         <Tabs.Screen
           name="orders"
-          options={{ title: 'Orders', tabBarIcon: tabIcon('package-variant-closed') }}
+          options={{ title: t('modules.ORDERS.label'), tabBarIcon: tabIcon('package-variant-closed') }}
         />
       </Tabs.Protected>
 
@@ -157,7 +164,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="billing"
           options={{
-            title: 'Billing',
+            title: t('modules.INVOICING.label'),
             tabBarIcon: tabIcon('receipt'),
             tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
           }}
@@ -168,7 +175,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="more"
           options={{
-            title: 'More',
+            title: t('tabs.more'),
             tabBarIcon: tabIcon('dots-horizontal'),
             tabBarBadge: unread > 0 ? (unread > 99 ? '99+' : unread) : undefined,
           }}

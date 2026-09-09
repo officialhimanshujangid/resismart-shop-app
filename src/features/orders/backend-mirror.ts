@@ -30,29 +30,43 @@ export const ORDER_VERBS = [
 ] as const;
 export type OrderVerb = typeof ORDER_VERBS[number];
 
-/** = `ORDER_VERB_LABELS` in `order-transitions.ts` — "the server names its own actions". */
-export const ORDER_VERB_LABELS: Record<OrderVerb, string> = {
-  accept: 'Accept the order',
-  reject: 'Cannot take this',
-  pack: 'Packed and ready',
-  dispatch: 'Sent out for delivery',
-  deliver: 'Handed over',
-  cancel: 'Cancel the order',
-  markReturned: 'Came back to us',
-  invoice: 'Raise the invoice',
-  pay: 'Mark paid',
+/**
+ * WHAT EACH VERB'S BUTTON SAYS — a catalogue key per verb, mirroring
+ * `ORDER_VERB_LABELS` in `order-transitions.ts` ("the server names its own
+ * actions").
+ *
+ * The KEYS are `ORDER_VERBS` above, which is the WIRE value: the verb is POSTed
+ * to `POST /orders/:id/:verb` and is what `allowedVerbs` comes back as. Those
+ * literals never move. Only the labels are translated — the same split
+ * `features/billing/types.ts` is the worked example of.
+ */
+export const ORDER_VERB_LABEL_KEYS: Record<OrderVerb, string> = {
+  accept: 'orders.verb.accept',
+  reject: 'orders.verb.reject',
+  pack: 'orders.verb.pack',
+  dispatch: 'orders.verb.dispatch',
+  deliver: 'orders.verb.deliver',
+  cancel: 'orders.verb.cancel',
+  markReturned: 'orders.verb.markReturned',
+  invoice: 'orders.verb.invoice',
+  pay: 'orders.verb.pay',
 };
 
-/** Human status text for a status chip. Not on the backend (it writes sentences per-case instead); this is this screen's own vocabulary. */
-export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  PLACED: 'New',
-  ACCEPTED: 'Accepted',
-  PACKED: 'Packed',
-  OUT_FOR_DELIVERY: 'Out for delivery',
-  DELIVERED: 'Delivered',
-  INVOICED: 'Invoiced',
-  PAID: 'Paid',
-  REJECTED: 'Rejected',
-  CANCELLED: 'Cancelled',
-  RETURNED: 'Returned',
+/**
+ * Human status text for a status chip — a catalogue key per status. Not on the
+ * backend (it writes sentences per-case instead); this is this app's own
+ * vocabulary. `ORDER_STATUSES` above stays the wire value: it is what the server
+ * sends, what `toneFor` switches on, and what a filter posts back.
+ */
+export const ORDER_STATUS_LABEL_KEYS: Record<OrderStatus, string> = {
+  PLACED: 'orders.status.PLACED',
+  ACCEPTED: 'orders.status.ACCEPTED',
+  PACKED: 'orders.status.PACKED',
+  OUT_FOR_DELIVERY: 'orders.status.OUT_FOR_DELIVERY',
+  DELIVERED: 'orders.status.DELIVERED',
+  INVOICED: 'orders.status.INVOICED',
+  PAID: 'orders.status.PAID',
+  REJECTED: 'orders.status.REJECTED',
+  CANCELLED: 'orders.status.CANCELLED',
+  RETURNED: 'orders.status.RETURNED',
 };

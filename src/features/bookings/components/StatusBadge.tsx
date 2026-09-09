@@ -2,7 +2,9 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { BookingStatus } from '../booking.types';
-import { STATUS_LABELS, STATUS_TONE, StatusTone } from '../format';
+import { useTranslation } from 'react-i18next';
+
+import { STATUS_LABEL_KEYS, STATUS_TONE, StatusTone } from '../format';
 import { palette, radii } from '../../../constants/colors';
 
 /** Tone → (background, ink), light and dark share the same tone rather than the theme's own colours — a status chip has to read the same regardless of card background. */
@@ -15,10 +17,11 @@ const TONE_COLORS: Record<StatusTone, { bg: string; ink: string }> = {
 };
 
 export function StatusBadge({ status }: { status: BookingStatus }) {
+  const { t } = useTranslation();
   const tone = TONE_COLORS[STATUS_TONE[status]];
   return (
     <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.text, { color: tone.ink }]}>{STATUS_LABELS[status]}</Text>
+      <Text style={[styles.text, { color: tone.ink }]}>{t(STATUS_LABEL_KEYS[status])}</Text>
     </View>
   );
 }

@@ -3,6 +3,7 @@ import { Alert, FlatList, Linking, StyleSheet, useColorScheme, View } from 'reac
 import { IconButton, Text } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -11,16 +12,12 @@ import { partiesApi, PartyLedgerEntry } from '../../../src/api/parties.api';
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { Card, EmptyBlock, ErrorBlock, Loading, Row, Screen } from '../../../src/features/more/ui';
-
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
+import { formatI18nDate } from '../../../src/i18n';
 
 export default function PartyDetailScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { can } = usePartnerEntitlements();
   const canManage = can('CUSTOMERS', 'FULL');
@@ -44,7 +41,7 @@ export default function PartyDetailScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.parties.all() });
       router.back();
     },
-    onError: (err) => Alert.alert('Could not hide this party', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('parties.detail.hideFailed'), apiErrorMessage(err)),
   });
 
   const recompute = async () => {
@@ -54,13 +51,16 @@ export default function PartyDetailScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.parties.detail(id) });
       void queryClient.invalidateQueries({ queryKey: [...qk.parties.detail(id), 'ledger'] });
       Alert.alert(
-        'Balance rebuilt',
+        t('parties.detail.rebuiltTitle'),
         result.driftPaise === 0
-          ? 'The stored balance already matched the ledger.'
-          : `The stored balance was off by ${formatPaise(Math.abs(result.driftPaise))}. It now reads ${formatPaise(result.outstandingPaise)}.`,
+          ? t('parties.detail.rebuiltMatched')
+          : t('parties.detail.rebuiltDrift', {
+            drift: formatPaise(Math.abs(result.driftPaise)),
+            balance: formatPaise(result.outstandingPaise),
+          }),
       );
     } catch (err) {
-      Alert.alert('Could not rebuild balance', apiErrorMessage(err));
+      Alert.alert(t('parties.detail.rebuildFailed'), apiErrorMessage(err));
     } finally {
       setRecomputing(false);
     }
@@ -68,38 +68,48 @@ export default function PartyDetailScreen() {
 
   const onHide = () => {
     if (!party.data) return;
-    Alert.alert('Hide this party?', `${party.data.name} will no longer appear in lists. This does not delete their history.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Hide', style: 'destructive', onPress: () => deactivate.mutate() },
+    Alert.alert(t('parties.detail.hideTitle'), t('parties.detail.hideBody', { name: party.data.name }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('parties.detail.hideConfirm'), style: 'destructive', onPress: () => deactivate.mutate() },
     ]);
   };
 
   if (party.isPending) {
-    return <Screen c={c} title="Party"><Loading c={c} /></Screen>;
+    return <Screen c={c} title={t('parties.detail.screenTitle')}><Loading c={c} /></Screen>;
   }
   if (party.isError || !party.data) {
     return (
-      <Screen c={c} title="Party">
-        <ErrorBlock c={c} message={apiErrorMessage(party.error, 'That party could not be found.')} onRetry={() => party.refetch()} />
+      <Screen c={c} title={t('parties.detail.screenTitle')}>
+        <ErrorBlock c={c} message={apiErrorMessage(party.error, t('parties.detail.notFound'))} onRetry={() => party.refetch()} />
       </Screen>
     );
   }
 
   const p = party.data;
-  const balanceLabel = p.outstandingPaise > 0 ? 'They owe you' : p.outstandingPaise < 0 ? 'You owe them' : 'Settled';
+  const balanceLabel = p.outstandingPaise > 0
+    ? t('parties.detail.theyOweYou')
+    : p.outstandingPaise < 0 ? t('parties.detail.youOweThem') : t('parties.detail.settled');
   const balanceColor = p.outstandingPaise > 0 ? c.error : p.outstandingPaise < 0 ? c.success : c.textSecondary;
 
   const renderEntry = ({ item }: { item: PartyLedgerEntry }) => (
     <View style={styles.entryRow}>
       <View style={{ flex: 1 }}>
+        {/* `item.label` and `item.reference` are the SERVER's own words for a
+            ledger line (an invoice number, a payment note) — data on the record,
+            printed back as it came rather than re-labelled here. */}
         <Text style={[styles.entryLabel, { color: c.textPrimary }]} numberOfLines={1}>{item.label}</Text>
-        <Text style={[styles.entryDate, { color: c.textDisabled }]}>{fmtDate(item.at)}{item.reference ? ` · ${item.reference}` : ''}</Text>
+        <Text style={[styles.entryDate, { color: c.textDisabled }]}>
+          {formatI18nDate(item.at, t)}
+          {item.reference ? t('parties.detail.entryReference', { reference: item.reference }) : ''}
+        </Text>
       </View>
       <View style={{ alignItems: 'flex-end' }}>
         <Text style={[styles.entryAmount, { color: item.debitPaise ? c.error : c.success }]}>
-          {item.debitPaise ? `+${formatPaise(item.debitPaise)}` : `−${formatPaise(item.creditPaise)}`}
+          {item.debitPaise
+            ? t('parties.detail.entryDebit', { amount: formatPaise(item.debitPaise) })
+            : t('parties.detail.entryCredit', { amount: formatPaise(item.creditPaise) })}
         </Text>
-        <Text style={[styles.entryBalance, { color: c.textDisabled }]}>bal {formatPaise(item.balancePaise)}</Text>
+        <Text style={[styles.entryBalance, { color: c.textDisabled }]}>{t('parties.detail.entryBalance', { amount: formatPaise(item.balancePaise) })}</Text>
       </View>
     </View>
   );
@@ -108,7 +118,9 @@ export default function PartyDetailScreen() {
     <Screen
       c={c}
       title={p.name}
-      subtitle={p.kind === 'BOTH' ? 'Customer & supplier' : p.kind === 'CUSTOMER' ? 'Customer' : 'Supplier'}
+      subtitle={t(p.kind === 'BOTH'
+        ? 'parties.detail.kindBoth'
+        : p.kind === 'CUSTOMER' ? 'parties.detail.kindCustomer' : 'parties.detail.kindSupplier')}
       scroll={false}
       right={canManage ? (
         <IconButton icon="pencil-outline" size={22} onPress={() => router.push({ pathname: '/parties/new', params: { id } })} />
@@ -140,22 +152,28 @@ export default function PartyDetailScreen() {
               {(p.phone || p.email) && (
                 <Text style={{ color: c.textSecondary, fontSize: 12 }}>{[p.phone, p.email].filter(Boolean).join(' · ')}</Text>
               )}
-              {p.gstin && <Text style={{ color: c.textSecondary, fontSize: 12 }}>GSTIN {p.gstin}</Text>}
+              {p.gstin && <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('parties.detail.gstin', { gstin: p.gstin })}</Text>}
             </Card>
 
             {canManage && (
-              <Row c={c} icon="calculator-variant-outline" title="Rebuild balance from ledger" subtitle="Fixes a stored figure that has drifted from the truth." onPress={recomputing ? undefined : recompute} />
+              <Row
+                c={c}
+                icon="calculator-variant-outline"
+                title={t('parties.detail.rebuildRow')}
+                subtitle={t('parties.detail.rebuildRowHint')}
+                onPress={recomputing ? undefined : recompute}
+              />
             )}
             {canManage && (
-              <Row c={c} icon="eye-off-outline" title="Hide this party" danger onPress={onHide} />
+              <Row c={c} icon="eye-off-outline" title={t('parties.detail.hideRow')} danger onPress={onHide} />
             )}
 
-            <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Ledger</Text>
+            <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('parties.detail.ledger')}</Text>
           </View>
         }
         ListEmptyComponent={
           ledger.isPending ? <Loading c={c} /> : (
-            <EmptyBlock c={c} icon="receipt" title="No activity yet" body="Documents and payments raised against this party will show up here." />
+            <EmptyBlock c={c} icon="receipt" title={t('parties.detail.emptyTitle')} body={t('parties.detail.emptyBody')} />
           )
         }
       />

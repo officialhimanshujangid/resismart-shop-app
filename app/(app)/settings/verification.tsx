@@ -4,6 +4,7 @@ import { ActivityIndicator, Button, Text } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
@@ -37,25 +38,19 @@ import { Card, ChipRow, ErrorBlock, Loading, Row, Screen, SectionLabel } from '.
  * whether they have been approved and what else is in their way.
  */
 
-const DOC_LABELS: Record<PartnerDocType, string> = {
-  GST: 'GST certificate',
-  PAN: 'PAN card',
-  LICENSE: 'Trade licence',
-  SHOP_ACT: 'Shop & Establishment',
-  OTHER: 'Other document',
-};
-
-const DOC_OPTIONS: { key: PartnerDocType; label: string }[] =
-  PARTNER_DOC_TYPES.map((k) => ({ key: k, label: DOC_LABELS[k] }));
-
-const STATUS_LINE: Record<string, string> = {
-  VERIFIED: 'Verified — residents can find you.',
-  PENDING: 'With our team now. We will let you know when it is decided.',
-  REJECTED: 'Turned down. Fix what is noted below and send it again.',
-  UNSUBMITTED: 'Not sent yet.',
-};
-
 export default function VerificationScreen() {
+  const { t } = useTranslation();
+  /**
+   * The document TYPE is the enum `partner.model.ts` stores and the reviewer
+   * filters on; only its label is translated. An unknown type — one a newer
+   * server has added — still prints its own code rather than a blank row.
+   */
+  const docLabel = useCallback(
+    (type: string) => (PARTNER_DOC_TYPES as readonly string[]).includes(type)
+      ? t(`settings.verification.doc.${type}`)
+      : type,
+    [t],
+  );
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
@@ -112,20 +107,20 @@ export default function VerificationScreen() {
       setDocs((d) => [...d, res.doc]);
       queryClient.setQueryData(qk.onboarding.status(), res.onboarding);
     } catch (e) {
-      Alert.alert('That upload did not go through', apiErrorMessage(e));
+      Alert.alert(t('settings.verification.uploadFailed'), apiErrorMessage(e));
     } finally {
       setUploading(false);
     }
-  }, [docType, queryClient]);
+  }, [docType, queryClient, t]);
 
   const removeDoc = useCallback((doc: PartnerKycDoc) => {
     Alert.alert(
-      `Remove ${DOC_LABELS[doc.type] ?? doc.type}?`,
-      'It is deleted from your profile. You can attach it again before you send your profile in.',
+      t('settings.verification.removeTitle', { document: docLabel(doc.type) }),
+      t('settings.verification.removeBody'),
       [
-        { text: 'Keep it', style: 'cancel' },
+        { text: t('settings.verification.removeKeep'), style: 'cancel' },
         {
-          text: 'Remove it',
+          text: t('settings.verification.removeConfirm'),
           style: 'destructive',
           onPress: async () => {
             setRemoving(doc._id);
@@ -134,7 +129,7 @@ export default function VerificationScreen() {
               setDocs((d) => d.filter((x) => x._id !== doc._id));
               queryClient.setQueryData(qk.onboarding.status(), res.onboarding);
             } catch (e) {
-              Alert.alert('Could not remove that', apiErrorMessage(e));
+              Alert.alert(t('settings.verification.removeFailed'), apiErrorMessage(e));
             } finally {
               setRemoving('');
             }
@@ -142,7 +137,7 @@ export default function VerificationScreen() {
         },
       ],
     );
-  }, [queryClient]);
+  }, [queryClient, docLabel, t]);
 
   const submit = useCallback(async () => {
     setSubmitting(true);
@@ -151,13 +146,13 @@ export default function VerificationScreen() {
       queryClient.setQueryData(qk.onboarding.status(), res.onboarding);
       await statusQuery.refetch();
       refresh();
-      Alert.alert('Sent to ResiSmart', 'We will let you know either way.');
+      Alert.alert(t('settings.verification.sentTitle'), t('settings.verification.sentBody'));
     } catch (e) {
-      Alert.alert('Could not send it', apiErrorMessage(e));
+      Alert.alert(t('settings.verification.sendFailed'), apiErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
-  }, [queryClient, statusQuery, refresh]);
+  }, [queryClient, statusQuery, refresh, t]);
 
   /**
    * `isPending`, NOT `isLoading`, and the difference is a whole screen.
@@ -172,13 +167,13 @@ export default function VerificationScreen() {
    * sent. `Loading` reads the same `onlineManager` and says "No connection"
    * instead.
    */
-  if (statusQuery.isPending) return <Screen c={c} title="Verification"><Loading c={c} /></Screen>;
+  if (statusQuery.isPending) return <Screen c={c} title={t('settings.verification.title')}><Loading c={c} /></Screen>;
   if (statusQuery.isError || !onboarding) {
     return (
-      <Screen c={c} title="Verification">
+      <Screen c={c} title={t('settings.verification.title')}>
         <ErrorBlock
           c={c}
-          message="We could not load your verification just now."
+          message={t('settings.verification.couldNotLoad')}
           onRetry={() => void statusQuery.refetch()}
         />
       </Screen>
@@ -223,15 +218,19 @@ export default function VerificationScreen() {
   const rejectionNote = rejected
     ? partnerRow?.verification?.note
       || partnerRow?.rejectionReason
-      || 'Our team asked for a correction before this can go live.'
+      || t('settings.verification.defaultRejection')
     : '';
 
   return (
-    <Screen c={c} title="Verification" subtitle={STATUS_LINE[vStatus] ?? vStatus}>
+    <Screen
+      c={c}
+      title={t('settings.verification.title')}
+      subtitle={t(`settings.verification.status${vStatus}`, { defaultValue: vStatus })}
+    >
       {/* --------------------------------------------------- what our team said */}
       {!!rejectionNote && (
         <Card c={c}>
-          <SectionLabel c={c}>What our team said</SectionLabel>
+          <SectionLabel c={c}>{t('settings.verification.whatTeamSaid')}</SectionLabel>
           <Text style={{ color: c.textPrimary, marginTop: 6, lineHeight: 20 }}>{rejectionNote}</Text>
         </Card>
       )}
@@ -251,10 +250,12 @@ export default function VerificationScreen() {
       */}
       {awaitingReview && (
         <Card c={c} style={{ borderLeftWidth: 3, borderLeftColor: c.primary }}>
-          <SectionLabel c={c}>You are live — we are still checking your documents</SectionLabel>
+          <SectionLabel c={c}>{t('settings.verification.awaitingHeading')}</SectionLabel>
+          {/* `message` is the SERVER's sentence and is English today — see the
+              note in this phase's report about `ERROR_CATALOGUE`. The frame
+              around it is ours and is translated. */}
           <Text style={{ color: c.textSecondary, marginTop: 6, lineHeight: 20 }}>
-            {awaitingReview.message} There is nothing for you to do; we will let you know as soon as it
-            is done.
+            {t('settings.verification.awaitingBody', { message: awaitingReview.message })}
           </Text>
         </Card>
       )}
@@ -262,7 +263,7 @@ export default function VerificationScreen() {
       {/* ------------------------------------------------------- why it matters */}
       {visibility && !visibility.discoverable && (
         <Card c={c}>
-          <SectionLabel c={c}>Residents cannot find you yet</SectionLabel>
+          <SectionLabel c={c}>{t('settings.verification.cannotFindHeading')}</SectionLabel>
           {/*
             Each sentence is the server's, and each one that CAN be acted on in
             this app now carries the way to do it.
@@ -290,7 +291,7 @@ export default function VerificationScreen() {
                     onPress={() => router.push(fix.href)}
                     contentStyle={{ justifyContent: 'flex-start' }}
                   >
-                    {fix.label}
+                    {t(fix.labelKey)}
                   </Button>
                 )}
               </View>
@@ -309,7 +310,7 @@ export default function VerificationScreen() {
       */}
       {alsoCosting.some((b) => b.code !== 'NOT_VERIFIED') && (
         <Card c={c}>
-          <SectionLabel c={c}>Still costing you business</SectionLabel>
+          <SectionLabel c={c}>{t('settings.verification.stillCostingHeading')}</SectionLabel>
           {alsoCosting.filter((b) => b.code !== 'NOT_VERIFIED').map((b) => {
             const fix = blockerFix(b.code);
             return (
@@ -322,7 +323,7 @@ export default function VerificationScreen() {
                     onPress={() => router.push(fix.href)}
                     contentStyle={{ justifyContent: 'flex-start' }}
                   >
-                    {fix.label}
+                    {t(fix.labelKey)}
                   </Button>
                 )}
               </View>
@@ -334,7 +335,7 @@ export default function VerificationScreen() {
       {/* ------------------------------------------------------------- what is left */}
       {onboarding.missing.length > 0 && !isVerified && (
         <Card c={c}>
-          <SectionLabel c={c}>Still to do before you can send this in</SectionLabel>
+          <SectionLabel c={c}>{t('settings.verification.stillToDoHeading')}</SectionLabel>
           {onboarding.missing.map((m) => (
             <Text key={`${m.step}-${m.field}`} style={{ color: c.textSecondary, marginTop: 6 }}>
               • {m.message}
@@ -347,12 +348,12 @@ export default function VerificationScreen() {
       {kycRequired ? (
         <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
           <View style={{ padding: 16, paddingBottom: 8 }}>
-            <SectionLabel c={c}>Your documents ({docs.length})</SectionLabel>
+            <SectionLabel c={c}>{t('settings.verification.docsHeading', { count: docs.length })}</SectionLabel>
           </View>
 
           {docs.length === 0 ? (
             <Text style={{ color: c.textSecondary, paddingHorizontal: 16, paddingBottom: 16 }}>
-              Nothing attached yet. One of GST, PAN, trade licence or Shop &amp; Establishment is enough.
+              {t('settings.verification.docsEmpty')}
             </Text>
           ) : (
             docs.map((d) => (
@@ -360,8 +361,8 @@ export default function VerificationScreen() {
                 key={d._id}
                 c={c}
                 icon="file-document-outline"
-                title={DOC_LABELS[d.type] ?? d.type}
-                subtitle={d.fileName || 'Attached file'}
+                title={docLabel(d.type)}
+                subtitle={d.fileName || t('settings.verification.attachedFile')}
                 onPress={docsLocked ? undefined : () => removeDoc(d)}
                 right={removing === d._id ? <ActivityIndicator size="small" /> : undefined}
               />
@@ -372,19 +373,19 @@ export default function VerificationScreen() {
             {docsLocked ? (
               <Text style={{ color: c.textSecondary }}>
                 {isVerified
-                  ? 'Your documents are locked because you are verified.'
-                  : 'Locked while our team is looking at them — they are the evidence being reviewed.'}
+                  ? t('settings.verification.lockedVerified')
+                  : t('settings.verification.lockedPending')}
               </Text>
             ) : (
               <>
                 <ChipRow<PartnerDocType>
                   c={c}
-                  options={DOC_OPTIONS}
+                  options={PARTNER_DOC_TYPES.map((k) => ({ key: k, label: docLabel(k) }))}
                   value={docType}
                   onChange={setDocType}
                 />
                 <AppButton
-                  label="Attach a photo"
+                  label={t('settings.verification.attach')}
                   onPress={attach}
                   loading={uploading}
                   disabled={uploading}
@@ -397,8 +398,7 @@ export default function VerificationScreen() {
       ) : (
         <Card c={c}>
           <Text style={{ color: c.textSecondary }}>
-            ResiSmart is not asking businesses for identity documents at the moment, so there is nothing to
-            upload. Your profile still has to be approved before residents can find you.
+            {t('settings.verification.kycNotRequired')}
           </Text>
         </Card>
       )}
@@ -408,8 +408,8 @@ export default function VerificationScreen() {
         <Card c={c}>
           <Text style={{ color: c.textSecondary, marginBottom: 12 }}>
             {onboarding.canSubmit
-              ? 'Everything we need is here. We will look at it and let you know either way.'
-              : 'Clear the list above first — the button turns on when nothing is left.'}
+              ? t('settings.verification.canSubmit')
+              : t('settings.verification.cannotSubmit')}
           </Text>
           <Button
             mode="contained"
@@ -417,7 +417,7 @@ export default function VerificationScreen() {
             loading={submitting}
             disabled={!onboarding.canSubmit || submitting}
           >
-            Send for review
+            {t('settings.verification.submit')}
           </Button>
         </Card>
       )}

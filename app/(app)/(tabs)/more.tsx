@@ -3,6 +3,7 @@ import { Alert, ScrollView, StyleSheet, useColorScheme, View } from 'react-nativ
 import { ActivityIndicator, Portal, Modal, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Href, router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette } from '../../../src/constants/colors';
 import { usePartnerEntitlements, ModuleMenuEntry } from '../../../src/hooks';
@@ -118,6 +119,7 @@ function onLockedTap(entry: ModuleMenuEntry) {
 }
 
 export default function MoreScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { menu, ready, entitlements, can, hasModule } = usePartnerEntitlements();
@@ -179,11 +181,14 @@ export default function MoreScreen() {
       switchToContext(chosen.contextId)
         .then(() => setSwitcherOpen(false))
         .catch((e: unknown) =>
-          Alert.alert('Could not switch business', e instanceof Error ? e.message : 'Please try again.'),
+          Alert.alert(
+            t('more.switchFailedTitle'),
+            e instanceof Error ? e.message : t('more.switchFailedBody'),
+          ),
         )
         .finally(() => setSwitching(false));
     },
-    [otherContexts, switchToContext],
+    [otherContexts, switchToContext, t],
   );
 
   const moduleRows = useMemo(
@@ -229,45 +234,48 @@ export default function MoreScreen() {
       // `/index` when it builds a route key, so the `/index` spelling these
       // four shipped with matched no route at all and every Business row was
       // a dead tap.
-      { key: 'CUSTOMERS', label: 'Parties', icon: 'account-group-outline', blurb: 'Customers, suppliers, and the ones who are both — with their running balance.', href: '/parties', visible: can('CUSTOMERS', 'READ') },
+      { key: 'CUSTOMERS', label: t('more.rows.parties'), icon: 'account-group-outline', blurb: t('more.rows.partiesBlurb'), href: '/parties', visible: can('CUSTOMERS', 'READ') },
       // C7 — reviews reply. Same `CUSTOMERS` permission row Parties uses;
       // there is no dedicated review permission on the server (see
       // `features/reviews/api.ts`'s header).
-      { key: 'REVIEWS', label: 'Reviews', icon: 'star-outline', blurb: 'What residents said after a booking or an order, and your reply to it.', href: '/reviews', visible: can('CUSTOMERS', 'READ') },
-      { key: 'PAYMENTS', label: 'Payments', icon: 'cash-multiple', blurb: 'Money in against a sale, money out against a purchase — allocated to what it settles.', href: '/payments', visible: hasModule('INVOICING') && can('INVOICING_VIEW', 'READ') },
-      { key: 'SERVICES', label: 'Services', icon: 'clipboard-list-outline', blurb: 'The services you offer, and what each one costs.', href: '/services', visible: hasModule('BOOKINGS') && can('CATALOG_VIEW', 'READ') },
-      { key: 'AVAILABILITY', label: 'Availability', icon: 'clock-outline', blurb: 'Your working hours — no hours set, no booking can reach you.', href: '/availability', visible: hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ') },
-      { key: 'REPORTS', label: 'Reports', icon: 'chart-line', blurb: 'Sales, purchases, GST returns, outstanding and profit.', href: '/reports', visible: can('REPORTS', 'READ') },
-      { key: 'STAFF', label: 'Staff', icon: 'account-tie-outline', blurb: 'Who works here, their roles, and what each role may touch.', href: '/staff', visible: can('STAFF', 'READ') },
-      { key: 'SETTINGS', label: 'Settings', icon: 'cog-outline', blurb: 'Business details, how invoices look, and WhatsApp alerts.', href: '/settings', visible: can('SETTINGS', 'READ') },
+      { key: 'REVIEWS', label: t('more.rows.reviews'), icon: 'star-outline', blurb: t('more.rows.reviewsBlurb'), href: '/reviews', visible: can('CUSTOMERS', 'READ') },
+      { key: 'PAYMENTS', label: t('more.rows.payments'), icon: 'cash-multiple', blurb: t('more.rows.paymentsBlurb'), href: '/payments', visible: hasModule('INVOICING') && can('INVOICING_VIEW', 'READ') },
+      { key: 'SERVICES', label: t('more.rows.services'), icon: 'clipboard-list-outline', blurb: t('more.rows.servicesBlurb'), href: '/services', visible: hasModule('BOOKINGS') && can('CATALOG_VIEW', 'READ') },
+      { key: 'AVAILABILITY', label: t('more.rows.availability'), icon: 'clock-outline', blurb: t('more.rows.availabilityBlurb'), href: '/availability', visible: hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ') },
+      { key: 'REPORTS', label: t('more.rows.reports'), icon: 'chart-line', blurb: t('more.rows.reportsBlurb'), href: '/reports', visible: can('REPORTS', 'READ') },
+      { key: 'STAFF', label: t('more.rows.staff'), icon: 'account-tie-outline', blurb: t('more.rows.staffBlurb'), href: '/staff', visible: can('STAFF', 'READ') },
+      { key: 'SETTINGS', label: t('more.rows.settings'), icon: 'cog-outline', blurb: t('more.rows.settingsBlurb'), href: '/settings', visible: can('SETTINGS', 'READ') },
     ];
     return rows.filter((row) => row.visible);
-  }, [can, hasModule]);
+    // `t` is a dependency, not decoration: react-i18next hands back a new `t`
+    // when the language changes, and without it here the memo would keep
+    // serving the eight rows in the language they were first built in.
+  }, [can, hasModule, t]);
 
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'You will need to sign in again to use this app.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => { void logout(); } },
+    Alert.alert(t('more.signOut'), t('more.signOutBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('more.signOut'), style: 'destructive', onPress: () => { void logout(); } },
     ]);
   };
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <View style={styles.headerBlock}>
-        <Text style={[styles.title, { color: c.textPrimary }]}>More</Text>
+        <Text style={[styles.title, { color: c.textPrimary }]}>{t('more.title')}</Text>
         <Text style={[styles.business, { color: c.textSecondary }]} numberOfLines={1}>
-          {profile?.tenantName || 'Your business'}
+          {profile?.tenantName || t('more.yourBusiness')}
         </Text>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {!ready ? (
-          <Card c={c}><Text style={{ color: c.textSecondary }}>Loading your menu…</Text></Card>
+          <Card c={c}><Text style={{ color: c.textSecondary }}>{t('more.loadingMenu')}</Text></Card>
         ) : (
           <>
             {moduleRows.length > 0 && (
               <>
-                <SectionLabel c={c}>Sell more</SectionLabel>
+                <SectionLabel c={c}>{t('more.sellMoreSection')}</SectionLabel>
                 <Card c={c} style={styles.listCard}>
                   {moduleRows.map((entry, i) => {
                     // Resolved ONCE per row and closed over. Calling
@@ -277,18 +285,32 @@ export default function MoreScreen() {
                     // that cast is precisely what let a non-route literal
                     // through the compiler in the first place.
                     const dest = entry.state === 'LOCKED' ? null : destinationFor(entry.module);
+                    /**
+                     * `entry.label` and `entry.blurb` are NOT read here, and
+                     * that is deliberate rather than an oversight.
+                     *
+                     * They are the English literals in `PARTNER_MODULE_INFO`,
+                     * which stays English because it is also the table that
+                     * maps a module to its plan capability and its permission
+                     * — wiring, not copy. `entry.module` is the enum, so the
+                     * catalogue is keyed off it exactly as
+                     * `settings/modules.tsx` and `settings/plan.tsx` already
+                     * do, and the three screens cannot drift apart in what
+                     * they call a module.
+                     */
+                    const blurb = t(`modules.${entry.module}.blurb`);
                     return (
                       <View key={entry.module}>
                         <Row
                           c={c}
                           icon={entry.icon}
-                          title={entry.label}
+                          title={t(`modules.${entry.module}.label`)}
                           subtitle={
                             entry.state === 'LOCKED'
-                              ? `Not on your plan — ${entry.blurb}`
+                              ? t('more.lockedSubtitle', { blurb })
                               : dest
-                                ? entry.blurb
-                                : `${entry.blurb} (screens for this are being built separately)`
+                                ? blurb
+                                : t('more.notBuiltSubtitle', { blurb })
                           }
                           onPress={
                             entry.state === 'LOCKED'
@@ -308,7 +330,7 @@ export default function MoreScreen() {
 
             {businessRows.length > 0 && (
               <>
-                <SectionLabel c={c}>Business</SectionLabel>
+                <SectionLabel c={c}>{t('more.businessSection')}</SectionLabel>
                 <Card c={c} style={styles.listCard}>
                   {businessRows.map((row, i) => (
                     <View key={row.key}>
@@ -323,17 +345,17 @@ export default function MoreScreen() {
             {entitlements.awaitingRole && (
               <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
                 <Text style={{ color: palette.coral[600], fontWeight: '600' }}>
-                  You are on the staff list, but nobody has given you a role yet.
+                  {t('more.awaitingRoleTitle')}
                 </Text>
                 <Text style={{ color: c.textSecondary, fontSize: 12 }}>
-                  Ask a business admin to assign you one under Staff.
+                  {t('more.awaitingRoleBody')}
                 </Text>
               </Card>
             )}
 
-            <SectionLabel c={c}>Account</SectionLabel>
+            <SectionLabel c={c}>{t('more.accountSection')}</SectionLabel>
             <Card c={c} style={styles.listCard}>
-              <Row c={c} icon="account-circle-outline" title={user?.name || 'Your account'} subtitle={user?.phone || user?.email} />
+              <Row c={c} icon="account-circle-outline" title={user?.name || t('more.yourAccount')} subtitle={user?.phone || user?.email} />
               <View style={[styles.divider, { backgroundColor: c.divider }]} />
               {/* Not gated on any permission: these are this PERSON's own
                   messages, and `/notifications` is ungated server-side for
@@ -342,8 +364,8 @@ export default function MoreScreen() {
               <Row
                 c={c}
                 icon="bell-outline"
-                title="Alerts"
-                subtitle={unread > 0 ? `${unread} unread` : 'Bookings, orders and plan notices'}
+                title={t('more.alerts')}
+                subtitle={unread > 0 ? t('more.unread', { count: unread }) : t('more.alertsSub')}
                 right={
                   unread > 0 ? (
                     <View style={[styles.badge, { backgroundColor: c.secondary }]}>
@@ -361,14 +383,22 @@ export default function MoreScreen() {
                   <Row
                     c={c}
                     icon="store-outline"
-                    title="Switch business"
-                    subtitle={`You also run ${otherContexts.length === 1 ? otherContexts[0].tenantName : `${otherContexts.length} other businesses`}`}
+                    title={t('more.switchBusiness')}
+                    subtitle={
+                      // Two sentences rather than one with a swapped noun: the
+                      // single-other case names the business, and a name is not
+                      // a count. `tenantName` is the server's own text and is
+                      // interpolated untouched.
+                      otherContexts.length === 1
+                        ? t('more.alsoRunNamed', { name: otherContexts[0].tenantName })
+                        : t('more.alsoRunOthers', { count: otherContexts.length })
+                    }
                     onPress={() => setSwitcherOpen(true)}
                   />
                 </>
               )}
               <View style={[styles.divider, { backgroundColor: c.divider }]} />
-              <Row c={c} icon="logout" title="Sign out" onPress={handleSignOut} danger />
+              <Row c={c} icon="logout" title={t('more.signOut')} onPress={handleSignOut} danger />
             </Card>
           </>
         )}
@@ -380,9 +410,9 @@ export default function MoreScreen() {
           onDismiss={() => { if (!switching) setSwitcherOpen(false); }}
           contentContainerStyle={[styles.switcher, { backgroundColor: c.surface }]}
         >
-          <Text style={[styles.switcherTitle, { color: c.textPrimary }]}>Switch business</Text>
+          <Text style={[styles.switcherTitle, { color: c.textPrimary }]}>{t('more.switchBusiness')}</Text>
           <Text style={[styles.switcherBody, { color: c.textSecondary }]}>
-            Everything on screen is replaced with the business you pick — bookings, orders, customers and takings.
+            {t('more.switcherBody')}
           </Text>
           {switching ? (
             <ActivityIndicator color={c.primary} style={{ marginVertical: 24 }} />

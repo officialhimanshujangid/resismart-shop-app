@@ -42,21 +42,30 @@ export const BOOKING_VERBS = [
 ] as const;
 export type BookingVerb = typeof BOOKING_VERBS[number];
 
-/** What the button says. The server names its own actions — copied, not reworded. */
-export const VERB_LABELS: Record<BookingVerb, string> = {
-  accept: 'Accept',
-  reject: 'Turn it down',
-  assign: 'Give it to somebody',
-  reschedule: 'Move it',
-  start: 'Start the job',
-  reach: 'I have reached',
-  complete: 'Job is done',
-  noShow: 'Nobody turned up',
-  cancel: 'Cancel',
-  invoice: 'Raise the bill',
-  markPaid: 'Mark paid',
-  note: 'Add a note',
-  extend: 'Need more time',
+/**
+ * WHAT EACH BUTTON SAYS — a catalogue key per verb. The server names its own
+ * actions; these are those names, copied and then translated, not reworded.
+ *
+ * The KEYS are `BOOKING_VERBS` above, which is the WIRE value: the verb is the
+ * path segment on `POST /partners/me/bookings/:id/<verb>` and is what
+ * `allowedVerbs` comes back as. Those literals never move. Only the labels are
+ * translated — the same split `features/billing/types.ts` is the worked example
+ * of.
+ */
+export const VERB_LABEL_KEYS: Record<BookingVerb, string> = {
+  accept: 'bookings.verb.accept',
+  reject: 'bookings.verb.reject',
+  assign: 'bookings.verb.assign',
+  reschedule: 'bookings.verb.reschedule',
+  start: 'bookings.verb.start',
+  reach: 'bookings.verb.reach',
+  complete: 'bookings.verb.complete',
+  noShow: 'bookings.verb.noShow',
+  cancel: 'bookings.verb.cancel',
+  invoice: 'bookings.verb.invoice',
+  markPaid: 'bookings.verb.markPaid',
+  note: 'bookings.verb.note',
+  extend: 'bookings.verb.extend',
 };
 
 /** = `MAX_EXTEND_MIN` in `booking-transitions.ts`. A typo guard, not a business rule. */

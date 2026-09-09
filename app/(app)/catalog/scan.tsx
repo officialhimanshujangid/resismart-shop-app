@@ -4,6 +4,7 @@ import { Text, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { BarcodeScannerView } from '../../../src/features/scanner';
 import type { ProductScanOutcome } from '../../../src/features/scanner';
@@ -19,6 +20,7 @@ import type { ProductScanOutcome } from '../../../src/features/scanner';
  * (not a lightweight bottom sheet) requires.
  */
 export default function CatalogScanScreen() {
+  const { t } = useTranslation();
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [suppressed, setSuppressed] = useState(false);
 
@@ -56,13 +58,13 @@ export default function CatalogScanScreen() {
 
   return (
     <View style={styles.root}>
-      <BarcodeScannerView active={!suppressed} onResult={handleResult} hint="Scan a product to look it up or add it." />
+      <BarcodeScannerView active={!suppressed} onResult={handleResult} hint={t('catalog.scan.hint')} />
 
       <SafeAreaView style={styles.headerOverlay} edges={['top']} pointerEvents="box-none">
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
           <MaterialCommunityIcons name="arrow-left" size={22} color="#fff" />
         </Pressable>
-        <Text style={styles.headerTitle}>Scan a product</Text>
+        <Text style={styles.headerTitle}>{t('catalog.scan.title')}</Text>
       </SafeAreaView>
 
       <Snackbar visible={Boolean(snackbar)} onDismiss={() => setSnackbar(null)} duration={4000}>

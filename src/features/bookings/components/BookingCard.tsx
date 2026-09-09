@@ -1,10 +1,12 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Surface, Text } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
+
 import { StatusBadge } from './StatusBadge';
 import { BookingVerb, PartnerBookingView } from '../booking.types';
-import { VERB_LABELS } from '../booking.types';
-import { formatDateTime, formatMinutes, formatTime, minutesBetween } from '../format';
+import { VERB_LABEL_KEYS } from '../booking.types';
+import { formatDateTime, formatMinutes, formatTime, minutesBetween, Translate } from '../format';
 import { formatPaise } from '../../../lib/money';
 import { themeColors, radii } from '../../../constants/colors';
 
@@ -62,7 +64,10 @@ interface ClockLine {
   overrunning: boolean;
 }
 
-function clockLine(booking: PartnerBookingView, now: number): ClockLine | null {
+// `t` is handed in — this is a plain function, and the sentence it builds is
+// assembled from KEYS rather than concatenated English so a translator can
+// reorder it. `clockJoin` is a key too, for the same reason.
+function clockLine(booking: PartnerBookingView, now: number, t: Translate): ClockLine | null {
   const { status, slotEnd, occupiesUntil, actual } = booking;
 
   // Finished. What it actually took, and — the point of the whole feature —
@@ -72,10 +77,12 @@ function clockLine(booking: PartnerBookingView, now: number): ClockLine | null {
     const planned = booking.serviceSnapshot.durationMin;
     const handedBack = occupiesUntil ? minutesBetween(occupiesUntil, slotEnd) : 0;
     const parts: string[] = [];
-    if (typeof took === 'number') parts.push(`Took ${formatMinutes(took)} of ${formatMinutes(planned)}`);
-    if (handedBack > 0) parts.push(`${formatMinutes(handedBack)} handed back`);
-    else if (handedBack < 0) parts.push(`ran to ${formatTime(occupiesUntil as string)}`);
-    return parts.length ? { text: parts.join(' · '), overrunning: false } : null;
+    if (typeof took === 'number') {
+      parts.push(t('bookings.card.took', { actual: formatMinutes(took, t), planned: formatMinutes(planned, t) }));
+    }
+    if (handedBack > 0) parts.push(t('bookings.card.handedBack', { amount: formatMinutes(handedBack, t) }));
+    else if (handedBack < 0) parts.push(t('bookings.card.ranTo', { time: formatTime(occupiesUntil as string, t) }));
+    return parts.length ? { text: parts.join(t('bookings.card.clockJoin')), overrunning: false } : null;
   }
 
   if (status !== 'IN_PROGRESS') return null;
@@ -93,16 +100,22 @@ function clockLine(booking: PartnerBookingView, now: number): ClockLine | null {
   const over = minutesBetween(claimEnd, now);
   if (over > 0) {
     return {
-      text: `Running over by ${formatMinutes(over)} — your diary is free again from ${formatTime(claimEnd)}`,
+      text: t('bookings.card.runningOver', { amount: formatMinutes(over, t), time: formatTime(claimEnd, t) }),
       overrunning: true,
     };
   }
   const left = -over;
   if (extended) {
-    return { text: `Extended to ${formatTime(claimEnd)} · ${formatMinutes(left)} left`, overrunning: false };
+    return {
+      text: t('bookings.card.extendedTo', { time: formatTime(claimEnd, t), left: formatMinutes(left, t) }),
+      overrunning: false,
+    };
   }
   return {
-    text: `${formatMinutes(left)} left of the booked ${formatMinutes(booking.serviceSnapshot.durationMin)}`,
+    text: t('bookings.card.timeLeft', {
+      left: formatMinutes(left, t),
+      planned: formatMinutes(booking.serviceSnapshot.durationMin, t),
+    }),
     overrunning: false,
   };
 }
@@ -142,6 +155,7 @@ interface Props {
  * bookings" question that could disagree with the table.
  */
 export function BookingCard({ booking, pending, onQuickAction, onOpenForm, compact, isDark }: Props) {
+  const { t } = useTranslation();
   const c = themeColors(isDark);
   const verbs = routedVerbsOf(booking);
   const money = formatPaise(booking.pricing.totalPaise);
@@ -164,14 +178,14 @@ export function BookingCard({ booking, pending, onQuickAction, onOpenForm, compa
     return () => clearInterval(id);
   }, [live]);
 
-  const clock = clockLine(booking, Date.now());
+  const clock = clockLine(booking, Date.now(), t);
 
   return (
     <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.time, { color: c.textPrimary }]}>
-            {compact ? formatTime(booking.slotStart) : formatDateTime(booking.slotStart)}
+            {compact ? formatTime(booking.slotStart, t) : formatDateTime(booking.slotStart, t)}
           </Text>
           <Text style={[styles.service, { color: c.textPrimary }]} numberOfLines={1}>
             {booking.serviceSnapshot.name}
@@ -182,9 +196,11 @@ export function BookingCard({ booking, pending, onQuickAction, onOpenForm, compa
 
       <View style={styles.metaRow}>
         <Text style={[styles.customer, { color: c.textSecondary }]} numberOfLines={1}>
+          {/* Name, flat and society are the customer's own details as the server
+              stored them — data on the booking, not copy. */}
           {booking.customer.name}
-          {booking.customer.flatLabel ? ` · ${booking.customer.flatLabel}` : ''}
-          {booking.customer.societyName ? ` · ${booking.customer.societyName}` : ''}
+          {booking.customer.flatLabel ? t('bookings.card.flatSuffix', { flat: booking.customer.flatLabel }) : ''}
+          {booking.customer.societyName ? t('bookings.card.societySuffix', { society: booking.customer.societyName }) : ''}
         </Text>
         <Text style={[styles.money, { color: c.textPrimary }]}>{money}</Text>
       </View>
@@ -217,7 +233,7 @@ export function BookingCard({ booking, pending, onQuickAction, onOpenForm, compa
               labelStyle={styles.actionLabel}
               textColor={verb === 'reject' || verb === 'cancel' ? c.error : undefined}
             >
-              {VERB_LABELS[verb]}
+              {t(VERB_LABEL_KEYS[verb])}
             </Button>
           ))}
           {pending && <ActivityIndicator size="small" style={{ marginLeft: 4 }} />}

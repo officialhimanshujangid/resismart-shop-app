@@ -3,6 +3,7 @@ import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
 import { Switch, Text } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
@@ -18,6 +19,7 @@ const NO_ROLE = '__none__';
 export default function StaffFormScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ id?: string }>();
   const editing = Boolean(params.id);
   const queryClient = useQueryClient();
@@ -44,8 +46,13 @@ export default function StaffFormScreen() {
     setSkillsText(existing.skills.join(', '));
   }, [existing]);
 
+  /**
+   * `NO_ROLE` is this screen's own sentinel (it becomes `null`/`undefined` on
+   * the wire) so its KEY never moves; only the word for it is translated. Every
+   * other option is a role the partner named — their text, shown back as typed.
+   */
   const roleOptions = [
-    { key: NO_ROLE, label: 'None' },
+    { key: NO_ROLE, label: t('staff.form.noRole') },
     ...(roles.data?.roles.filter((r) => r.isActive).map((r) => ({ key: r._id, label: r.name })) ?? []),
   ];
 
@@ -57,15 +64,15 @@ export default function StaffFormScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.staff() });
       if (res.generatedPassword) {
         Alert.alert(
-          'Invited',
-          `A login was created for ${name.trim()}. Temporary password: ${res.generatedPassword}\n\nShare it with them directly — it will not be shown again.`,
-          [{ text: 'Done', onPress: () => router.back() }],
+          t('staff.form.invitedTitle'),
+          t('staff.form.invitedBody', { name: name.trim(), password: res.generatedPassword }),
+          [{ text: t('common.done'), onPress: () => router.back() }],
         );
       } else {
         router.back();
       }
     },
-    onError: (err) => Alert.alert('Could not invite them', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('staff.form.inviteFailed'), apiErrorMessage(err)),
   });
 
   const updateMutation = useMutation({
@@ -79,16 +86,16 @@ export default function StaffFormScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.staff() });
       router.back();
     },
-    onError: (err) => Alert.alert('Could not save changes', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('staff.form.saveFailed'), apiErrorMessage(err)),
   });
 
   const validate = (): boolean => {
     const next: Record<string, string> = {};
-    if (!designation.trim()) next.designation = 'What do they do here?';
+    if (!designation.trim()) next.designation = t('staff.form.designationRequired');
     if (!editing) {
-      if (!name.trim()) next.name = 'Who are you inviting?';
-      if (!email.trim() && !phone.trim()) next.phone = 'Give an email address or a phone number.';
-      if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) next.email = 'That does not look like an email address.';
+      if (!name.trim()) next.name = t('staff.form.nameRequired');
+      if (!email.trim() && !phone.trim()) next.phone = t('staff.form.contactRequired');
+      if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) next.email = t('staff.form.emailInvalid');
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -110,44 +117,50 @@ export default function StaffFormScreen() {
   const saving = inviteMutation.isPending || updateMutation.isPending;
 
   return (
-    <Screen c={c} title={editing ? 'Edit staff member' : 'Invite staff'}>
+    <Screen c={c} title={t(editing ? 'staff.form.editTitle' : 'staff.form.addTitle')}>
       {!editing && (
         <Card c={c}>
-          <SectionLabel c={c}>Who you're inviting</SectionLabel>
-          <AppInput label="Name" value={name} onChangeText={setName} error={errors.name} />
-          <AppInput label="Phone (they sign in with an OTP)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" error={errors.phone} />
-          <AppInput label="Email (optional if phone is given)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
+          <SectionLabel c={c}>{t('staff.form.whoSection')}</SectionLabel>
+          <AppInput label={t('staff.form.name')} value={name} onChangeText={setName} error={errors.name} />
+          <AppInput label={t('staff.form.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" error={errors.phone} />
+          <AppInput label={t('staff.form.email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
         </Card>
       )}
 
       <Card c={c}>
-        <SectionLabel c={c}>Their job</SectionLabel>
-        <AppInput label="Designation" value={designation} onChangeText={setDesignation} placeholder="e.g. Counter staff, Technician" error={errors.designation} />
+        <SectionLabel c={c}>{t('staff.form.jobSection')}</SectionLabel>
+        <AppInput
+          label={t('staff.form.designation')}
+          value={designation}
+          onChangeText={setDesignation}
+          placeholder={t('staff.form.designationPlaceholder')}
+          error={errors.designation}
+        />
 
-        <Text style={[styles.label, { color: c.textSecondary }]}>Role</Text>
+        <Text style={[styles.label, { color: c.textSecondary }]}>{t('staff.form.role')}</Text>
         {roles.isPending ? (
-          <Text style={{ color: c.textSecondary, fontSize: 12 }}>Loading roles…</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('staff.form.loadingRoles')}</Text>
         ) : (
           <ChipRow c={c} value={roleId} options={roleOptions} onChange={setRoleId} />
         )}
 
         <View style={[styles.switchRow, { borderTopColor: c.divider }]}>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '600' }}>Can be assigned bookings</Text>
-            <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>They show up when you assign a job.</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '600' }}>{t('staff.form.canTakeBookings')}</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>{t('staff.form.canTakeBookingsHint')}</Text>
           </View>
           <Switch value={canTakeBookings} onValueChange={setCanTakeBookings} color={c.primary} />
         </View>
 
         <AppInput
-          label="Skills (comma-separated, optional)"
+          label={t('staff.form.skills')}
           value={skillsText}
           onChangeText={setSkillsText}
-          placeholder="e.g. AC repair, plumbing"
+          placeholder={t('staff.form.skillsPlaceholder')}
         />
       </Card>
 
-      <AppButton label={editing ? 'Save changes' : 'Send invite'} onPress={onSubmit} loading={saving} disabled={saving} style={{ marginTop: 8 }} />
+      <AppButton label={t(editing ? 'staff.form.saveChanges' : 'staff.form.sendInvite')} onPress={onSubmit} loading={saving} disabled={saving} style={{ marginTop: 8 }} />
     </Screen>
   );
 }

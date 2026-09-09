@@ -1,8 +1,10 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
+
 import { OrderStatus } from '../types';
-import { ORDER_STATUS_LABELS } from '../backend-mirror';
+import { ORDER_STATUS_LABEL_KEYS } from '../backend-mirror';
 import { ColorScheme } from '../../../constants/colors';
 
 /** One colour family per stage of the order's life, not per exact status —
@@ -29,10 +31,11 @@ function toneFor(status: OrderStatus, c: ColorScheme): { bg: string; fg: string 
 }
 
 export function OrderStatusChip({ status, c }: { status: OrderStatus; c: ColorScheme }) {
+  const { t } = useTranslation();
   const tone = toneFor(status, c);
   return (
     <View style={[styles.chip, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.label, { color: tone.fg }]}>{ORDER_STATUS_LABELS[status]}</Text>
+      <Text style={[styles.label, { color: tone.fg }]}>{t(ORDER_STATUS_LABEL_KEYS[status])}</Text>
     </View>
   );
 }

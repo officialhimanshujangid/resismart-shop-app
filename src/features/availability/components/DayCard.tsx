@@ -2,8 +2,9 @@ import React from 'react';
 import { View, StyleSheet, Pressable, useColorScheme } from 'react-native';
 import { Text, IconButton, Switch } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 
-import { AvailabilityDay, AvailabilityBreak, DAY_NAMES } from '../types';
+import { AvailabilityDay, AvailabilityBreak, DAY_NAME_KEYS } from '../types';
 import { TimeField } from '../../../components/TimeField';
 import { themeColors, radii } from '../../../constants/colors';
 
@@ -20,6 +21,7 @@ export function DayCard({
   onPatch: (patch: Partial<AvailabilityDay>) => void;
   onPatchBreaks: (breaks: AvailabilityBreak[]) => void;
 }) {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
 
   const setWindow = (index: number, patch: Partial<{ from: string; to: string }>) => {
@@ -29,7 +31,7 @@ export function DayCard({
   return (
     <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]}>
       <Pressable onPress={onToggleOpen} disabled={disabled} style={styles.headerRow}>
-        <Text style={[styles.dayName, { color: c.textPrimary }]}>{DAY_NAMES[day.day]}</Text>
+        <Text style={[styles.dayName, { color: c.textPrimary }]}>{t(DAY_NAME_KEYS[day.day])}</Text>
         <Switch value={day.isOpen} onValueChange={onToggleOpen} disabled={disabled} />
       </Pressable>
 
@@ -37,9 +39,9 @@ export function DayCard({
         <View style={styles.body}>
           {day.windows.map((w, i) => (
             <View key={i} style={styles.windowRow}>
-              <TimeField label="Open" value={w.from} onChangeText={(v) => setWindow(i, { from: v })}
+              <TimeField label={t('availability.day.open')} value={w.from} onChangeText={(v) => setWindow(i, { from: v })}
                 disabled={disabled} style={styles.timeField} />
-              <TimeField label="Close" value={w.to} onChangeText={(v) => setWindow(i, { to: v })}
+              <TimeField label={t('availability.day.close')} value={w.to} onChangeText={(v) => setWindow(i, { to: v })}
                 disabled={disabled} style={styles.timeField} />
               {day.windows.length > 1 && !disabled && (
                 <IconButton icon="trash-can-outline" size={18} iconColor={c.textSecondary}
@@ -53,13 +55,13 @@ export function DayCard({
               style={styles.linkRow}
             >
               <MaterialCommunityIcons name="plus" size={15} color={c.primary} />
-              <Text style={[styles.linkText, { color: c.primary }]}>Another window</Text>
+              <Text style={[styles.linkText, { color: c.primary }]}>{t('availability.day.anotherWindow')}</Text>
             </Pressable>
           )}
 
           <View style={styles.rowGap}>
             <View style={styles.half}>
-              <Text style={[styles.smallLabel, { color: c.textSecondary }]}>A booking every</Text>
+              <Text style={[styles.smallLabel, { color: c.textSecondary }]}>{t('availability.day.slotEvery')}</Text>
               <View style={styles.slotChipRow}>
                 {SLOT_CHOICES.map((m) => {
                   const active = day.slotMin === m;
@@ -69,7 +71,7 @@ export function DayCard({
                       onPress={() => !disabled && onPatch({ slotMin: m })}
                       style={[styles.slotChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
                     >
-                      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 11, fontWeight: '600' }}>{m}m</Text>
+                      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 11, fontWeight: '600' }}>{t('availability.day.slotChip', { count: m })}</Text>
                     </Pressable>
                   );
                 })}
@@ -78,7 +80,7 @@ export function DayCard({
           </View>
 
           <View style={styles.capacityRow}>
-            <Text style={[styles.smallLabel, { color: c.textSecondary }]}>Customers at once</Text>
+            <Text style={[styles.smallLabel, { color: c.textSecondary }]}>{t('availability.day.capacity')}</Text>
             <View style={styles.stepper}>
               <IconButton icon="minus" size={16} iconColor={c.textPrimary} disabled={disabled || day.capacityPerSlot <= 1}
                 onPress={() => onPatch({ capacityPerSlot: Math.max(1, day.capacityPerSlot - 1) })} />
@@ -92,16 +94,16 @@ export function DayCard({
             !disabled && (
               <Pressable onPress={() => onPatchBreaks([{ day: day.day, from: '13:00', to: '14:00' }])} style={styles.linkRow}>
                 <MaterialCommunityIcons name="coffee-outline" size={15} color={c.primary} />
-                <Text style={[styles.linkText, { color: c.primary }]}>Add a break</Text>
+                <Text style={[styles.linkText, { color: c.primary }]}>{t('availability.day.addBreak')}</Text>
               </Pressable>
             )
           ) : (
             breaks.map((b, i) => (
               <View key={i} style={styles.windowRow}>
-                <TimeField label="Break from" value={b.from}
+                <TimeField label={t('availability.day.breakFrom')} value={b.from}
                   onChangeText={(v) => onPatchBreaks(breaks.map((x, xi) => (xi === i ? { ...x, from: v } : x)))}
                   disabled={disabled} style={styles.timeField} />
-                <TimeField label="Break to" value={b.to}
+                <TimeField label={t('availability.day.breakTo')} value={b.to}
                   onChangeText={(v) => onPatchBreaks(breaks.map((x, xi) => (xi === i ? { ...x, to: v } : x)))}
                   disabled={disabled} style={styles.timeField} />
                 {!disabled && (

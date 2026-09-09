@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // the literal routes the generated union describes — the same escape hatch
 // `(tabs)/bookings.tsx#openBillFor` uses for the identical link.
 import { router, type Href } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { Hero } from '../../../src/components/Hero';
@@ -54,21 +55,32 @@ const STATUS_FILTER_MAP: Record<string, string | undefined> = {
   CLOSED: 'INVOICED,PAID,REJECTED,CANCELLED,RETURNED',
 };
 
-const FILTER_CHIPS: { key: keyof typeof STATUS_FILTER_MAP; label: string }[] = [
-  { key: 'ACTIVE', label: 'Active' },
-  { key: 'PLACED', label: 'New' },
-  { key: 'ACCEPTED', label: 'Accepted' },
-  { key: 'PACKED', label: 'Packed' },
-  { key: 'OUT_FOR_DELIVERY', label: 'Out for delivery' },
-  { key: 'DELIVERED', label: 'Delivered' },
-  // "Finished", not "Closed" — it now holds billed and paid orders as well as
-  // the three that went wrong, and "Closed" reads as only the latter.
-  { key: 'CLOSED', label: 'Finished' },
+/**
+ * WHAT EACH CHIP SAYS — a catalogue key per chip, not the words.
+ *
+ * `key` is what `STATUS_FILTER_MAP` above is keyed by, and the values THERE are
+ * the comma-joined wire statuses sent as `status` on
+ * `GET /partners/me/orders`. Those never move; only `labelKey` is translated —
+ * the split `features/billing/types.ts` is the worked example of.
+ *
+ * `CLOSED` reads "Finished", not "Closed": it now holds billed and paid orders
+ * as well as the three that went wrong, and "Closed" reads as only the latter.
+ * The Hindi carries the same distinction.
+ */
+const FILTER_CHIPS: { key: keyof typeof STATUS_FILTER_MAP; labelKey: string }[] = [
+  { key: 'ACTIVE', labelKey: 'orders.list.filterACTIVE' },
+  { key: 'PLACED', labelKey: 'orders.list.filterPLACED' },
+  { key: 'ACCEPTED', labelKey: 'orders.list.filterACCEPTED' },
+  { key: 'PACKED', labelKey: 'orders.list.filterPACKED' },
+  { key: 'OUT_FOR_DELIVERY', labelKey: 'orders.list.filterOUT_FOR_DELIVERY' },
+  { key: 'DELIVERED', labelKey: 'orders.list.filterDELIVERED' },
+  { key: 'CLOSED', labelKey: 'orders.list.filterCLOSED' },
 ];
 
 const PAGE_LIMIT = 20;
 
 export default function OrdersScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -82,9 +94,12 @@ export default function OrdersScreen() {
 
   // Debounce the search box — an order-code search that fired on every
   // keystroke would refetch the whole list mid-word.
+  // `timer`, not `t`: this file holds a translator now, and a local `t` would
+  // shadow it inside the effect. Seven of these were found across the earlier
+  // i18n passes and one of them had already broken `billing/[id].tsx`.
   useEffect(() => {
-    const t = setTimeout(() => setCode(searchInput.trim()), 350);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCode(searchInput.trim()), 350);
+    return () => clearTimeout(timer);
   }, [searchInput]);
 
   // Any filter change starts the accumulated list over at page 1.
@@ -127,9 +142,9 @@ export default function OrdersScreen() {
    * spinner.
    */
   const loadError = query.isError
-    ? apiErrorMessage(query.error, 'Could not load your orders.')
+    ? apiErrorMessage(query.error, t('orders.list.loadFailed'))
     : query.isPending && query.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('orders.list.noConnection')
       : null;
 
   // ---- selection / detail sheet ----
@@ -148,9 +163,9 @@ export default function OrdersScreen() {
     !selectedId
       ? null
       : detail.isError
-        ? apiErrorMessage(detail.error, 'Could not load that order.')
+        ? apiErrorMessage(detail.error, t('orders.detail.loadFailed'))
         : detail.isPending && detail.isPaused
-          ? 'No connection. Check your network and try again.'
+          ? t('orders.list.noConnection')
           : null;
 
   // ---- transitions ----
@@ -194,13 +209,18 @@ export default function OrdersScreen() {
     const q = new URLSearchParams({
       sourceType: 'ORDER',
       sourceId: order.id,
-      itemName: `Order ${order.code}`,
+      // Translated, unlike the two params above it: `sourceType`/`sourceId` are
+      // the wire link the server reads back, while `itemName` is prefill the
+      // partner sees and edits on the bill — and the language they chose is the
+      // language their bills go out in (`settings.language.hint` says so).
+      // `order.code` is the server's own identifier and is interpolated as-is.
+      itemName: t('orders.list.billItemName', { code: order.code }),
       ratePaise: String(order.amounts.totalPaise),
     });
     if (order.customer.name) q.set('partyName', order.customer.name);
     if (order.customer.phone) q.set('partyPhone', order.customer.phone);
     router.push(`/(app)/billing/new?${q.toString()}` as Href);
-  }, []);
+  }, [t]);
 
   const runTransition = useCallback((order: PartnerOrder, verb: KnownOrderVerb, text?: string) => {
     setPendingId(order.id);
@@ -218,11 +238,11 @@ export default function OrdersScreen() {
            */
           if (verb === 'invoice' && apiErrorCode(e) === 'NO_BILL_RAISED') {
             Alert.alert(
-              'No bill for this order yet',
-              'Raise it now? The customer and the amount are filled in for you.',
+              t('orders.list.noBillTitle'),
+              t('orders.list.noBillBody'),
               [
-                { text: 'Not now', style: 'cancel' },
-                { text: 'Raise the bill', onPress: () => openBillFor(order) },
+                { text: t('common.notNow'), style: 'cancel' },
+                { text: t('orders.list.raiseBill'), onPress: () => openBillFor(order) },
               ],
             );
             return;
@@ -232,7 +252,7 @@ export default function OrdersScreen() {
         onSettled: () => setPendingId(null),
       },
     );
-  }, [transition, patchRow, openBillFor]);
+  }, [transition, patchRow, openBillFor, t]);
 
   const handleAction = useCallback((order: PartnerOrder, verb: KnownOrderVerb) => {
     if (verbNeedsReason(verb)) {
@@ -267,17 +287,23 @@ export default function OrdersScreen() {
     patchRow(result.order);
     setReturnOrder(null);
     Alert.alert(
-      'Return recorded',
-      `Credit note ${result.creditNote.number ?? ''} for ${formatPaise(result.creditNote.totals.grandPaise)} has been raised.`,
+      t('orders.list.returnRecordedTitle'),
+      // `number` is the server's own document number and goes in verbatim.
+      t('orders.list.returnRecordedBody', {
+        number: result.creditNote.number ?? '',
+        amount: formatPaise(result.creditNote.totals.grandPaise),
+      }),
     );
-  }, [patchRow]);
+  }, [patchRow, t]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <Hero isDark={isDark} rounded={false} eyebrow="Manage" title="Orders" />
+      {/* The title is `modules.ORDERS.label`, the same catalogue entry the tab
+          bar and the More menu read — a module is called one thing in this app. */}
+      <Hero isDark={isDark} rounded={false} eyebrow={t('orders.list.eyebrow')} title={t('modules.ORDERS.label')} />
 
       <Searchbar
-        placeholder="Search by order code"
+        placeholder={t('orders.list.searchPlaceholder')}
         value={searchInput}
         onChangeText={setSearchInput}
         style={[styles.search, { backgroundColor: c.surfaceVariant }]}
@@ -304,7 +330,7 @@ export default function OrdersScreen() {
                 },
               ]}
             >
-              <Text style={[styles.chipLabel, { color: active ? '#fff' : c.textSecondary }]}>{item.label}</Text>
+              <Text style={[styles.chipLabel, { color: active ? '#fff' : c.textSecondary }]}>{t(item.labelKey)}</Text>
             </Pressable>
           );
         }}
@@ -313,7 +339,7 @@ export default function OrdersScreen() {
       {!canManage && (
         <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
           <Text style={[styles.readOnlyText, { color: c.textSecondary }]}>
-            View only — your role does not include managing orders.
+            {t('orders.list.readOnly')}
           </Text>
         </View>
       )}
@@ -354,11 +380,11 @@ export default function OrdersScreen() {
             <ActivityIndicator color={c.primary} />
           ) : (
             <View style={styles.emptyBox}>
-              <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>No orders here</Text>
+              <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('orders.list.emptyTitle')}</Text>
               <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
                 {chip === 'ACTIVE'
-                  ? 'Nothing needs your attention right now.'
-                  : 'Nothing matches this filter yet.'}
+                  ? t('orders.list.emptyActive')
+                  : t('orders.list.emptyFiltered')}
               </Text>
             </View>
           )

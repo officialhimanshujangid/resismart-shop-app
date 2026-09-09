@@ -80,6 +80,34 @@ export function notificationDestination(frame: {
       return { href: '/(app)/(tabs)/orders', requires: 'ORDERS' };
     case '/dashboard/partner/promotion':
       return { href: '/promotion' };
+    /**
+     * No `requires` on these three, and that is not an omission.
+     *
+     * `requires` exists for the tab routes `(tabs)/_layout.tsx` DELETES with
+     * `Tabs.Protected` — pushing at one of those when the module is off is a
+     * navigation to a route that is not registered. These are plain stack
+     * routes that are always registered; their own layouts
+     * (`settings/_layout.tsx`, `reviews/_layout.tsx`) redirect a person who may
+     * not read them, which is a screen deciding about itself rather than this
+     * table guessing. `/promotion` above is written the same way for the same
+     * reason.
+     */
+    case '/dashboard/partner/settings/invoice':
+      // `PARTNER_BANK_DETAILS_CHANGED` — HIGH, and its body asks the partner to
+      // change the details back if it was not them. It is the one notification
+      // in this app where having nothing to tap is itself the failure.
+      return { href: '/settings/invoice' };
+    case '/dashboard/partner/reviews':
+      // `PARTNER_REVIEW`. The reply window is the message: one reply, editable
+      // for 24 hours, and this notification is what starts the clock — so it
+      // has to land on the screen with the reply box, not on the inbox.
+      return { href: '/reviews' };
+    case '/dashboard/partner/verification':
+      // Already reached the right screen via the kind chain below, which is
+      // exactly what `partner.controller.ts` says it relied on. Written out
+      // anyway: the kinds carrying this link are four unrelated verdicts, and
+      // the next one added would not be covered by anything.
+      return { href: '/settings/verification' };
     case '/dashboard/billing':
       // Ours is the PLAN screen, not the partner's own invoicing tab: every
       // sender of this link is the subscription lifecycle (`cron.service.ts`).
@@ -101,6 +129,16 @@ export function notificationDestination(frame: {
     return { href: '/(app)/(tabs)/billing', requires: 'INVOICING' };
   }
   if (kind.startsWith('PARTNER_PLAN')) return { href: '/settings/plan' };
+  if (kind.startsWith('PARTNER_REVIEW')) return { href: '/reviews' };
+  /**
+   * A prefix, not the one kind the server sends today. `PARTNER_BANK_DETAILS_`
+   * is a family of security notices about the same settings screen — the next
+   * member of it must not be the one that silently draws no Open button, which
+   * is the whole argument the header makes for matching `kind` by prefix.
+   * Placed after `PARTNER_INVOICE`/`PARTNER_PAYMENT` only for readability;
+   * nothing here can shadow anything above it.
+   */
+  if (kind.startsWith('PARTNER_BANK_DETAILS')) return { href: '/settings/invoice' };
   /**
    * Verified / rejected / suspended / reinstated all land on Verification —
    * the screen that shows ResiSmart's decision and the reviewer's note, and the

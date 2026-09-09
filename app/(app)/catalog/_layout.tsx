@@ -2,6 +2,7 @@ import React from 'react';
 import { View, useColorScheme } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 import { Stack, Redirect } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 
@@ -25,6 +26,7 @@ import { usePartnerEntitlements } from '../../../src/hooks';
 export default function CatalogLayout() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { t } = useTranslation();
   const { ready, hasModule, can } = usePartnerEntitlements();
 
   if (!ready) {
@@ -52,10 +54,10 @@ export default function CatalogLayout() {
         contentStyle: { backgroundColor: c.background },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Catalog' }} />
-      <Stack.Screen name="create" options={{ title: 'New product', presentation: 'modal' }} />
-      <Stack.Screen name="[id]" options={{ title: 'Product' }} />
-      <Stack.Screen name="scan" options={{ title: 'Scan', headerShown: false }} />
+      <Stack.Screen name="index" options={{ title: t('catalog.nav.index') }} />
+      <Stack.Screen name="create" options={{ title: t('catalog.nav.create'), presentation: 'modal' }} />
+      <Stack.Screen name="[id]" options={{ title: t('catalog.nav.detail') }} />
+      <Stack.Screen name="scan" options={{ title: t('catalog.nav.scan'), headerShown: false }} />
     </Stack>
   );
 }

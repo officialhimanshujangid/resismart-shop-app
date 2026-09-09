@@ -1,6 +1,21 @@
 import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '../constants/app';
 import { storage } from '../utils/storage';
+/**
+ * The i18next SINGLETON, not `useTranslation` — this file is not a component
+ * and `apiErrorMessage` is called from 114 places, most of them inside a
+ * `catch` where no hook can run.
+ *
+ * Reading `i18n.t` at call time is what keeps it live: the instance carries the
+ * current language, so a partner who switches to Hindi mid-session gets Hindi on
+ * the very next failure without a single call site changing. `app/_layout.tsx`
+ * holds the whole tree behind `initI18n` (`languageReady`), so by the time any
+ * screen can have made a request the catalogue is loaded.
+ *
+ * No cycle: `src/i18n` imports i18next, expo-localization and the two JSON
+ * catalogues, and nothing from `src/api`.
+ */
+import i18n from '../i18n';
 
 /**
  * The normal ceiling. A warm server answers every one of these endpoints in
@@ -462,16 +477,53 @@ interface ApiErrorBody {
  * four bars of signal to check their network sends them to reboot a router that
  * was never the problem.
  */
-export function apiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+export function apiErrorMessage(error: unknown, fallback?: string): string {
   if (axios.isAxiosError(error)) {
     const body = error.response?.data as ApiErrorBody | undefined;
+
+    /**
+     * The two idempotency refusals, ABOVE the server's own wording.
+     *
+     * This is the one place the rule about preferring the server's sentence is
+     * wrong, and it is wrong in a way that costs money. Both of these answers
+     * (`idempotency.middleware.ts:169-198`) are about a request the partner has
+     * ALREADY sent, not about a new failure — but they arrive down the same
+     * `catch` as every other error and get drawn in the same red toast, so a
+     * partner reads them as "that did not work".
+     *
+     * The 409 is the dangerous one. "This is still being processed" printed as
+     * an error means Issue gets tapped again, which is precisely the second
+     * numbered invoice the key was sent to prevent. So it says what to do
+     * instead of what happened, and it leads with the fact that nothing is lost.
+     */
+    if (body?.code === 'IDEMPOTENCY_IN_PROGRESS') {
+      return i18n.t('common.apiError.idempotencyInProgress');
+    }
+    if (body?.code === 'IDEMPOTENCY_KEY_REUSED') {
+      return i18n.t('common.apiError.idempotencyKeyReused');
+    }
+
+    // The server's own sentence, in whatever language IT sent — untranslated on
+    // purpose, and the same trade `UsageMeter.tsx` states: it is written for a
+    // shop owner and names the thing to fix, which a generic client string
+    // cannot. The four sentences around it are this app's own words and are the
+    // ones the catalogue owns.
     const fromBody = body?.error ?? body?.message;
     if (typeof fromBody === 'string' && fromBody.trim()) return fromBody;
-    if (isTimeout(error)) return 'The server is taking too long to answer. Please try again.';
-    if (!error.response) return 'No connection. Check your network and try again.';
+    if (isTimeout(error)) return i18n.t('common.apiError.timeout');
+    if (!error.response) return i18n.t('common.apiError.noConnection');
   }
   if (error instanceof Error && error.message) return error.message;
-  return fallback;
+  /**
+   * `?? t(…)`, NOT a default parameter.
+   *
+   * A default written as `fallback = i18n.t(…)` reads as harmless and is the
+   * shape this app has agreed not to use: the language belongs to the moment
+   * the sentence is SHOWN, and pinning translation to a signature is how a
+   * string ends up frozen in whatever language happened to be current when it
+   * was bound. Resolved here, at the point of return, it cannot be stale.
+   */
+  return fallback ?? i18n.t('common.somethingWentWrong');
 }
 
 /** True when the server refused because the partner's plan does not cover this. */

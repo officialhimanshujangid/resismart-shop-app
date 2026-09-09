@@ -26,15 +26,26 @@ export const STOCK_ADJUST_REASON_CODES = [
 ] as const;
 export type StockAdjustReasonCode = typeof STOCK_ADJUST_REASON_CODES[number];
 
-export const STOCK_ADJUST_REASON_LABELS: Record<StockAdjustReasonCode, string> = {
-  PURCHASE: 'New stock received',
-  RETURN_TO_SHELF: 'Returned to shelf',
-  DAMAGE: 'Damaged',
-  EXPIRY: 'Expired',
-  THEFT: 'Theft / loss',
-  RECOUNT: 'Physical recount',
-  CORRECTION: 'Correction',
-  OTHER: 'Other',
+/**
+ * WHAT A STOCK-ADJUST REASON IS CALLED ON SCREEN — a catalogue key per code,
+ * not the words.
+ *
+ * The KEYS are `STOCK_ADJUST_REASON_CODES` above, which is the wire value:
+ * `reasonCode` on `POST .../stock`, validated against the server's own
+ * `STOCK_ADJUST_REASON_CODES` in `order.validator.ts` and written to the audit
+ * record an auditor reads. Those literals never move. Only the labels are
+ * translated — the same split `features/billing/types.ts` is the worked example
+ * of.
+ */
+export const STOCK_ADJUST_REASON_LABEL_KEYS: Record<StockAdjustReasonCode, string> = {
+  PURCHASE: 'catalog.stockReason.PURCHASE',
+  RETURN_TO_SHELF: 'catalog.stockReason.RETURN_TO_SHELF',
+  DAMAGE: 'catalog.stockReason.DAMAGE',
+  EXPIRY: 'catalog.stockReason.EXPIRY',
+  THEFT: 'catalog.stockReason.THEFT',
+  RECOUNT: 'catalog.stockReason.RECOUNT',
+  CORRECTION: 'catalog.stockReason.CORRECTION',
+  OTHER: 'catalog.stockReason.OTHER',
 };
 
 export interface ProductCategoryRef {

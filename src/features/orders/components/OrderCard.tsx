@@ -3,23 +3,34 @@ import { View, StyleSheet, Pressable, useColorScheme } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
+import { useTranslation } from 'react-i18next';
 
 import { PartnerOrder } from '../types';
 import { KnownOrderVerb, filterKnownVerbs, verbNeedsReason } from '../api';
-import { ORDER_VERB_LABELS } from '../backend-mirror';
+import { ORDER_VERB_LABEL_KEYS } from '../backend-mirror';
 import { OrderStatusChip } from './OrderStatusChip';
 import { themeColors, radii } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
 
-/** "5m ago" / "2h ago" / "3 Aug" — short, because this sits on a crowded row. */
-function relativeTime(iso: string): string {
+/**
+ * "5m ago" / "2h ago" / "3 Aug" — short, because this sits on a crowded row.
+ *
+ * `t` is handed in (this is a plain function, not a component) and the fallback
+ * month comes from `common.months`, NOT `toLocaleDateString`: the month is a
+ * WORD, and `src/i18n/index.ts#formatI18nDate` sets out at length why `Intl` is
+ * not trusted with one on Hermes.
+ */
+type Translate = (key: string, vars?: Record<string, string | number>) => string;
+
+function relativeTime(iso: string, t: Translate): string {
   const then = new Date(iso).getTime();
   const diffMin = Math.max(0, Math.round((Date.now() - then) / 60000));
-  if (diffMin < 1) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 1) return t('orders.card.justNow');
+  if (diffMin < 60) return t('orders.card.minutesAgo', { count: diffMin });
   const diffH = Math.round(diffMin / 60);
-  if (diffH < 24) return `${diffH}h ago`;
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  if (diffH < 24) return t('orders.card.hoursAgo', { count: diffH });
+  const d = new Date(iso);
+  return t('orders.card.onDate', { day: d.getDate(), month: t(`common.months.${d.getMonth() + 1}`) });
 }
 
 interface OrderCardProps {
@@ -37,6 +48,7 @@ interface OrderCardProps {
  * anyone who does not discover the swipe.
  */
 export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps) {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const swipeRef = useRef<Swipeable>(null);
   const verbs = filterKnownVerbs(order.allowedVerbs);
@@ -61,7 +73,7 @@ export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps)
                 { backgroundColor: danger ? c.error : c.primary, opacity: pending ? 0.6 : 1 },
               ]}
             >
-              <Text style={styles.actionLabel}>{ORDER_VERB_LABELS[verb]}</Text>
+              <Text style={styles.actionLabel}>{t(ORDER_VERB_LABEL_KEYS[verb])}</Text>
             </Pressable>
           );
         })}
@@ -87,7 +99,7 @@ export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps)
           />
           <Text style={[styles.customerText, { color: c.textSecondary }]} numberOfLines={1}>
             {order.customer.name}
-            {order.customer.societyName ? ` · ${order.customer.societyName}` : ''}
+            {order.customer.societyName ? t('orders.card.societySuffix', { society: order.customer.societyName }) : ''}
           </Text>
         </View>
 
@@ -99,7 +111,12 @@ export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps)
               color={c.textSecondary}
             />
             <Text style={[styles.metaText, { color: c.textSecondary }]}>
-              {order.itemCount} item{order.itemCount === 1 ? '' : 's'} · {relativeTime(order.createdAt)}
+              {/* `_one`/`_other`, not an English `-s`: Hindi cannot pluralise by
+                  suffixing, and CLDR puts BOTH 0 and 1 in its `one` category. */}
+              {t('orders.card.meta', {
+                items: t('orders.card.itemCount', { count: order.itemCount }),
+                when: relativeTime(order.createdAt, t),
+              })}
             </Text>
           </View>
           <View style={styles.amountRow}>

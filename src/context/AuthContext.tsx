@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+
 import { forgetGoogle } from '../lib/google';
 import {
   authApi,
@@ -16,6 +18,7 @@ import { storage } from '../utils/storage';
 import { store } from '../lib/store';
 import { DEVICE_KEYS, SESSION_CACHE_KEYS, STORAGE_KEYS } from '../constants/app';
 import { resetQueryCache } from '../lib/queryClient';
+import { resetLanguageSync, startLanguageSync, syncLanguage } from '../i18n/language-sync';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -166,12 +169,14 @@ async function unregisterPushDevice(): Promise<void> {
  * reaches its own fallback), and "restart the app, and if it happens again free
  * up some space" is something a shopkeeper can actually do; "storage error" is
  * not.
+ *
+ * The sentence is PASSED IN rather than read from a module-level `t`: a
+ * translator captured at import would freeze the language at module load, and
+ * the only construction site sits inside `AuthProvider`, which holds a live one.
  */
 class SessionPersistError extends Error {
-  constructor() {
-    super(
-      'Signed in, but this device would not save the session — you would be signed out again on the next launch. Please restart the app and try again; if it keeps happening, free up some storage space on the device.',
-    );
+  constructor(message: string) {
+    super(message);
     this.name = 'SessionPersistError';
   }
 }
@@ -179,6 +184,7 @@ class SessionPersistError extends Error {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const [state, setState] = useState<AuthState>({
     isAuthenticated: false,
     isLoading: true,
@@ -239,7 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ]);
       if (wrote.some((ok) => !ok)) {
         await clearSession(false); // we are undoing our own write — nobody to notify
-        throw new SessionPersistError();
+        throw new SessionPersistError(t('auth.session.persistFailed'));
       }
       if (user) await storage.setObject(STORAGE_KEYS.USER_INFO, user);
       // Before the state flips, not after: anything already mounted would
@@ -270,8 +276,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         user: user ?? s.user,
       }));
+      // The server has never been told what language this partner reads — the
+      // field it picks notification, email and WhatsApp copy by has no other
+      // writer, so it is unset for every partner alive today and every lookup
+      // falls through to English. The phone has known since it was unboxed; say
+      // it now, unconditionally. Fire-and-forget: the sign-in is complete above
+      // and nothing here may hold it up. Cheap on a context switch — the second
+      // call answers from memory. See `i18n/language-sync.ts`.
+      startLanguageSync();
+      syncLanguage();
     },
-    [],
+    // `t`: the `SessionPersistError` above is built from the catalogue, so the
+    // sentence has to follow a language change like every other one.
+    [t],
   );
 
   /**
@@ -294,11 +311,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const partners = all.filter(isPartnerContext);
 
       if (partners.length === 0) {
-        return {
-          success: false,
-          error:
-            'This account does not have access to a partner business. Please use the ResiSmart Society app, or ask your administrator to add you.',
-        };
+        return { success: false, error: t('auth.session.noPartnerAccess') };
       }
 
       // Already signed in to a partner business, and it is the only one — nothing
@@ -349,7 +362,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userId: handle,
       };
     },
-    [applySession],
+    [applySession, t],
   );
 
   /**
@@ -367,11 +380,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         return {
           success: false,
-          error: apiErrorMessage(err, 'Google sign-in failed. Please try again.'),
+          error: apiErrorMessage(err, t('auth.session.googleFailed')),
         };
       }
     },
-    [consumeLogin],
+    [consumeLogin, t],
   );
 
   const login = useCallback(
@@ -393,13 +406,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return {
             success: false,
             requiresOtp: true,
-            error: 'This account signs in with a one-time code. We can send you one now.',
+            error: t('auth.session.useOtp'),
           };
         }
-        return { success: false, error: apiErrorMessage(err, 'Login failed. Please try again.') };
+        return { success: false, error: apiErrorMessage(err, t('auth.session.loginFailed')) };
       }
     },
-    [consumeLogin],
+    [consumeLogin, t],
   );
 
   const requestLoginOtp = useCallback(
@@ -415,10 +428,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // No 502 branch: this endpoint answers 200 for everybody by design, so
         // anything thrown here is a 429, a 400 or the network — never "we could
         // not deliver". See `LoginOtpRequestResponse`.
-        return { success: false, error: apiErrorMessage(err, 'Could not send the code. Please try again.') };
+        return { success: false, error: apiErrorMessage(err, t('auth.session.otpSendFailed')) };
       }
     },
-    [],
+    [t],
   );
 
   const verifyLoginOtp = useCallback(
@@ -427,20 +440,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await authApi.loginOtpVerify(identifier, code);
         return await consumeLogin(data);
       } catch (err) {
-        return { success: false, error: apiErrorMessage(err, 'That code did not work. Please try again.') };
+        return { success: false, error: apiErrorMessage(err, t('auth.session.otpWrong')) };
       }
     },
-    [consumeLogin],
+    [consumeLogin, t],
   );
 
   const selectContext = useCallback(
     async (handle: string, tenantId: string, role: string) => {
       const held = pending.current;
       if (!held || held.handle !== handle) {
-        throw new Error('This sign-in has expired. Please sign in again.');
+        throw new Error(t('auth.session.signInExpired'));
       }
       const chosen = held.contexts.find((c) => c.tenantId === tenantId && c.role === role);
-      if (!chosen) throw new Error('That business is no longer available on this account.');
+      if (!chosen) throw new Error(t('auth.session.businessGone'));
 
       const { data } = await authApi.switchContext(held.refreshToken, chosen.contextId);
       await applySession(
@@ -451,7 +464,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         null,
       );
     },
-    [applySession],
+    [applySession, t],
   );
 
   /**
@@ -475,12 +488,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (contextId: string) => {
       const refreshToken = await storage.get(STORAGE_KEYS.REFRESH_TOKEN);
       if (!refreshToken) {
-        throw new Error('Your session has expired. Please sign in again.');
+        throw new Error(t('auth.session.sessionExpired'));
       }
       try {
         const { data } = await authApi.switchContext(refreshToken, contextId);
         if (!isPartnerContext(data.activeContext)) {
-          throw new Error('That is not a partner business this app can open.');
+          throw new Error(t('auth.session.notPartnerBusiness'));
         }
         await applySession(
           data.token,
@@ -502,10 +515,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // session stays mounted for now and the next request's refresh finds no
         // credential, which the session-expired handler turns into a clean,
         // explained sign-out rather than the silent one this used to produce.
-        throw new Error(apiErrorMessage(err, 'Could not switch business. Please try again.'));
+        throw new Error(apiErrorMessage(err, t('auth.session.switchFailed')));
       }
     },
-    [applySession],
+    [applySession, t],
   );
 
   const logout = useCallback(async () => {
@@ -524,6 +537,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // sign in on this counter tablet reads the previous account's businesses.
     await store.remove(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS);
     setAvailableContexts([]);
+    // NOT `DEVICE_KEYS.LANGUAGE` — the choice belongs to the phone and survives
+    // this on purpose. What is forgotten is only what the SERVER was told, so
+    // the next person to sign in on this counter phone has their own
+    // `User.language` written rather than skipped as already-sent.
+    resetLanguageSync();
     setState({ isAuthenticated: false, isLoading: false, token: null, profile: null, user: null });
     // Deliberately no `router.replace`. `app/_layout.tsx` wraps the two route
     // groups in `Stack.Protected`, so flipping `isAuthenticated` unmounts `(app)`
@@ -571,6 +589,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const cached = await store.getJson<ResolvedContext[]>(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS);
           if (Array.isArray(cached)) setAvailableContexts(cached.filter(isPartnerContext));
           setState({ isAuthenticated: true, isLoading: false, token, profile, user });
+          // Re-assert the language on every launch of a signed-in phone. This is
+          // the retry: a switch made with no signal, or one whose PATCH died in
+          // a timeout behind the counter, is sent again here. It costs nothing
+          // when the server already agrees.
+          startLanguageSync();
+          syncLanguage();
         } else {
           setState((s) => ({ ...s, isLoading: false }));
         }
@@ -595,6 +619,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // interceptor's `clearSession`.
       void store.remove(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS);
       setAvailableContexts([]);
+      resetLanguageSync();
       setState({ isAuthenticated: false, isLoading: false, token: null, profile: null, user: null });
     });
     return () => setSessionExpiredHandler(null);
@@ -621,6 +646,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
+  // NOT translated, deliberately: this fires only when a developer mounts a
+  // consumer outside the provider. It is a wiring mistake that never reaches a
+  // partner — the app cannot render at all past it — and a Hindi rendering of it
+  // would only make the stack trace harder to search for.
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 }

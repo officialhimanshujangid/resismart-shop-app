@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -15,6 +15,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { router } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 
 import { authApi } from '../../src/api/auth.api';
 import { apiErrorMessage } from '../../src/api/axios';
@@ -24,12 +25,15 @@ import { Hero } from '../../src/components/Hero';
 import { themeColors } from '../../src/constants/colors';
 
 /** Follows the system theme, for the reason spelled out at the top of `login.tsx`. */
-const schema = z.object({
-  email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
+
+/** Built from `t` — see the same note on `buildLoginSchema` in `login.tsx`. */
+const buildSchema = (t: (key: string) => string) => z.object({
+  email: z.string().min(1, t('auth.forgot.emailRequired')).email(t('auth.forgot.emailInvalid')),
 });
-type FormData = z.infer<typeof schema>;
+type FormData = z.infer<ReturnType<typeof buildSchema>>;
 
 export default function ForgotPasswordScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const [isLoading, setIsLoading] = useState(false);
@@ -44,7 +48,7 @@ export default function ForgotPasswordScreen() {
     getValues,
     formState: { errors },
   } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(useMemo(() => buildSchema(t), [t])),
     defaultValues: { email: '' },
   });
 
@@ -75,7 +79,7 @@ export default function ForgotPasswordScreen() {
       await authApi.forgotPassword({ email: data.email });
       setSubmitted(true);
     } catch (err) {
-      showSnack(apiErrorMessage(err, 'We could not send that reset link. Please try again.'), true);
+      showSnack(apiErrorMessage(err, t('auth.forgot.sendFailed')), true);
     } finally {
       setIsLoading(false);
     }
@@ -87,39 +91,45 @@ export default function ForgotPasswordScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
             <MaterialCommunityIcons name="arrow-left" size={22} color={c.primary} />
-            <Text style={[styles.backText, { color: c.primary }]}>Back to sign in</Text>
+            <Text style={[styles.backText, { color: c.primary }]}>{t('auth.forgot.back')}</Text>
           </TouchableOpacity>
 
           <Hero
             isDark={isDark}
             variant="brand"
             logoSize="medium"
-            subtitle="We'll help you back into your account."
+            subtitle={t('auth.forgot.heroSubtitle')}
             style={styles.brandHero}
           />
 
           <View style={styles.header}>
-            <Text style={[styles.title, { color: c.textPrimary }]}>Forgot password?</Text>
+            <Text style={[styles.title, { color: c.textPrimary }]}>{t('auth.forgot.title')}</Text>
             <Text style={[styles.subtitle, { color: c.textSecondary }]}>
-              Enter your email and we'll send you a password reset link.
+              {t('auth.forgot.subtitle')}
             </Text>
           </View>
 
           {submitted ? (
             <View style={[styles.successCard, { backgroundColor: c.surface, shadowColor: c.shadow }]}>
               <MaterialCommunityIcons name="email-check-outline" size={52} color={c.success} />
-              <Text style={[styles.successTitle, { color: c.textPrimary }]}>Check your inbox</Text>
+              <Text style={[styles.successTitle, { color: c.textPrimary }]}>{t('auth.forgot.successTitle')}</Text>
               {/* "If there is an account" — the server deliberately answers the
                   same whether or not the address is one it knows, so promising a
                   delivered email would be a promise this screen cannot keep. */}
+              {/* TWO fragments rather than one interpolated sentence, because
+                  the address in the middle is BOLD and interpolation cannot
+                  carry a style. Each language owns both halves, so neither is
+                  forced into English word order: English wraps the address in
+                  "for … , a link is on its way", Hindi puts its postposition
+                  after it. */}
               <Text style={[styles.successMessage, { color: c.textSecondary }]}>
-                If there is an account for{' '}
-                <Text style={{ fontWeight: '600' }}>{getValues('email')}</Text>, a password reset link is on
-                its way.{'\n\n'}
-                The link will expire in 1 hour.
+                {t('auth.forgot.successBodyBefore')}
+                <Text style={{ fontWeight: '600' }}>{getValues('email')}</Text>
+                {t('auth.forgot.successBodyAfter')}{'\n\n'}
+                {t('auth.forgot.successExpiry')}
               </Text>
               <AppButton
-                label="Return to sign in"
+                label={t('auth.forgot.returnToSignIn')}
                 onPress={() => router.replace('/(auth)/login')}
                 mode="outlined"
                 style={styles.returnBtn}
@@ -132,7 +142,7 @@ export default function ForgotPasswordScreen() {
                 name="email"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <AppInput
-                    label="Email Address"
+                    label={t('auth.forgot.email')}
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
@@ -145,7 +155,7 @@ export default function ForgotPasswordScreen() {
                 )}
               />
               <AppButton
-                label="Send reset link"
+                label={t('auth.forgot.send')}
                 onPress={handleSubmit(onSubmit)}
                 loading={isLoading}
                 icon="send"
@@ -154,7 +164,7 @@ export default function ForgotPasswordScreen() {
               <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.signInLink} activeOpacity={0.7}>
                 {/* `primary`, not `primaryLight` — `brand[400]` fails AA on white. */}
                 <Text style={[styles.signInText, { color: c.primary }]}>
-                  Remember your password? Sign in
+                  {t('auth.forgot.rememberSignIn')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -167,7 +177,7 @@ export default function ForgotPasswordScreen() {
         onDismiss={() => setSnackbar((s) => ({ ...s, visible: false }))}
         duration={5000}
         style={{ backgroundColor: snackbar.error ? c.error : c.success }}
-        action={{ label: 'OK', onPress: () => setSnackbar((s) => ({ ...s, visible: false })) }}
+        action={{ label: t('auth.forgot.ok'), onPress: () => setSnackbar((s) => ({ ...s, visible: false })) }}
       >
         {snackbar.message}
       </Snackbar>

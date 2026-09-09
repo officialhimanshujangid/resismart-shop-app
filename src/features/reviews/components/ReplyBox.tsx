@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Text, TextInput } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../constants/colors';
-import { ReviewPublicView, fmtReviewDate, replyStillEditable } from '../types';
+import { formatI18nDate } from '../../../i18n';
+import { ReviewPublicView, replyStillEditable } from '../types';
 
 interface Props {
   review: ReviewPublicView;
@@ -30,6 +32,7 @@ interface Props {
  *                           cannot post.
  */
 export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
+  const { t } = useTranslation();
   const existing = review.partnerReply;
   const editable = existing ? replyStillEditable(existing.at) : true;
 
@@ -49,8 +52,10 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
           <MaterialCommunityIcons name="reply" size={14} color={c.textSecondary} style={{ marginTop: 2 }} />
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 13, color: c.textSecondary }}>
-              <Text style={{ fontWeight: '600', color: c.textPrimary }}>Your reply</Text>
-              {'  ·  '}{fmtReviewDate(existing.at)}{existing.byName ? ` · ${existing.byName}` : ''}
+              <Text style={{ fontWeight: '600', color: c.textPrimary }}>{t('reviews.reply.yourReply')}</Text>
+              {/* `byName` is the server's own record of who answered — the name
+                  of a real person, carried through untouched. */}
+              {'  ·  '}{formatI18nDate(existing.at, t)}{existing.byName ? t('reviews.reply.bySuffix', { name: existing.byName }) : ''}
             </Text>
             <Text style={{ fontSize: 13, color: c.textPrimary, marginTop: 2 }}>{existing.text}</Text>
           </View>
@@ -65,11 +70,11 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
               labelStyle={{ fontSize: 12, fontWeight: '600' }}
               style={{ alignSelf: 'flex-start', marginTop: 2 }}
             >
-              Edit reply
+              {t('reviews.reply.edit')}
             </Button>
           ) : (
             <Text style={{ fontSize: 11, color: c.textDisabled, marginTop: 4 }}>
-              This reply has been public for over 24 hours and can no longer be edited.
+              {t('reviews.reply.windowClosed')}
             </Text>
           )
         )}
@@ -89,7 +94,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
         labelStyle={{ fontSize: 12, fontWeight: '600' }}
         style={{ alignSelf: 'flex-start', marginTop: 6 }}
       >
-        Reply
+        {t('reviews.reply.open')}
       </Button>
     );
   }
@@ -100,7 +105,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
         mode="outlined"
         value={text}
         onChangeText={setText}
-        placeholder="Answer this customer. Everyone reading your profile will see it."
+        placeholder={t('reviews.reply.placeholder')}
         multiline
         numberOfLines={2}
         outlineStyle={{ borderRadius: radii.field }}
@@ -113,7 +118,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
           disabled={busy || !text.trim()}
           onPress={submit}
         >
-          {busy ? 'Posting…' : existing ? 'Save reply' : 'Post reply'}
+          {busy ? t('reviews.reply.posting') : existing ? t('reviews.reply.save') : t('reviews.reply.post')}
         </Button>
         <Button
           mode="text"
@@ -121,7 +126,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
           disabled={busy}
           onPress={() => { setOpen(false); setText(existing?.text ?? ''); }}
         >
-          Cancel
+          {t('common.cancel')}
         </Button>
       </View>
     </View>

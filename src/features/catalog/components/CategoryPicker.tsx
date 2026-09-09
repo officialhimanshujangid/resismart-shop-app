@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, View, StyleSheet, Pressable, ScrollView, useColorScheme } from 'react-native';
 import { Text, Portal, Dialog, TextInput, Button, IconButton } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
 
 import { ProductCategory } from '../types';
 import { useCreateCategory, useHideCategory, useUpdateCategory } from '../hooks';
@@ -43,6 +44,7 @@ interface CategoryPickerProps {
  *            a worse problem than one in the wrong order. See the report.
  */
 export function CategoryPicker({ categories, value, onChange, canManage }: CategoryPickerProps) {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -87,12 +89,12 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
 
   const confirmHide = (cat: ProductCategory) => {
     Alert.alert(
-      `Hide "${cat.name}"?`,
-      'It stops appearing as a choice. Products already in it stay on sale, and you can show it again from this same list.',
+      t('catalog.category.hideTitle', { name: cat.name }),
+      t('catalog.category.hideBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Hide it',
+          text: t('catalog.category.hideConfirm'),
           style: 'destructive',
           onPress: () =>
             hideCategory.mutate(cat._id, {
@@ -100,12 +102,12 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
                 // The server counts the products in it and says so. That number
                 // is the thing the partner is about to wonder, so its own
                 // sentence is shown rather than a generic one of ours.
-                if (res.message) Alert.alert('Category hidden', res.message);
+                if (res.message) Alert.alert(t('catalog.category.hiddenTitle'), res.message);
                 // A hidden category must not stay selected on the form behind
                 // this sheet — it would be saved onto the product.
                 if (value === cat._id) onChange(undefined);
               },
-              onError: (e: unknown) => Alert.alert('Could not hide that', apiErrorMessage(e)),
+              onError: (e: unknown) => Alert.alert(t('catalog.category.hideFailed'), apiErrorMessage(e)),
             }),
         },
       ],
@@ -115,7 +117,7 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
   const restore = (cat: ProductCategory) => {
     updateCategory.mutate(
       { id: cat._id, isActive: true },
-      { onError: (e: unknown) => Alert.alert('Could not restore that', apiErrorMessage(e)) },
+      { onError: (e: unknown) => Alert.alert(t('catalog.category.restoreFailed'), apiErrorMessage(e)) },
     );
   };
 
@@ -124,7 +126,8 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
   return (
     <View>
       <View style={styles.row}>
-        <Chip label="None" active={!value} onPress={() => onChange(undefined)} c={c} />
+        {/* Only "None" is copy; every other chip is a category the partner named. */}
+        <Chip label={t('catalog.category.none')} active={!value} onPress={() => onChange(undefined)} c={c} />
         {categories.filter((cat) => cat.isActive).map((cat) => (
           <Chip key={cat._id} label={cat.name} active={value === cat._id} onPress={() => onChange(cat._id)} c={c} />
         ))}
@@ -133,7 +136,7 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
             onPress={() => setDialogOpen(true)}
             style={[styles.chip, styles.newChip, { borderColor: c.primary }]}
           >
-            <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>+ New</Text>
+            <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>{t('catalog.category.new')}</Text>
           </Pressable>
         )}
         {canManage && categories.length > 0 && (
@@ -141,18 +144,18 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
             onPress={() => { setError(null); setEditing(null); setManageOpen(true); }}
             style={[styles.chip, styles.newChip, { borderColor: c.divider }]}
           >
-            <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>Manage</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{t('catalog.category.manage')}</Text>
           </Pressable>
         )}
       </View>
 
       <Portal>
         <Dialog visible={dialogOpen} onDismiss={() => setDialogOpen(false)} style={{ backgroundColor: c.surface }}>
-          <Dialog.Title>New category</Dialog.Title>
+          <Dialog.Title>{t('catalog.category.newTitle')}</Dialog.Title>
           <Dialog.Content>
             <TextInput
               mode="outlined"
-              label="Name"
+              label={t('catalog.category.name')}
               value={name}
               onChangeText={setName}
               autoFocus
@@ -161,9 +164,9 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
             {error && <Text style={{ color: c.error, fontSize: 12, marginTop: 6 }}>{error}</Text>}
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setDialogOpen(false)} disabled={createCategory.isPending}>Cancel</Button>
+            <Button onPress={() => setDialogOpen(false)} disabled={createCategory.isPending}>{t('common.cancel')}</Button>
             <Button onPress={submit} disabled={!name.trim() || createCategory.isPending} loading={createCategory.isPending}>
-              Add
+              {t('catalog.category.add')}
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -173,7 +176,7 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
           onDismiss={() => { if (!busy) { setManageOpen(false); setEditing(null); } }}
           style={{ backgroundColor: c.surface }}
         >
-          <Dialog.Title>Categories</Dialog.Title>
+          <Dialog.Title>{t('catalog.category.manageTitle')}</Dialog.Title>
           <Dialog.Content>
             {error && <Text style={{ color: c.error, fontSize: 12, marginBottom: 8 }}>{error}</Text>}
             <ScrollView style={styles.manageList}>
@@ -187,7 +190,8 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
                           mode="outlined"
                           dense
                           value={editing.name}
-                          onChangeText={(t) => setEditing({ id: cat._id, name: t })}
+                          /* `next`, not `t` — the callback used to shadow the translator. */
+                          onChangeText={(next) => setEditing({ id: cat._id, name: next })}
                           autoFocus
                           style={{ flex: 1 }}
                           outlineStyle={{ borderRadius: radii.field }}
@@ -197,9 +201,9 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
                           size={20}
                           disabled={!editing.name.trim() || busy}
                           onPress={saveRename}
-                          accessibilityLabel="Save this name"
+                          accessibilityLabel={t('catalog.category.saveName')}
                         />
-                        <IconButton icon="close" size={20} onPress={() => { setEditing(null); setError(null); }} accessibilityLabel="Cancel" />
+                        <IconButton icon="close" size={20} onPress={() => { setEditing(null); setError(null); }} accessibilityLabel={t('common.cancel')} />
                       </>
                     ) : (
                       <>
@@ -208,7 +212,7 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
                           numberOfLines={1}
                         >
                           {cat.name}
-                          {!cat.isActive ? '  · hidden' : ''}
+                          {!cat.isActive ? t('catalog.category.hiddenSuffix') : ''}
                         </Text>
                         {cat.isActive ? (
                           <>
@@ -217,18 +221,18 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
                               size={18}
                               disabled={busy}
                               onPress={() => { setError(null); setEditing({ id: cat._id, name: cat.name }); }}
-                              accessibilityLabel={`Rename ${cat.name}`}
+                              accessibilityLabel={t('catalog.category.rename', { name: cat.name })}
                             />
                             <IconButton
                               icon="eye-off-outline"
                               size={18}
                               disabled={busy}
                               onPress={() => confirmHide(cat)}
-                              accessibilityLabel={`Hide ${cat.name}`}
+                              accessibilityLabel={t('catalog.category.hide', { name: cat.name })}
                             />
                           </>
                         ) : (
-                          <Button compact disabled={busy} onPress={() => restore(cat)}>Show</Button>
+                          <Button compact disabled={busy} onPress={() => restore(cat)}>{t('catalog.category.show')}</Button>
                         )}
                       </>
                     )}
@@ -238,7 +242,7 @@ export function CategoryPicker({ categories, value, onChange, canManage }: Categ
             </ScrollView>
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => { setManageOpen(false); setEditing(null); }} disabled={busy}>Done</Button>
+            <Button onPress={() => { setManageOpen(false); setEditing(null); }} disabled={busy}>{t('common.done')}</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>

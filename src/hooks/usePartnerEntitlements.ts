@@ -100,7 +100,7 @@ export const PARTNER_MODULE_INFO: Record<PartnerModule, PartnerModuleInfo> = {
 
 /** Everything denied. Note `limits: {}` — with `planSells` that reads as nothing sold. */
 export const CLOSED_ENTITLEMENTS: PartnerEntitlementsPayload = {
-  plan: { name: 'Unknown', isFreeTier: true, status: 'unknown', limits: {} },
+  plan: { name: '', isFreeTier: true, status: 'unknown', limits: {} },
   modules: [],
   permissions: {},
   isAdmin: false,
@@ -194,7 +194,18 @@ function normalise(raw: PartnerEntitlementsPayload | undefined): PartnerEntitlem
 
   return {
     plan: {
-      name: raw.plan?.name ?? 'Unknown',
+      /**
+       * EMPTY IS THE SENTINEL FOR "the server did not name the plan", and it is
+       * deliberately not the word "Unknown".
+       *
+       * `plan.name` is a SERVER value — "Growth", "Starter" — and translating a
+       * server value here would mean translating whatever the server sent too.
+       * So the absence is expressed as a falsy string and the two screens that
+       * PRINT it (`settings/index.tsx`, `settings/plan.tsx`) fall back to
+       * `settings.plan.unknownName` at the point of display, which is the only
+       * place that knows it is about to be read by a person.
+       */
+      name: raw.plan?.name ?? '',
       isFreeTier: raw.plan?.isFreeTier !== false,
       status: raw.plan?.status ?? 'unknown',
       limits,

@@ -39,7 +39,14 @@ export const REPLY_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const replyStillEditable = (at: string): boolean =>
   Date.now() - new Date(at).getTime() <= REPLY_EDIT_WINDOW_MS;
 
-export const fmtReviewDate = (value?: string): string =>
-  value
-    ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-    : '—';
+/**
+ * `fmtReviewDate` used to live here as
+ * `toLocaleDateString('en-IN', { month: 'short' })` and is gone.
+ *
+ * A date contains a WORD, and both halves of that call were wrong once this app
+ * had a second language: the locale was pinned to `en-IN` regardless of what the
+ * partner chose, and `Intl`'s month names are not something Hermes on Android
+ * can be relied on to have at all — `src/i18n/index.ts#formatI18nDate` sets out
+ * why, and is what both review call sites now use. It needs `t`, so it is called
+ * from the component rather than from a module-level helper.
+ */

@@ -2,6 +2,7 @@ import { isAxiosError } from 'axios';
 
 import { apiClient, StoredProfile } from './axios';
 import { TenantType, UserRole } from '../types/api-contract.generated';
+import type { Translate } from '../features/services/duration';
 
 /**
  * A context the signed-in identity may act in — one partner business, one flat,
@@ -168,12 +169,15 @@ export interface LoginOtpRequestResponse extends OtpDelivery {
  * axios's NAMED `isAxiosError` rather than the default export's member, which is
  * what the lint rule asks for everywhere else in this codebase.
  */
-export function otpDeliveryFailure(error: unknown): OtpDeliveryFailure | undefined {
+export function otpDeliveryFailure(error: unknown, t: Translate): OtpDeliveryFailure | undefined {
   if (!isAxiosError(error) || error.response?.status !== 502) return undefined;
   const body = error.response.data as Partial<OtpDeliveryFailure> | undefined;
   if (!body || !Array.isArray(body.alternatives)) return undefined;
   return {
-    error: body.error ?? 'We could not deliver the code right now.',
+    // `body.error` is the server's own delivery report — it names the transport
+    // that failed — and is shown as it arrives. Only the fallback, for a 502
+    // that carried no sentence, is ours to translate.
+    error: body.error ?? t('auth.session.otpUndeliverable'),
     channel: body.channel ?? 'PHONE',
     deliveredVia: null,
     alternatives: body.alternatives,

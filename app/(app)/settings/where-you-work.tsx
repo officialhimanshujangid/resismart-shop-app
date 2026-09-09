@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
@@ -32,12 +33,6 @@ import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../
 
 type ModeChoice = 'AT_PARTNER' | 'AT_CUSTOMER' | 'BOTH';
 
-const CHOICES: { key: ModeChoice; label: string }[] = [
-  { key: 'AT_PARTNER', label: 'Customers come to you' },
-  { key: 'AT_CUSTOMER', label: 'You travel to them' },
-  { key: 'BOTH', label: 'Both' },
-];
-
 const modesOf = (choice: ModeChoice): PartnerServiceMode[] =>
   choice === 'BOTH' ? ['AT_PARTNER', 'AT_CUSTOMER'] : [choice];
 
@@ -54,12 +49,26 @@ const choiceOf = (modes?: PartnerServiceMode[]): ModeChoice | '' => {
 const travels = (choice: ModeChoice | '') => choice === 'AT_CUSTOMER' || choice === 'BOTH';
 
 export default function WhereYouWorkScreen() {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
   const { can, refresh } = usePartnerEntitlements();
   const canEdit = can('SETTINGS', 'FULL');
 
   const query = useQuery({ queryKey: qk.partner.me(), queryFn: partnerApi.me });
+
+  /**
+   * Labels only. `modesOf` turns the chosen KEY into the `PartnerServiceMode`
+   * enum the server stores and `IN_RANGE_EXPR` tests; the key never changes.
+   */
+  const choices = useMemo(
+    () => ([
+      { key: 'AT_PARTNER' as const, label: t('settings.whereYouWork.choiceAtPartner') },
+      { key: 'AT_CUSTOMER' as const, label: t('settings.whereYouWork.choiceAtCustomer') },
+      { key: 'BOTH' as const, label: t('settings.whereYouWork.choiceBoth') },
+    ]),
+    [t],
+  );
 
   const [choice, setChoice] = useState<ModeChoice | ''>('');
   const [radius, setRadius] = useState('');
@@ -83,41 +92,40 @@ export default function WhereYouWorkScreen() {
       // The visibility report is computed from these fields, so the banner on
       // Today has to be re-asked or it keeps saying they are invisible.
       refresh();
-      Alert.alert('Saved', 'Residents will be matched to you on this from now on.');
+      Alert.alert(t('settings.whereYouWork.savedTitle'), t('settings.whereYouWork.savedBody'));
     },
-    onError: (e) => Alert.alert('Could not save', apiErrorMessage(e)),
+    onError: (e) => Alert.alert(t('settings.whereYouWork.couldNotSave'), apiErrorMessage(e)),
   });
 
   const onSave = () => {
     if (!choice) {
-      Alert.alert('Pick one', 'Say whether customers come to you, you go to them, or both.');
+      Alert.alert(t('settings.whereYouWork.pickOneTitle'), t('settings.whereYouWork.pickOneBody'));
       return;
     }
     // The same rule `serviceRadiusRule` runs on the server, caught here so the
     // answer names the box on screen rather than arriving as a validation path.
     if (travels(choice) && !radius.trim()) {
-      Alert.alert('How far do you travel?', 'Set a distance in km so residents outside it are not offered you.');
+      Alert.alert(t('settings.whereYouWork.howFarTitle'), t('settings.whereYouWork.howFarBody'));
       return;
     }
     save.mutate();
   };
 
-  if (query.isLoading) return <Screen c={c} title="Where you work"><Loading c={c} /></Screen>;
+  if (query.isLoading) return <Screen c={c} title={t('settings.whereYouWork.title')}><Loading c={c} /></Screen>;
   if (query.isError) {
     return (
-      <Screen c={c} title="Where you work">
-        <ErrorBlock c={c} message="We could not load your business just now." onRetry={() => void query.refetch()} />
+      <Screen c={c} title={t('settings.whereYouWork.title')}>
+        <ErrorBlock c={c} message={t('settings.whereYouWork.couldNotLoad')} onRetry={() => void query.refetch()} />
       </Screen>
     );
   }
 
   return (
-    <Screen c={c} title="Where you work" subtitle={canEdit ? undefined : 'View only'}>
+    <Screen c={c} title={t('settings.whereYouWork.title')} subtitle={canEdit ? undefined : t('settings.whereYouWork.viewOnly')}>
       <Card c={c}>
-        <SectionLabel c={c}>How you serve customers</SectionLabel>
+        <SectionLabel c={c}>{t('settings.whereYouWork.howYouServe')}</SectionLabel>
         <Text style={{ color: c.textSecondary, marginBottom: 12 }}>
-          Residents can only be matched to a business that has said this. It also decides which services you
-          can offer — a job cannot happen somewhere you do not work.
+          {t('settings.whereYouWork.howYouServeNote')}
         </Text>
         {/* `choice` straight through, `''` included — see `choiceOf` above and
             `ChipRow`'s own header. This used to fall back to `'AT_PARTNER'`,
@@ -126,39 +134,39 @@ export default function WhereYouWorkScreen() {
             it. The strip now shows nothing chosen, which is the truth. */}
         <ChipRow<ModeChoice>
           c={c}
-          options={CHOICES}
+          options={choices}
           value={choice}
           onChange={(k) => canEdit && setChoice(k)}
         />
         {!choice && (
           <Text style={{ color: c.error, marginTop: 10 }}>
-            Nothing chosen yet — which is why residents cannot find you.
+            {t('settings.whereYouWork.nothingChosen')}
           </Text>
         )}
       </Card>
 
       {travels(choice) && (
         <Card c={c}>
-          <SectionLabel c={c}>How far you travel</SectionLabel>
+          <SectionLabel c={c}>{t('settings.whereYouWork.howFarSection')}</SectionLabel>
           {/* `AppInput` has no `editable` prop, and rather than widen a shared
               component for one screen the read-only case is handled where it
               already is: a viewer has no Save button, so nothing they type can
               leave the device. */}
           <AppInput
-            label="Distance in km"
+            label={t('settings.whereYouWork.distanceLabel')}
             value={radius}
             onChangeText={setRadius}
             keyboardType="numeric"
           />
           <Text style={{ color: c.textSecondary, marginTop: 8 }}>
-            Residents beyond this are not offered your services. 1–100 km.
+            {t('settings.whereYouWork.distanceNote')}
           </Text>
         </Card>
       )}
 
       {canEdit && (
         <View style={{ marginTop: 4 }}>
-          <AppButton label="Save" onPress={onSave} loading={save.isPending} disabled={save.isPending} />
+          <AppButton label={t('settings.whereYouWork.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} />
         </View>
       )}
     </Screen>

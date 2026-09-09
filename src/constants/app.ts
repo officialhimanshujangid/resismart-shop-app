@@ -55,6 +55,15 @@ export const DEVICE_KEYS = {
   INVOICE_DRAFTS: 'resismart_partner_invoice_drafts',
   /** Last scanner input method, remembered per device (PARTNERS_PLAN §12.1). */
   SCAN_METHOD: 'resismart_partner_scan_method',
+  /**
+   * English or Hindi, chosen by whoever is standing at the counter.
+   *
+   * Here rather than in `STORAGE_KEYS` for the second reason above: a shared
+   * shop phone that is signed out at the end of a shift must still open in the
+   * language the shop reads. Losing it on sign-out would mean re-picking Hindi
+   * every time somebody switched businesses.
+   */
+  LANGUAGE: 'resismart_partner_language',
 };
 
 /**

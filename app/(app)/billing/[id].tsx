@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -15,13 +16,14 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { documentsApi } from '../../../src/features/billing/documents.api';
 import { shareDocumentPdf } from '../../../src/features/billing/pdf';
 import { getThermalPrinter } from '../../../src/features/printing';
-import { CONVERSION_TARGETS, DOCUMENT_TYPE_LABEL, PartnerDocumentType, behaviourOf } from '../../../src/features/billing/types';
+import { CONVERSION_TARGETS, DOCUMENT_TYPE_LABEL_KEY, PartnerDocumentType, behaviourOf } from '../../../src/features/billing/types';
 import { DocumentStatusChip } from '../../../src/features/billing/components/StatusChip';
 import { toHref } from '../../../src/features/billing/routeHref';
 import { paymentsApi } from '../../../src/features/payments/payments.api';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
-import { PAYMENT_MODES, PAYMENT_MODE_LABEL, PaymentMode } from '../../../src/features/payments/types';
+import { PAYMENT_MODES, PAYMENT_MODE_LABEL_KEY, PaymentMode } from '../../../src/features/payments/types';
 import { Loading } from '../../../src/features/more/ui';
+import { formatI18nDate } from '../../../src/i18n';
 
 /**
  * The channels `sendDocumentSchema` accepts server-side — `documentsApi.send`
@@ -30,11 +32,16 @@ import { Loading } from '../../../src/features/more/ui';
  * What was missing was a caller offering the choice at all — the only send
  * path on this screen fired `WHATSAPP` unconditionally as a side effect of
  * "Share". This dialog is the mobile twin of web `SendDialog.tsx`.
+ *
+ * `key` is the WIRE value and stays an English literal — it is what is POSTed
+ * and what `sendDocumentSchema`'s enum validates. `labelKey` is the display
+ * side and is translated, the same split `DOCUMENT_TYPE_LABEL_KEY` and
+ * `GST_STATES` are the worked example of in `features/billing/types.ts`.
  */
 const SEND_CHANNELS = [
-  { key: 'WHATSAPP', label: 'WhatsApp' },
-  { key: 'EMAIL', label: 'Email' },
-  { key: 'SMS', label: 'SMS' },
+  { key: 'WHATSAPP', labelKey: 'billing.detail.channel.WHATSAPP' },
+  { key: 'EMAIL', labelKey: 'billing.detail.channel.EMAIL' },
+  { key: 'SMS', labelKey: 'billing.detail.channel.SMS' },
 ] as const;
 type SendChannel = typeof SEND_CHANNELS[number]['key'];
 
@@ -65,6 +72,7 @@ export default function DocumentDetailScreen() {
   const c = themeColors(isDark);
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const { can } = usePartnerEntitlements();
   const canManage = can('INVOICING_MANAGE', 'FULL');
 
@@ -98,7 +106,20 @@ export default function DocumentDetailScreen() {
   }, [queryClient]);
 
   const doc = query.data;
-  const label = doc ? (doc.number ?? `${DOCUMENT_TYPE_LABEL[doc.type]}-draft`) : '';
+  /**
+   * What this document is CALLED on screen — its number once issued, and a
+   * translated "<type> draft" placeholder while it has none.
+   *
+   * The translated half only ever reaches the screen. Everything that puts
+   * `label` in a FILE — `shareDocumentPdf`, `getThermalPrinter().print` — is
+   * reachable only when `canShareOrPrint` is true, i.e. never on a DRAFT, so the
+   * value those see is always `doc.number`. (`pdf.ts#safeFileName` strips
+   * anything outside `[a-zA-Z0-9-_ ]` and falls back to "document", so a
+   * Devanagari label there would silently lose the name rather than break.)
+   */
+  const label = doc
+    ? (doc.number ?? t('billing.detail.draftLabel', { type: t(DOCUMENT_TYPE_LABEL_KEY[doc.type]) }))
+    : '';
 
   const handleShare = useCallback(async () => {
     if (!doc) return;
@@ -111,11 +132,11 @@ export default function DocumentDetailScreen() {
       // trade for not blocking on it.
       documentsApi.send(doc._id, 'WHATSAPP').catch(() => undefined);
     } catch (e: unknown) {
-      setToast(apiErrorMessage(e, 'Could not share this invoice.'));
+      setToast(apiErrorMessage(e, t('billing.detail.shareFailed')));
     } finally {
       setBusy(null);
     }
-  }, [doc, label]);
+  }, [doc, label, t]);
 
   const handlePrint = useCallback(async () => {
     if (!doc) return;
@@ -123,25 +144,41 @@ export default function DocumentDetailScreen() {
     try {
       await getThermalPrinter().print({ documentId: doc._id, label });
     } catch (e: unknown) {
-      setToast(apiErrorMessage(e, 'Could not open the print dialog.'));
+      setToast(apiErrorMessage(e, t('billing.detail.printFailed')));
     } finally {
       setBusy(null);
     }
-  }, [doc, label]);
+  }, [doc, label, t]);
+
+  /**
+   * The key for issuing THIS document, held across retries of that one intent.
+   *
+   * Same shape as `payIntent` below, and for the same reason — but with less
+   * to freeze, because `issue` sends an empty body: the whole request is the
+   * document id, so nothing about it can drift between attempts and the only
+   * job left is not minting a new key per tap. Reset when the screen moves to a
+   * different document; there is nothing else that could make this a genuinely
+   * new request, since a document can only be issued once.
+   */
+  const issueIntentKey = useRef<string | null>(null);
+  useEffect(() => {
+    issueIntentKey.current = null;
+  }, [doc?._id]);
 
   const handleIssue = useCallback(async () => {
     if (!doc) return;
     setBusy('issue');
+    if (!issueIntentKey.current) issueIntentKey.current = newIdempotencyKey('issue');
     try {
-      const { document } = await documentsApi.issue(doc._id);
+      const { document } = await documentsApi.issue(doc._id, issueIntentKey.current);
       queryClient.setQueryData(qk.billing.document(doc._id), document);
       invalidate();
     } catch (e: unknown) {
-      setToast(apiErrorMessage(e, 'Could not issue this document.'));
+      setToast(apiErrorMessage(e, t('billing.detail.issueFailed')));
     } finally {
       setBusy(null);
     }
-  }, [doc, queryClient, invalidate]);
+  }, [doc, queryClient, invalidate, t]);
 
   /**
    * Throw a DRAFT away.
@@ -164,12 +201,12 @@ export default function DocumentDetailScreen() {
   const handleDiscardDraft = useCallback(() => {
     if (!doc) return;
     Alert.alert(
-      'Discard this draft?',
-      'It has no number and has never been sent to anyone, so nothing is lost. This cannot be undone.',
+      t('billing.detail.discardTitle'),
+      t('billing.detail.discardBody'),
       [
-        { text: 'Keep it', style: 'cancel' },
+        { text: t('billing.detail.discardKeep'), style: 'cancel' },
         {
-          text: 'Discard',
+          text: t('billing.detail.discardConfirm'),
           style: 'destructive',
           onPress: async () => {
             setBusy('discard');
@@ -183,7 +220,7 @@ export default function DocumentDetailScreen() {
               if (router.canGoBack()) router.back();
               else router.replace('/(app)/(tabs)/billing');
             } catch (e: unknown) {
-              setToast(apiErrorMessage(e, 'Could not discard this draft.'));
+              setToast(apiErrorMessage(e, t('billing.detail.discardFailed')));
             } finally {
               setBusy(null);
             }
@@ -191,7 +228,7 @@ export default function DocumentDetailScreen() {
         },
       ],
     );
-  }, [doc, queryClient, invalidate]);
+  }, [doc, queryClient, invalidate, t]);
 
   const handleCancel = useCallback(async () => {
     if (!doc) return;
@@ -203,11 +240,11 @@ export default function DocumentDetailScreen() {
       setCancelOpen(false);
       setCancelReason('');
     } catch (e: unknown) {
-      setToast(apiErrorMessage(e, 'Could not cancel this document.'));
+      setToast(apiErrorMessage(e, t('billing.detail.cancelFailed')));
     } finally {
       setBusy(null);
     }
-  }, [doc, cancelReason, queryClient, invalidate]);
+  }, [doc, cancelReason, queryClient, invalidate, t]);
 
   /**
    * Turn this document into its target type — C4, mirroring web
@@ -226,12 +263,12 @@ export default function DocumentDetailScreen() {
         invalidate();
         router.replace(toHref(`/(app)/billing/${created._id}`));
       } catch (e: unknown) {
-        setToast(apiErrorMessage(e, 'That could not be converted.'));
+        setToast(apiErrorMessage(e, t('billing.detail.convertFailed')));
       } finally {
         setBusy(null);
       }
     },
-    [doc, invalidate],
+    [doc, invalidate, t],
   );
 
   /**
@@ -246,13 +283,13 @@ export default function DocumentDetailScreen() {
     try {
       await documentsApi.send(doc._id, sendChannel);
       setSendOpen(false);
-      setToast(`Sent to ${doc.partySnapshot.name}.`);
+      setToast(t('billing.detail.sent', { party: doc.partySnapshot.name }));
     } catch (e: unknown) {
-      setToast(apiErrorMessage(e, 'That could not be sent.'));
+      setToast(apiErrorMessage(e, t('billing.detail.sendFailed')));
     } finally {
       setBusy(null);
     }
-  }, [doc, sendChannel]);
+  }, [doc, sendChannel, t]);
 
   /**
    * Record what came in (or went out) against exactly this document — C1.
@@ -286,11 +323,11 @@ export default function DocumentDetailScreen() {
     const outstandingPaise = Math.max(0, doc.totals.grandPaise - doc.paidPaise);
     const amountPaise = parseRupeesToPaise(payAmount) ?? 0;
     if (amountPaise <= 0) {
-      setToast('Enter an amount greater than zero.');
+      setToast(t('billing.detail.amountRequired'));
       return;
     }
     if (amountPaise > outstandingPaise) {
-      setToast(`Only ${formatPaise(outstandingPaise)} is outstanding on this document.`);
+      setToast(t('billing.detail.amountTooLarge', { amount: formatPaise(outstandingPaise) }));
       return;
     }
     const behaviour = behaviourOf(doc.type);
@@ -318,13 +355,13 @@ export default function DocumentDetailScreen() {
       setPayOpen(false);
       setPayAmount('');
       setPayReference('');
-      setToast(direction === 'IN' ? 'Payment recorded.' : 'Payment out recorded.');
+      setToast(t(direction === 'IN' ? 'billing.detail.paymentInRecorded' : 'billing.detail.paymentOutRecorded'));
     } catch (e: unknown) {
-      setToast(apiErrorMessage(e, 'That payment could not be recorded.'));
+      setToast(apiErrorMessage(e, t('billing.detail.paymentFailed')));
     } finally {
       setBusy(null);
     }
-  }, [doc, payAmount, payMode, payReference, queryClient, invalidate]);
+  }, [doc, payAmount, payMode, payReference, queryClient, invalidate, t]);
 
   /*
     `Loading` rather than a bare `ActivityIndicator`, for the reason
@@ -340,7 +377,7 @@ export default function DocumentDetailScreen() {
         <View style={styles.topBar}>
           <IconButton icon="arrow-left" onPress={() => router.back()} />
         </View>
-        <Loading c={c} label="Loading this document…" />
+        <Loading c={c} label={t('billing.detail.loading')} />
       </SafeAreaView>
     );
   }
@@ -352,7 +389,7 @@ export default function DocumentDetailScreen() {
           <IconButton icon="arrow-left" onPress={() => router.back()} />
         </View>
         <View style={styles.centerBox}>
-          <Text style={{ color: c.textSecondary }}>{apiErrorMessage(query.error, 'That document could not be found.')}</Text>
+          <Text style={{ color: c.textSecondary }}>{apiErrorMessage(query.error, t('billing.detail.notFound'))}</Text>
         </View>
       </SafeAreaView>
     );
@@ -382,6 +419,25 @@ export default function DocumentDetailScreen() {
     }),
     { cgstPaise: 0, sgstPaise: 0, igstPaise: 0, cessPaise: 0 },
   );
+  /**
+   * Which pricing basis this document was written in, so the card can say it
+   * once instead of leaving the reader to guess.
+   *
+   * Only lines that actually carry tax get a vote: on a nil-rated or
+   * unregistered bill `taxInclusive` is set but means nothing, and a sentence
+   * about tax that is not on the bill is noise on a legal document. Mirrors
+   * web `documents/[id]/page.tsx`, which derives the same three cases.
+   */
+  const taxedLines = doc.totals.taxPaise > 0 ? doc.lines : [];
+  const anyInclusiveRate = taxedLines.some((l) => l.taxInclusive);
+  const mixedRateBasis = anyInclusiveRate && taxedLines.some((l) => !l.taxInclusive);
+  const rateBasisNote = !taxedLines.length
+    ? ''
+    : mixedRateBasis
+      ? t('billing.detail.rateBasisMixed')
+      : anyInclusiveRate
+        ? t('billing.detail.rateBasisInclusive')
+        : t('billing.detail.rateBasisExclusive');
   const behaviour = behaviourOf(doc.type);
   const conversionTargets = CONVERSION_TARGETS[doc.type];
   const settledStatus = doc.status === 'ISSUED' || doc.status === 'PARTIALLY_PAID' || doc.status === 'PAID';
@@ -399,7 +455,7 @@ export default function DocumentDetailScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
       <View style={styles.topBar}>
-        <IconButton icon="arrow-left" onPress={() => router.back()} accessibilityLabel="Back" />
+        <IconButton icon="arrow-left" onPress={() => router.back()} accessibilityLabel={t('common.back')} />
         <Text style={[styles.topBarTitle, { color: c.textPrimary }]} numberOfLines={1}>
           {label}
         </Text>
@@ -410,13 +466,16 @@ export default function DocumentDetailScreen() {
         <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
           <View style={styles.headerRow}>
             <View>
-              <Text style={[styles.docType, { color: c.textSecondary }]}>{DOCUMENT_TYPE_LABEL[doc.type]}</Text>
+              <Text style={[styles.docType, { color: c.textSecondary }]}>{t(DOCUMENT_TYPE_LABEL_KEY[doc.type])}</Text>
               <Text style={[styles.docNumber, { color: c.textPrimary }]}>{label}</Text>
             </View>
             <DocumentStatusChip status={doc.status} c={c} />
           </View>
+          {/* `formatI18nDate`, not `toLocaleDateString('en-IN')` — the month is
+              a WORD, and this app runs on Hermes where Android's ICU coverage
+              cannot be relied on. See that function's own header. */}
           <Text style={[styles.docDate, { color: c.textSecondary }]}>
-            {new Date(doc.documentDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            {formatI18nDate(doc.documentDate, t)}
           </Text>
         </Surface>
 
@@ -424,38 +483,98 @@ export default function DocumentDetailScreen() {
           <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{doc.partySnapshot.name}</Text>
           {!!doc.partySnapshot.phone && <Text style={[styles.cardBody, { color: c.textSecondary }]}>{doc.partySnapshot.phone}</Text>}
           {!!doc.partySnapshot.address && <Text style={[styles.cardBody, { color: c.textSecondary }]}>{doc.partySnapshot.address}</Text>}
-          {!!doc.partySnapshot.gstin && <Text style={[styles.cardBody, { color: c.textSecondary }]}>GSTIN: {doc.partySnapshot.gstin}</Text>}
+          {!!doc.partySnapshot.gstin && <Text style={[styles.cardBody, { color: c.textSecondary }]}>{t('billing.detail.gstin', { gstin: doc.partySnapshot.gstin })}</Text>}
         </Surface>
 
         <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
-          <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Items</Text>
-          {doc.lines.map((line, idx) => (
-            <View key={idx} style={styles.lineRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.lineName, { color: c.textPrimary }]}>{line.itemName}</Text>
-                <Text style={[styles.lineMeta, { color: c.textSecondary }]}>
-                  {line.qty} {line.unit} × {formatPaise(line.ratePaise)}
-                  {line.discountPaise > 0 ? ` · −${formatPaise(line.discountPaise)}` : ''}
+          {/*
+            The column is CAPTIONED because the number in it changed meaning.
+
+            It used to print `totalPaise` — tax INSIDE — above a "Subtotal" that
+            is the sum of the taxable values and CGST/SGST rows that then appear
+            to add the same tax a second time. Three true figures reconciling to
+            nothing: Σ rows ≠ Subtotal, and no line on the card showed the base.
+            A shopkeeper reads that as an arithmetic error on their own invoice
+            (`mobile-society`'s invoice card was fixed for exactly this, and the
+            web detail page a column at a time).
+
+            An unlabelled money column on the right of an item is read as "what
+            this item costs", so switching it to the base without saying so would
+            just move the confusion. The caption says which of the two it is, and
+            the per-line caption below carries the other one.
+          */}
+          <View style={styles.itemsHeaderRow}>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.detail.items')}</Text>
+            <Text style={[styles.columnCaption, { color: c.textSecondary }]}>{t('billing.detail.taxableValue')}</Text>
+          </View>
+          {doc.lines.map((line, idx) => {
+            const lineTaxPaise = line.cgstPaise + line.sgstPaise + line.igstPaise + line.cessPaise;
+            return (
+              <View key={idx} style={styles.lineRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.lineName, { color: c.textPrimary }]}>{line.itemName}</Text>
+                  <Text style={[styles.lineMeta, { color: c.textSecondary }]}>
+                    {/* `unit` is the stored unit as the partner typed or picked
+                        it — server data, not a label, so it is not translated. */}
+                    {t('billing.detail.lineQty', { qty: line.qty, unit: line.unit, rate: formatPaise(line.ratePaise) })}
+                    {line.discountPaise > 0 ? t('billing.detail.lineDiscount', { amount: formatPaise(line.discountPaise) }) : ''}
+                    {/*
+                      The rate and how it was treated, together. `ratePaise` alone
+                      is ambiguous — ₹118 at 18% is the same line whether the tax
+                      was inside it or added to it, and the two produce different
+                      money. This is read off the STORED line, which is what
+                      `computeDocumentTax` was actually given.
+                    */}
+                    {line.taxRatePercent > 0
+                      ? t('billing.detail.lineTaxSuffix', {
+                        rate: line.taxRatePercent,
+                        mode: t(line.taxInclusive ? 'billing.detail.lineTaxInclusive' : 'billing.detail.lineTaxExtra'),
+                      })
+                      : t('billing.detail.lineNoTax')}
+                    {line.hsn ? t('billing.detail.lineHsn', { hsn: line.hsn }) : ''}
+                  </Text>
                   {/*
-                    The rate and how it was treated, together. `ratePaise` alone
-                    is ambiguous — ₹118 at 18% is the same line whether the tax
-                    was inside it or added to it, and the two produce different
-                    money. This is read off the STORED line, which is what
-                    `computeDocumentTax` was actually given.
+                    base → tax → amount, on one line, which is the phone's answer
+                    to the web's extra `Taxable` COLUMN and the same order the
+                    `LineEditorSheet` preview walks the partner through when they
+                    type the line (Taxable value → CGST/SGST → Line total). A
+                    fourth column does not fit at 360dp; a caption does, and it
+                    keeps what the customer pays for this item on the card rather
+                    than making a reader who wants it do the addition.
                   */}
-                  {line.taxRatePercent > 0
-                    ? ` · GST ${line.taxRatePercent}% ${line.taxInclusive ? 'included' : 'extra'}`
-                    : ' · no GST'}
-                  {line.hsn ? ` · HSN ${line.hsn}` : ''}
-                </Text>
+                  {lineTaxPaise > 0 && (
+                    <Text style={[styles.lineMeta, { color: c.textSecondary }]}>
+                      {t('billing.detail.lineTaxLine', { tax: formatPaise(lineTaxPaise), total: formatPaise(line.totalPaise) })}
+                    </Text>
+                  )}
+                </View>
+                <Text style={[styles.lineAmount, { color: c.textPrimary }]}>{formatPaise(line.taxablePaise)}</Text>
               </View>
-              <Text style={[styles.lineAmount, { color: c.textPrimary }]}>{formatPaise(line.totalPaise)}</Text>
-            </View>
-          ))}
+            );
+          })}
+          {!!rateBasisNote && <Text style={[styles.cardNote, { color: c.textSecondary }]}>{rateBasisNote}</Text>}
 
           <Divider style={{ marginVertical: 8 }} />
-          <TotalRow label="Subtotal" value={doc.totals.subPaise} c={c} />
-          {doc.totals.discountPaise > 0 && <TotalRow label="Discount" value={-doc.totals.discountPaise} c={c} />}
+          {/* "Taxable value", the word `new.tsx` and `LineEditorSheet` already
+              use for this number, rather than "Subtotal" — a shopkeeper billing
+              on the composer and reading the result here should not have to
+              learn that the two screens mean the same thing. */}
+          <TotalRow label={t('billing.detail.taxableValue')} value={doc.totals.subPaise} c={c} />
+          {/*
+            A caption, NOT a row. `subPaise` is already post-discount
+            (`partner-tax.util.ts`: `taxablePaise` is computed from
+            `gross − discount`, and `totals.discountPaise` is documented as
+            "already reflected in subPaise"), so the signed "Discount" row that
+            used to sit here invited the reader to subtract it a second time and
+            land below the printed total. Web drops the row for the same reason;
+            the figure stays because "how much did I give away" is worth knowing,
+            just not as an operation.
+          */}
+          {doc.totals.discountPaise > 0 && (
+            <Text style={[styles.cardNote, { color: c.textSecondary }]}>
+              {t('billing.detail.afterDiscounts', { amount: formatPaise(doc.totals.discountPaise) })}
+            </Text>
+          )}
           {/*
             The tax, split the way it is filed, summed from the STORED lines —
             never recomputed. `partner-document.model.ts` is explicit that an
@@ -471,22 +590,37 @@ export default function DocumentDetailScreen() {
             IGST) separately, and a screen that will not show what the paper
             shows is a screen the shopkeeper stops trusting.
           */}
-          {taxSplit.igstPaise > 0 && <TotalRow label="IGST" value={taxSplit.igstPaise} c={c} />}
-          {taxSplit.cgstPaise > 0 && <TotalRow label="CGST" value={taxSplit.cgstPaise} c={c} />}
-          {taxSplit.sgstPaise > 0 && <TotalRow label="SGST" value={taxSplit.sgstPaise} c={c} />}
-          {taxSplit.cessPaise > 0 && <TotalRow label="Cess" value={taxSplit.cessPaise} c={c} />}
-          {doc.totals.taxPaise === 0 && <TotalRow label="Tax" value={0} c={c} />}
-          {doc.totals.roundOffPaise !== 0 && <TotalRow label="Round off" value={doc.totals.roundOffPaise} c={c} />}
-          <TotalRow label="Total" value={doc.totals.grandPaise} c={c} bold />
-          {doc.paidPaise > 0 && <TotalRow label="Paid" value={doc.paidPaise} c={c} />}
+          {taxSplit.igstPaise > 0 && <TotalRow label={t('billing.detail.igst')} value={taxSplit.igstPaise} c={c} />}
+          {taxSplit.cgstPaise > 0 && <TotalRow label={t('billing.detail.cgst')} value={taxSplit.cgstPaise} c={c} />}
+          {taxSplit.sgstPaise > 0 && <TotalRow label={t('billing.detail.sgst')} value={taxSplit.sgstPaise} c={c} />}
+          {taxSplit.cessPaise > 0 && <TotalRow label={t('billing.detail.cess')} value={taxSplit.cessPaise} c={c} />}
+          {doc.totals.taxPaise === 0 && <TotalRow label={t('billing.detail.tax')} value={0} c={c} />}
+          {/*
+            The other row on this card that could not be added up, and the only
+            one where NOT adding it is correct: under reverse charge
+            `computeDocumentTax` leaves the tax out of `grandPaise` on purpose
+            (the recipient pays it to the government direct), so the split above
+            is stated — a tax document must state it — but the Total below is
+            `taxable + round off` alone. Said here, between the tax and the
+            total, because that is where a reader adding downwards needs it, not
+            in a footnote they reach after the number has already surprised them.
+          */}
+          {doc.reverseCharge && doc.totals.taxPaise > 0 && (
+            <Text style={[styles.cardNote, { color: c.textSecondary }]}>
+              {t('billing.detail.reverseCharge')}
+            </Text>
+          )}
+          {doc.totals.roundOffPaise !== 0 && <TotalRow label={t('billing.detail.roundOff')} value={doc.totals.roundOffPaise} c={c} />}
+          <TotalRow label={t('billing.detail.total')} value={doc.totals.grandPaise} c={c} bold />
+          {doc.paidPaise > 0 && <TotalRow label={t('billing.detail.paid')} value={doc.paidPaise} c={c} />}
           {doc.status !== 'DRAFT' && doc.paidPaise < doc.totals.grandPaise && (
-            <TotalRow label="Outstanding" value={doc.totals.grandPaise - doc.paidPaise} c={c} bold tone={c.error} />
+            <TotalRow label={t('billing.detail.outstanding')} value={doc.totals.grandPaise - doc.paidPaise} c={c} bold tone={c.error} />
           )}
         </Surface>
 
         {doc.status === 'CANCELLED' && !!doc.cancelledReason && (
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Cancelled</Text>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.detail.cancelledTitle')}</Text>
             <Text style={[styles.cardBody, { color: c.textSecondary }]}>{doc.cancelledReason}</Text>
           </Surface>
         )}
@@ -494,7 +628,7 @@ export default function DocumentDetailScreen() {
         {!!doc.convertedToId && (
           <Surface style={[styles.card, { backgroundColor: c.surfaceVariant }]} elevation={0}>
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
-              Converted into a new document.
+              {t('billing.detail.convertedInto')}
             </Text>
             <Button
               mode="text"
@@ -502,7 +636,7 @@ export default function DocumentDetailScreen() {
               onPress={() => router.push(toHref(`/(app)/billing/${doc.convertedToId}`))}
               style={{ alignSelf: 'flex-start' }}
             >
-              View it
+              {t('billing.detail.viewIt')}
             </Button>
           </Surface>
         )}
@@ -510,8 +644,7 @@ export default function DocumentDetailScreen() {
         {missingPartyForPayment && (
           <Surface style={[styles.card, { backgroundColor: c.surfaceVariant }]} elevation={0}>
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
-              This bill has no linked customer, so a payment cannot be attributed to anyone yet. Raise
-              it against a searched party (not walk-in) to be able to record what they paid.
+              {t('billing.detail.noPartyForPayment')}
             </Text>
           </Surface>
         )}
@@ -519,7 +652,7 @@ export default function DocumentDetailScreen() {
         {isDraft && (
           <Surface style={[styles.card, { backgroundColor: c.surfaceVariant }]} elevation={0}>
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
-              This document has not been issued yet — it has no number and cannot be shared or printed.
+              {t('billing.detail.draftNotice')}
             </Text>
           </Surface>
         )}
@@ -542,7 +675,7 @@ export default function DocumentDetailScreen() {
               textColor={c.error}
               style={[styles.actionButton, { flex: 1 }]}
             >
-              Discard
+              {t('billing.detail.discard')}
             </Button>
             <Button
               mode="contained"
@@ -551,7 +684,7 @@ export default function DocumentDetailScreen() {
               onPress={handleIssue}
               style={[styles.actionButton, { flex: 1 }]}
             >
-              Issue now
+              {t('billing.detail.issueNow')}
             </Button>
           </View>
         ) : (
@@ -564,7 +697,7 @@ export default function DocumentDetailScreen() {
               onPress={handleShare}
               style={[styles.actionButton, { flex: 1 }]}
             >
-              Share
+              {t('billing.detail.share')}
             </Button>
             <Button
               mode="contained-tonal"
@@ -574,7 +707,7 @@ export default function DocumentDetailScreen() {
               onPress={handlePrint}
               style={[styles.actionButton, { flex: 1 }]}
             >
-              Print
+              {t('billing.detail.print')}
             </Button>
           </View>
         )}
@@ -588,7 +721,7 @@ export default function DocumentDetailScreen() {
                 onPress={() => { setPayAmount(paiseToInput(outstandingPaise)); setPayReference(''); setPayMode('CASH'); setPayOpen(true); }}
                 style={[styles.actionButton, { flex: 1 }]}
               >
-                Record payment
+                {t('billing.detail.recordPayment')}
               </Button>
             )}
             {canConvert && (
@@ -604,12 +737,17 @@ export default function DocumentDetailScreen() {
                     onPress={() => setConvertMenuOpen(true)}
                     style={[styles.actionButton, { flex: 1 }]}
                   >
-                    Convert
+                    {t('billing.detail.convert')}
                   </Button>
                 }
               >
-                {conversionTargets.map((t) => (
-                  <Menu.Item key={t} onPress={() => handleConvert(t)} title={`Turn into a ${DOCUMENT_TYPE_LABEL[t].toLowerCase()}`} />
+                {/* `target`, not `t` — the callback used to shadow the translator. */}
+                {conversionTargets.map((target) => (
+                  <Menu.Item
+                    key={target}
+                    onPress={() => handleConvert(target)}
+                    title={t('billing.detail.convertTo', { type: t(DOCUMENT_TYPE_LABEL_KEY[target]).toLowerCase() })}
+                  />
                 ))}
               </Menu>
             )}
@@ -623,52 +761,58 @@ export default function DocumentDetailScreen() {
             onPress={() => { setSendChannel('WHATSAPP'); setSendOpen(true); }}
             style={{ marginTop: 8, borderRadius: radii.field }}
           >
-            Send
+            {t('billing.detail.send')}
           </Button>
         )}
         {canCancel && (
+          /* A partner with `INVOICING_MANAGE` may void an ISSUED document — this
+             is the destructive action, not the dialog's "Not now". */
           <Button mode="text" textColor={c.error} disabled={!!busy} onPress={() => setCancelOpen(true)} style={{ marginTop: 4 }}>
-            Cancel document
+            {t('billing.detail.cancelDocument')}
           </Button>
         )}
       </View>
 
       <Portal>
         <Dialog visible={cancelOpen} onDismiss={() => setCancelOpen(false)}>
-          <Dialog.Title>Cancel {label}?</Dialog.Title>
+          <Dialog.Title>{t('billing.detail.cancelTitle', { label })}</Dialog.Title>
           <Dialog.Content>
-            <Text style={{ marginBottom: 10 }}>This cannot be undone. The number stays on record as cancelled.</Text>
+            <Text style={{ marginBottom: 10 }}>{t('billing.detail.cancelBody')}</Text>
             <TextInput
               mode="outlined"
-              label="Reason (optional)"
+              label={t('billing.detail.cancelReason')}
               value={cancelReason}
               onChangeText={setCancelReason}
               outlineStyle={{ borderRadius: radii.field }}
             />
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setCancelOpen(false)} disabled={busy === 'cancel'}>Not now</Button>
+            <Button onPress={() => setCancelOpen(false)} disabled={busy === 'cancel'}>{t('common.notNow')}</Button>
             {/* A7: `disabled` used to be implied by `loading` alone, which
                 react-native-paper does NOT do on its own — a fast double-tap
                 here could fire `handleCancel` twice before the first request
                 settled. */}
             <Button loading={busy === 'cancel'} disabled={busy === 'cancel'} onPress={handleCancel} textColor={c.error}>
-              Cancel document
+              {t('billing.detail.cancelDocument')}
             </Button>
           </Dialog.Actions>
         </Dialog>
 
         <Dialog visible={payOpen} onDismiss={() => setPayOpen(false)}>
           <Dialog.Title>
-            {behaviour.settlement === 'OUT' ? 'Record what went out' : 'Record what came in'}
+            {t(behaviour.settlement === 'OUT' ? 'billing.detail.payTitleOut' : 'billing.detail.payTitleIn')}
           </Dialog.Title>
           <Dialog.Content style={{ gap: 10 }}>
             <Text style={{ color: c.textSecondary, fontSize: 12 }}>
-              Against {label} — {formatPaise(outstandingPaise)} outstanding of {formatPaise(doc.totals.grandPaise)}.
+              {t('billing.detail.payAgainst', {
+                label,
+                outstanding: formatPaise(outstandingPaise),
+                total: formatPaise(doc.totals.grandPaise),
+              })}
             </Text>
             <TextInput
               mode="outlined"
-              label="Amount (₹)"
+              label={t('billing.detail.payAmount')}
               keyboardType="decimal-pad"
               value={payAmount}
               onChangeText={setPayAmount}
@@ -678,21 +822,21 @@ export default function DocumentDetailScreen() {
               value={payMode}
               onValueChange={(v) => setPayMode(v as PaymentMode)}
               density="small"
-              buttons={PAYMENT_MODES.map((m) => ({ value: m, label: PAYMENT_MODE_LABEL[m] }))}
+              buttons={PAYMENT_MODES.map((m) => ({ value: m, label: t(PAYMENT_MODE_LABEL_KEY[m]) }))}
             />
             <TextInput
               mode="outlined"
-              label="Reference (optional)"
-              placeholder="UTR, cheque no., UPI ref…"
+              label={t('billing.detail.payReference')}
+              placeholder={t('billing.detail.payReferencePlaceholder')}
               value={payReference}
               onChangeText={setPayReference}
               outlineStyle={{ borderRadius: radii.field }}
             />
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setPayOpen(false)}>Cancel</Button>
+            <Button onPress={() => setPayOpen(false)}>{t('common.cancel')}</Button>
             <Button loading={busy === 'pay'} disabled={busy === 'pay'} onPress={handleRecordPayment}>
-              Save
+              {t('common.save')}
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -700,26 +844,28 @@ export default function DocumentDetailScreen() {
         {/* C7 — send channel picker, mirroring web `SendDialog.tsx`. One
             channel per request, matching `sendDocumentSchema`'s enum. */}
         <Dialog visible={sendOpen} onDismiss={() => setSendOpen(false)}>
-          <Dialog.Title>Send {label}</Dialog.Title>
+          <Dialog.Title>{t('billing.detail.sendTitle', { label })}</Dialog.Title>
           <Dialog.Content>
             <Text style={{ color: c.textSecondary, fontSize: 13, marginBottom: 8 }}>
-              To {doc.partySnapshot.name}.
+              {t('billing.detail.sendTo', { party: doc.partySnapshot.name })}
             </Text>
             <RadioButton.Group value={sendChannel} onValueChange={(v) => setSendChannel(v as SendChannel)}>
               {SEND_CHANNELS.map((ch) => (
-                <RadioButton.Item key={ch.key} label={ch.label} value={ch.key} labelStyle={{ color: c.textPrimary }} />
+                <RadioButton.Item key={ch.key} label={t(ch.labelKey)} value={ch.key} labelStyle={{ color: c.textPrimary }} />
               ))}
             </RadioButton.Group>
             {!!doc.sentVia?.length && (
               <Text style={{ color: c.textDisabled, fontSize: 11, marginTop: 4 }}>
-                Already sent via {doc.sentVia.join(', ')}.
+                {/* `sentVia` holds the server's own channel names — data on the
+                    record, listed back verbatim rather than re-labelled here. */}
+                {t('billing.detail.alreadySentVia', { channels: doc.sentVia.join(', ') })}
               </Text>
             )}
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setSendOpen(false)} disabled={busy === 'send'}>Cancel</Button>
+            <Button onPress={() => setSendOpen(false)} disabled={busy === 'send'}>{t('common.cancel')}</Button>
             <Button loading={busy === 'send'} disabled={busy === 'send'} onPress={handleSend}>
-              Send
+              {t('billing.detail.send')}
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -765,10 +911,16 @@ const styles = StyleSheet.create({
   docDate: { fontSize: 12, marginTop: 4 },
   cardTitle: { fontSize: 14, fontWeight: '600' },
   cardBody: { fontSize: 13 },
-  lineRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  itemsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  columnCaption: { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
+  // `flex-start`, not `center`: a taxed line now carries three lines of text on
+  // the left, and an amount floating halfway down them reads as belonging to the
+  // caption rather than to the item it prices.
+  lineRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 6 },
   lineName: { fontSize: 13, fontWeight: '600' },
   lineMeta: { fontSize: 11, marginTop: 2 },
-  lineAmount: { fontSize: 13, fontWeight: '600' },
+  lineAmount: { fontSize: 13, fontWeight: '600', marginLeft: 12 },
+  cardNote: { fontSize: 11, lineHeight: 15, marginTop: 4 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
   centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   bottomBar: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth },

@@ -3,13 +3,14 @@ import { Alert, FlatList, StyleSheet, useColorScheme, View } from 'react-native'
 import { ActivityIndicator, Button, IconButton, Surface, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { formatPaise } from '../../../src/lib/money';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
 import { estimateDraftTotalPaise } from '../../../src/features/billing/offlineDrafts';
 import { DraftStatusChip } from '../../../src/features/billing/components/StatusChip';
-import { DOCUMENT_TYPE_LABEL, InvoiceDraft } from '../../../src/features/billing/types';
+import { DOCUMENT_TYPE_LABEL_KEY, InvoiceDraft } from '../../../src/features/billing/types';
 import { toHref } from '../../../src/features/billing/routeHref';
 
 /**
@@ -18,6 +19,7 @@ import { toHref } from '../../../src/features/billing/routeHref';
  * actually see happening rather than trust blindly.
  */
 export default function DraftsScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { drafts, loaded, online, syncing, retryDraft, discardDraft, syncPending } = useOfflineDrafts();
@@ -42,41 +44,46 @@ export default function DraftsScreen() {
   const handleDiscard = useCallback(
     (draft: InvoiceDraft) => {
       Alert.alert(
-        'Discard this bill?',
-        `${draft.partySnapshot.name} · ${formatPaise(estimateDraftTotalPaise(draft.lines))}. This only removes it from this device — nothing was ever sent.`,
+        t('billing.drafts.discardTitle'),
+        t('billing.drafts.discardBody', {
+          party: draft.partySnapshot.name,
+          amount: formatPaise(estimateDraftTotalPaise(draft.lines)),
+        }),
         [
-          { text: 'Keep it', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => void discardDraft(draft.id) },
+          { text: t('billing.drafts.discardKeep'), style: 'cancel' },
+          { text: t('billing.drafts.discardConfirm'), style: 'destructive', onPress: () => void discardDraft(draft.id) },
         ],
       );
     },
-    [discardDraft],
+    [discardDraft, t],
   );
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
       <View style={styles.topBar}>
-        <IconButton icon="arrow-left" onPress={() => router.back()} accessibilityLabel="Back" />
-        <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>Drafts</Text>
+        <IconButton icon="arrow-left" onPress={() => router.back()} accessibilityLabel={t('billing.drafts.back')} />
+        <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>{t('billing.drafts.title')}</Text>
         <IconButton
           icon="sync"
           onPress={() => void syncPending()}
           disabled={!online || syncing}
-          accessibilityLabel="Sync now"
+          accessibilityLabel={t('billing.drafts.syncNow')}
         />
       </View>
 
       <Text style={[styles.subtitle, { color: c.textSecondary }]}>
-        {online ? (syncing ? 'Syncing…' : 'Bills waiting to sync, or ones that need your attention.') : 'No connection — these will sync automatically once you are back online.'}
+        {online
+          ? (syncing ? t('billing.drafts.syncing') : t('billing.drafts.subtitle'))
+          : t('billing.drafts.offline')}
       </Text>
 
       {!loaded ? (
         <ActivityIndicator style={{ marginTop: 32 }} />
       ) : drafts.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>Nothing queued</Text>
+          <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('billing.drafts.emptyTitle')}</Text>
           <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
-            Every offline bill you create shows up here until it is synced.
+            {t('billing.drafts.emptyBody')}
           </Text>
         </View>
       ) : (
@@ -114,6 +121,7 @@ function DraftRow({
   onDiscard: () => void;
   onOpen?: () => void;
 }) {
+  const { t } = useTranslation();
   const canRetry = draft.status === 'PENDING' || draft.status === 'FAILED' || draft.status === 'BLOCKED_UPGRADE';
 
   return (
@@ -124,31 +132,37 @@ function DraftRow({
         </Text>
         <DraftStatusChip status={draft.status} c={c} />
       </View>
+      {/* `_one`/`_other`, not an English `-s`. Hindi cannot suffix a noun, and
+          CLDR puts 0 as well as 1 in `one` for it — so the count is interpolated
+          into both forms rather than only the plural one. */}
       <Text style={[styles.rowMeta, { color: c.textSecondary }]}>
-        {DOCUMENT_TYPE_LABEL[draft.type]} · {draft.lines.length} item{draft.lines.length === 1 ? '' : 's'} ·{' '}
-        {formatPaise(estimateDraftTotalPaise(draft.lines))}
+        {t('billing.drafts.meta', {
+          count: draft.lines.length,
+          type: t(DOCUMENT_TYPE_LABEL_KEY[draft.type]),
+          amount: formatPaise(estimateDraftTotalPaise(draft.lines)),
+        })}
       </Text>
       {!!draft.lastError && draft.status !== 'SYNCED' && (
         <Text style={[styles.rowError, { color: c.error }]}>{draft.lastError}</Text>
       )}
       {draft.status === 'SYNCED' && !!draft.syncedNumber && (
-        <Text style={[styles.rowError, { color: c.success }]}>Issued as {draft.syncedNumber}</Text>
+        <Text style={[styles.rowError, { color: c.success }]}>{t('billing.drafts.issuedAs', { number: draft.syncedNumber })}</Text>
       )}
 
       <View style={styles.rowActions}>
         {onOpen && (
           <Button mode="text" compact onPress={onOpen}>
-            View invoice
+            {t('billing.drafts.viewInvoice')}
           </Button>
         )}
         {canRetry && (
           <Button mode="text" compact loading={busy} disabled={busy} onPress={onRetry}>
-            Retry
+            {t('billing.drafts.retry')}
           </Button>
         )}
         {draft.status !== 'SYNCED' && draft.status !== 'SYNCING' && (
           <Button mode="text" compact textColor={c.error} disabled={busy} onPress={onDiscard}>
-            Discard
+            {t('billing.drafts.discard')}
           </Button>
         )}
       </View>

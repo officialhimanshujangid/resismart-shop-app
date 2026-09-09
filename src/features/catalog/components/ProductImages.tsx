@@ -3,6 +3,7 @@ import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-nat
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 
 import { ColorScheme, radii } from '../../../constants/colors';
 import { apiErrorMessage } from '../../../api/axios';
@@ -53,6 +54,7 @@ interface ProductImagesProps {
 }
 
 export function ProductImages({ value, onChange, c, canManage }: ProductImagesProps) {
+  const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const full = value.length >= MAX_PRODUCT_IMAGES;
 
@@ -101,7 +103,7 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
             });
             uploaded.push(url);
           } catch (e: unknown) {
-            failures.push(apiErrorMessage(e, 'That photo did not upload.'));
+            failures.push(apiErrorMessage(e, t('catalog.images.uploadFailed')));
           }
         }
 
@@ -109,17 +111,17 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
         if (uploaded.length > 0) onChange([...value, ...uploaded]);
         if (failures.length > 0) {
           Alert.alert(
-            uploaded.length > 0 ? 'Some photos did not upload' : 'That upload did not go through',
+            t(uploaded.length > 0 ? 'catalog.images.someFailedTitle' : 'catalog.images.allFailedTitle'),
             failures[0],
           );
         }
       } catch (e: unknown) {
-        Alert.alert('Could not open your photos', apiErrorMessage(e));
+        Alert.alert(t('catalog.images.pickerFailed'), apiErrorMessage(e));
       } finally {
         setUploading(false);
       }
     },
-    [full, onChange, value],
+    [full, onChange, value, t],
   );
 
   /**
@@ -139,7 +141,7 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
   return (
     <View style={styles.root}>
       {value.length === 0 && !canManage ? (
-        <Text style={{ color: c.textDisabled, fontSize: 12.5 }}>No photos.</Text>
+        <Text style={{ color: c.textDisabled, fontSize: 12.5 }}>{t('catalog.images.noPhotos')}</Text>
       ) : null}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
@@ -153,14 +155,14 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
                 re-adding is the whole of it today). */}
             {i === 0 && (
               <View style={[styles.mainTag, { backgroundColor: c.primary }]}>
-                <Text style={[styles.mainTagText, { color: c.textInverse }]}>Main</Text>
+                <Text style={[styles.mainTagText, { color: c.textInverse }]}>{t('catalog.images.main')}</Text>
               </View>
             )}
             {canManage && (
               <Pressable
                 onPress={() => remove(url)}
                 style={[styles.removeBtn, { backgroundColor: c.surface }]}
-                accessibilityLabel="Remove this photo"
+                accessibilityLabel={t('catalog.images.removePhoto')}
               >
                 <MaterialCommunityIcons name="close" size={14} color={c.error} />
               </Pressable>
@@ -174,14 +176,14 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
               onPress={() => void pick('camera')}
               disabled={uploading}
               style={[styles.addBox, { borderColor: c.border }]}
-              accessibilityLabel="Take a photo"
+              accessibilityLabel={t('catalog.images.takePhoto')}
             >
               {uploading ? (
                 <ActivityIndicator color={c.primary} />
               ) : (
                 <>
                   <MaterialCommunityIcons name="camera-outline" size={22} color={c.primary} />
-                  <Text style={[styles.addLabel, { color: c.primary }]}>Camera</Text>
+                  <Text style={[styles.addLabel, { color: c.primary }]}>{t('catalog.images.camera')}</Text>
                 </>
               )}
             </Pressable>
@@ -189,10 +191,10 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
               onPress={() => void pick('library')}
               disabled={uploading}
               style={[styles.addBox, { borderColor: c.border }]}
-              accessibilityLabel="Choose photos"
+              accessibilityLabel={t('catalog.images.choosePhotos')}
             >
               <MaterialCommunityIcons name="image-multiple-outline" size={22} color={c.primary} />
-              <Text style={[styles.addLabel, { color: c.primary }]}>Gallery</Text>
+              <Text style={[styles.addLabel, { color: c.primary }]}>{t('catalog.images.gallery')}</Text>
             </Pressable>
           </>
         )}
@@ -201,8 +203,8 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
       {canManage && (
         <Text style={{ color: c.textDisabled, fontSize: 11 }}>
           {full
-            ? `${MAX_PRODUCT_IMAGES} photos is the most a product can carry.`
-            : 'The first photo is the one residents see in your catalogue.'}
+            ? t('catalog.images.atMax', { max: MAX_PRODUCT_IMAGES })
+            : t('catalog.images.firstIsMain')}
         </Text>
       )}
     </View>

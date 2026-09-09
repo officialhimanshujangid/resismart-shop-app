@@ -19,7 +19,6 @@ import { PrintJob, ThermalPrinter } from './ThermalPrinter';
  */
 export const pdfPrinter: ThermalPrinter = {
   kind: 'SYSTEM_PRINT',
-  label: 'Print',
 
   // Always true: `expo-print` has no availability gate to check up front —
   // unlike a Bluetooth adapter, there is no "device not paired" state, only

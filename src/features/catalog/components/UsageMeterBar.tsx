@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
+
 import { CapacityView } from '../../../hooks';
 import { ColorScheme, radii } from '../../../constants/colors';
 
@@ -10,10 +12,11 @@ import { ColorScheme, radii } from '../../../constants/colors';
  * this component only draws what it is handed.
  */
 export function UsageMeterBar({ cap, c }: { cap: CapacityView; c: ColorScheme }) {
+  const { t } = useTranslation();
   if (cap.comingSoon) {
     return (
       <View style={[styles.box, { backgroundColor: c.surfaceVariant }]}>
-        <Text style={[styles.text, { color: c.textSecondary }]}>Product limits — coming soon</Text>
+        <Text style={[styles.text, { color: c.textSecondary }]}>{t('catalog.meter.comingSoon')}</Text>
       </View>
     );
   }
@@ -22,7 +25,7 @@ export function UsageMeterBar({ cap, c }: { cap: CapacityView; c: ColorScheme })
     return (
       <View style={[styles.box, { backgroundColor: c.error + '14' }]}>
         <Text style={[styles.text, { color: c.error }]}>
-          Your plan does not include a catalog. Upgrade from More → Settings to add products.
+          {t('catalog.meter.notIncluded')}
         </Text>
       </View>
     );
@@ -31,7 +34,7 @@ export function UsageMeterBar({ cap, c }: { cap: CapacityView; c: ColorScheme })
   if (cap.limit === null) {
     return (
       <View style={[styles.box, { backgroundColor: c.surfaceVariant }]}>
-        <Text style={[styles.text, { color: c.textSecondary }]}>{cap.used} products · unlimited on your plan</Text>
+        <Text style={[styles.text, { color: c.textSecondary }]}>{t('catalog.meter.unlimited', { used: cap.used })}</Text>
       </View>
     );
   }
@@ -42,10 +45,13 @@ export function UsageMeterBar({ cap, c }: { cap: CapacityView; c: ColorScheme })
   return (
     <View style={[styles.box, { backgroundColor: c.surfaceVariant }]}>
       <View style={styles.headerRow}>
+        {/* `noun` is the SERVER's word and arrives in English — the same trade
+            `features/billing/components/UsageMeter.tsx` documents. The fallback
+            when the server sends none IS ours, so that one is translated. */}
         <Text style={[styles.text, { color: c.textPrimary }]}>
-          {cap.used} of {cap.limit} {cap.noun || 'products'}
+          {t('catalog.meter.ofLimit', { used: cap.used, limit: cap.limit, noun: cap.noun || t('catalog.meter.productsNoun') })}
         </Text>
-        {cap.atLimit && <Text style={[styles.atLimit, { color: c.error }]}>Limit reached</Text>}
+        {cap.atLimit && <Text style={[styles.atLimit, { color: c.error }]}>{t('catalog.meter.limitReached')}</Text>}
       </View>
       <View style={[styles.track, { backgroundColor: c.divider }]}>
         <View style={[styles.fill, { width: `${Math.round(fraction * 100)}%`, backgroundColor: tone }]} />

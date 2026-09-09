@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
@@ -6,7 +6,10 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
+import { initI18n, deviceLanguage } from '../src/i18n';
+import { loadStoredLanguage } from '../src/i18n/useLanguage';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { AppLightTheme, AppDarkTheme } from '../src/constants/theme';
 import { LoadingOverlay } from '../src/components/LoadingOverlay';
@@ -48,6 +51,7 @@ import { useOnboardingGate } from '../src/hooks';
  * being asked again".
  */
 function RootNavigator() {
+  const { t } = useTranslation();
   const { isAuthenticated, isLoading } = useAuth();
   /**
    * A partner whose registration is unfinished is held in `(auth)`, where the
@@ -68,7 +72,7 @@ function RootNavigator() {
    */
   const booted = useRef(false);
   if (!booted.current && (isLoading || resolving)) {
-    return <LoadingOverlay visible message="Starting up..." />;
+    return <LoadingOverlay visible message={t('common.startingUp')} />;
   }
   booted.current = true;
 
@@ -97,7 +101,7 @@ function RootNavigator() {
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
       </Stack>
-      <LoadingOverlay visible={resolving} message="Starting up..." />
+      <LoadingOverlay visible={resolving} message={t('common.startingUp')} />
     </>
   );
 }
@@ -106,6 +110,28 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? AppDarkTheme : AppLightTheme;
+
+  /**
+   * Seed the language from the partner's stored choice (else the phone's) before
+   * ANY screen renders a string.
+   *
+   * Held rather than defaulted-then-corrected. i18next re-renders on
+   * `languageChanged`, so initialising in English and switching a tick later
+   * would "work" — and would flash English at a Hindi reader on every cold
+   * start, on the login screen, which is the one screen a partner who does not
+   * read English most needs in their own language. The cost of holding is a
+   * single AsyncStorage read.
+   */
+  const [languageReady, setLanguageReady] = useState(false);
+  useEffect(() => {
+    (async () => {
+      const stored = await loadStoredLanguage();
+      initI18n(stored ?? deviceLanguage());
+      setLanguageReady(true);
+    })();
+  }, []);
+
+  if (!languageReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

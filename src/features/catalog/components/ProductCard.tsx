@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet, Pressable, Image, useColorScheme } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 
 import { Product } from '../types';
 import { themeColors, radii } from '../../../constants/colors';
@@ -16,6 +17,7 @@ function isLowStock(p: Product): boolean {
 }
 
 export function ProductCard({ product, onPress }: { product: Product; onPress: () => void }) {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const low = isLowStock(product);
   const outOfStock = product.trackStock && product.stockQty <= 0;
@@ -36,31 +38,38 @@ export function ProductCard({ product, onPress }: { product: Product; onPress: (
       <View style={styles.infoCol}>
         <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{product.name}</Text>
         <Text style={[styles.subline, { color: c.textSecondary }]} numberOfLines={1}>
-          {[product.sku, product.categoryId?.name].filter(Boolean).join(' · ') || 'Uncategorised'}
+          {/* `sku` and the category name are the partner's own text. */}
+          {[product.sku, product.categoryId?.name].filter(Boolean).join(' · ') || t('catalog.card.uncategorised')}
         </Text>
         <View style={styles.priceRow}>
           <Text style={[styles.price, { color: c.textPrimary }]}>{formatPaise(product.sellPaise)}</Text>
           {product.mrpPaise > 0 && product.mrpPaise !== product.sellPaise && (
             <Text style={[styles.mrp, { color: c.textDisabled }]}>{formatPaise(product.mrpPaise)}</Text>
           )}
-          <Text style={[styles.unit, { color: c.textSecondary }]}>/{product.unit.toLowerCase()}</Text>
+          {/* The unit CODE is not translated — it is the wire value and is
+              printed on every invoice line. See `catalog/create.tsx`'s note. */}
+          <Text style={[styles.unit, { color: c.textSecondary }]}>{t('catalog.card.perUnit', { unit: product.unit.toLowerCase() })}</Text>
         </View>
       </View>
 
       <View style={styles.rightCol}>
         {!product.isActive && (
           <View style={[styles.badge, { backgroundColor: c.textDisabled + '22' }]}>
-            <Text style={[styles.badgeText, { color: c.textSecondary }]}>Off sale</Text>
+            <Text style={[styles.badgeText, { color: c.textSecondary }]}>{t('catalog.card.offSale')}</Text>
           </View>
         )}
         {product.trackStock ? (
           <View style={[styles.badge, { backgroundColor: outOfStock ? c.error + '22' : low ? c.warning + '22' : c.success + '18' }]}>
             <Text style={[styles.badgeText, { color: outOfStock ? c.error : low ? c.warning : c.success }]}>
-              {outOfStock ? 'Out of stock' : low ? `Low · ${product.stockQty}` : `${product.stockQty} in stock`}
+              {outOfStock
+                ? t('catalog.card.outOfStock')
+                : low
+                  ? t('catalog.card.low', { qty: product.stockQty })
+                  : t('catalog.card.inStock', { qty: product.stockQty })}
             </Text>
           </View>
         ) : (
-          <Text style={[styles.notTracked, { color: c.textDisabled }]}>Not tracked</Text>
+          <Text style={[styles.notTracked, { color: c.textDisabled }]}>{t('catalog.card.notTracked')}</Text>
         )}
       </View>
     </Pressable>

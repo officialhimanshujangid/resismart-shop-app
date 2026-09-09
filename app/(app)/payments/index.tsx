@@ -4,15 +4,17 @@ import { ActivityIndicator, Button, IconButton, Snackbar, Text } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
+import { formatI18nDate } from '../../../src/i18n';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { paymentsApi } from '../../../src/features/payments/payments.api';
 import {
-  PAYMENT_MODE_LABEL, PaymentDirection, PaymentRecord, partyNameOf,
+  PAYMENT_MODE_LABEL_KEY, PaymentDirection, PaymentRecord, partyNameOf,
 } from '../../../src/features/payments/types';
 import { ChipRow, EmptyBlock, ErrorBlock, Loading } from '../../../src/features/more/ui';
 import { toHref } from '../../../src/features/billing/routeHref';
@@ -28,6 +30,7 @@ import { Hero, GlassStat } from '../../../src/components/Hero';
 const PAGE_LIMIT = 25;
 
 export default function PaymentsScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
@@ -79,14 +82,14 @@ export default function PaymentsScreen() {
         await paymentsApi.cancel(payment._id);
         setRows((prev) => prev.map((p) => (p._id === payment._id ? { ...p, status: 'CANCELLED' } : p)));
         void queryClient.invalidateQueries({ queryKey: qk.payments.all() });
-        setToast('Payment cancelled.');
+        setToast(t('payments.list.cancelledToast'));
       } catch (e: unknown) {
-        setToast(apiErrorMessage(e, 'Could not cancel this payment.'));
+        setToast(apiErrorMessage(e, t('payments.list.cancelFailed')));
       } finally {
         setCancellingId(null);
       }
     },
-    [queryClient],
+    [queryClient, t],
   );
 
   if (!can('INVOICING_VIEW', 'READ')) {
@@ -99,15 +102,15 @@ export default function PaymentsScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <Hero
         isDark={isDark}
-        eyebrow="Payments"
-        title="Money in & out"
-        subtitle="Every receipt and payment, allocated to what it settles."
+        eyebrow={t('payments.list.eyebrow')}
+        title={t('payments.list.title')}
+        subtitle={t('payments.list.subtitle')}
         style={styles.hero}
       >
         {query.data ? (
           <GlassStat
             icon={direction === 'IN' ? 'arrow-down-circle-outline' : 'arrow-up-circle-outline'}
-            label={direction === 'IN' ? 'Payments in' : 'Payments out'}
+            label={direction === 'IN' ? t('payments.list.in') : t('payments.list.out')}
             value={String(query.data.total)}
           />
         ) : null}
@@ -118,9 +121,10 @@ export default function PaymentsScreen() {
           c={c}
           value={direction}
           onChange={setDirection}
+          // `IN`/`OUT` are the wire `direction` — only the labels are translated.
           options={[
-            { key: 'IN', label: 'Payments in' },
-            { key: 'OUT', label: 'Payments out' },
+            { key: 'IN', label: t('payments.list.in') },
+            { key: 'OUT', label: t('payments.list.out') },
           ]}
         />
         {canManage && (
@@ -129,23 +133,23 @@ export default function PaymentsScreen() {
             mode="contained"
             size={20}
             onPress={() => router.push(toHref(`/(app)/payments/new?direction=${direction}`))}
-            accessibilityLabel="Record a payment"
+            accessibilityLabel={t('payments.list.recordA11y')}
           />
         )}
       </View>
 
       {query.isPending ? (
-        <Loading c={c} label="Loading your payments…" />
+        <Loading c={c} label={t('payments.list.loading')} />
       ) : query.isError ? (
-        <ErrorBlock c={c} message={apiErrorMessage(query.error, 'We could not load your payments.')} onRetry={() => void query.refetch()} />
+        <ErrorBlock c={c} message={apiErrorMessage(query.error, t('payments.list.loadFailed'))} onRetry={() => void query.refetch()} />
       ) : rows.length === 0 ? (
         <EmptyBlock
           c={c}
           icon="wallet-outline"
-          title={direction === 'IN' ? 'No payments received yet' : 'No payments made yet'}
+          title={direction === 'IN' ? t('payments.list.emptyInTitle') : t('payments.list.emptyOutTitle')}
           body={direction === 'IN'
-            ? 'A payment against an invoice shows up here the moment it is recorded.'
-            : 'A payment against a purchase invoice shows up here the moment it is recorded.'}
+            ? t('payments.list.emptyInBody')
+            : t('payments.list.emptyOutBody')}
         />
       ) : (
         <FlatList
@@ -186,6 +190,7 @@ function PaymentRow({
   cancelling: boolean;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const cancelled = item.status === 'CANCELLED';
   return (
     <View style={[styles.row, { backgroundColor: c.surface }]}>
@@ -193,19 +198,32 @@ function PaymentRow({
         <IconButtonGlyph direction={direction} color={direction === 'IN' ? c.success : c.error} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.partyName, { color: c.textPrimary }]} numberOfLines={1}>{partyNameOf(item)}</Text>
+        {/* The party's own name, straight off the populated row. `partyNameOf`
+            returns '' on the unpopulated shape — see its header for why the
+            placeholder is chosen here rather than in that module. */}
+        <Text style={[styles.partyName, { color: c.textPrimary }]} numberOfLines={1}>
+          {partyNameOf(item) || t('payments.list.unknownParty')}
+        </Text>
         <Text style={[styles.meta, { color: c.textSecondary }]}>
-          {new Date(item.receivedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-          {' · '}{PAYMENT_MODE_LABEL[item.mode]}
+          {/* `formatI18nDate`, not `toLocaleDateString('en-IN')`: the month is a
+              WORD, the locale was pinned to English whatever the partner chose,
+              and Hermes on Android cannot be relied on for `Intl` month names
+              at all — see `src/i18n/index.ts#formatI18nDate`. */}
+          {t('payments.list.rowMeta', {
+            date: formatI18nDate(item.receivedAt, t),
+            mode: t(PAYMENT_MODE_LABEL_KEY[item.mode]),
+          })}
         </Text>
         {item.onAccountPaise > 0 && !cancelled && (
-          <Text style={[styles.onAccount, { color: c.primary }]}>{formatPaise(item.onAccountPaise)} on account</Text>
+          <Text style={[styles.onAccount, { color: c.primary }]}>
+            {t('payments.list.onAccount', { amount: formatPaise(item.onAccountPaise) })}
+          </Text>
         )}
       </View>
       <View style={styles.rowRight}>
         <Text style={[styles.amount, { color: c.textPrimary }]}>{formatPaise(item.amountPaise)}</Text>
         {cancelled ? (
-          <Text style={[styles.cancelledLabel, { color: c.textDisabled }]}>Cancelled</Text>
+          <Text style={[styles.cancelledLabel, { color: c.textDisabled }]}>{t('payments.list.cancelledLabel')}</Text>
         ) : canManage ? (
           <Button
             mode="text"
@@ -217,7 +235,7 @@ function PaymentRow({
             style={styles.cancelBtn}
             labelStyle={styles.cancelLabel}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
         ) : null}
       </View>

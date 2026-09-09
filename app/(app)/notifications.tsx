@@ -3,8 +3,10 @@ import { Alert, FlatList, Pressable, StyleSheet, useColorScheme, View } from 're
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, ColorScheme } from '../../src/constants/colors';
+import { formatTime, Translate } from '../../src/features/bookings/format';
 import { usePartnerEntitlements } from '../../src/hooks';
 import { apiErrorMessage } from '../../src/api/axios';
 import { NotificationRow, notificationDestination } from '../../src/api/notification.api';
@@ -56,21 +58,37 @@ function iconForKind(kind: string): string {
   return 'bell-outline';
 }
 
-/** "just now" / "14:05" / "6 Sep". Long enough ago and the time stops mattering. */
-function whenLabel(iso: string): string {
+/**
+ * "just now" / "2:05 PM" / "6 Sep". Long enough ago and the time stops
+ * mattering.
+ *
+ * `t` is handed in — a plain function, not a component, and its one caller
+ * already holds a translator. Neither `toLocaleTimeString` nor
+ * `toLocaleDateString` appears here any more: this app runs on Hermes, Android's
+ * ICU coverage cannot be relied on, and the failure is silent — a Hindi screen
+ * quietly rendering an English month with nothing to reveal it. The full account
+ * is in `src/i18n/index.ts#formatI18nDate`. The clock face comes from
+ * `bookings/format.ts#formatTime`, which is the same one every booking card
+ * reads, and the month from `common.months`.
+ */
+function whenLabel(iso: string, t: Translate): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return '';
   const minutes = Math.floor((Date.now() - at.getTime()) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t('notifications.when.justNow');
+  if (minutes < 60) return t('notifications.when.minutesAgo', { count: minutes });
   const sameDay = at.toDateString() === new Date().toDateString();
-  if (sameDay) return at.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  return at.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  if (sameDay) return formatTime(iso, t);
+  return t('notifications.when.dayMonth', {
+    day: at.getDate(),
+    month: t(`common.months.${at.getMonth() + 1}`),
+  });
 }
 
 function NotificationItem({
   row, c, onPress,
 }: { row: NotificationRow; c: ColorScheme; onPress: () => void }) {
+  const { t } = useTranslation();
   const unread = !row.readAt;
   return (
     <Pressable onPress={onPress}>
@@ -83,6 +101,10 @@ function NotificationItem({
           />
         </View>
         <View style={{ flex: 1 }}>
+          {/* `row.title` and `row.body` are the server's own words — the
+              notification as it was composed and sent — and are shown exactly as
+              they arrive. See `UsageMeter.tsx` for the trade this app makes on
+              server-supplied text. */}
           <Text
             style={[styles.title, { color: c.textPrimary, fontWeight: unread ? '700' : '500' }]}
             numberOfLines={2}
@@ -92,7 +114,7 @@ function NotificationItem({
           {row.body ? (
             <Text style={[styles.body, { color: c.textSecondary }]} numberOfLines={3}>{row.body}</Text>
           ) : null}
-          <Text style={[styles.when, { color: c.textDisabled }]}>{whenLabel(row.createdAt)}</Text>
+          <Text style={[styles.when, { color: c.textDisabled }]}>{whenLabel(row.createdAt, t)}</Text>
         </View>
         {unread && <View style={[styles.dot, { backgroundColor: c.primary }]} />}
       </View>
@@ -101,6 +123,7 @@ function NotificationItem({
 }
 
 export default function NotificationsScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { hasModule } = usePartnerEntitlements();
@@ -148,9 +171,9 @@ export default function NotificationsScreen() {
           return [...prev, ...page.items.filter((r) => !seen.has(r._id))];
         });
       })
-      .catch((e: unknown) => Alert.alert('Could not load older alerts', apiErrorMessage(e)))
+      .catch((e: unknown) => Alert.alert(t('notifications.screen.olderFailed'), apiErrorMessage(e)))
       .finally(() => setLoadingOlder(false));
-  }, [loadingOlder, exhausted, rows]);
+  }, [loadingOlder, exhausted, rows, t]);
 
   /**
    * Open what the notification is about.
@@ -168,28 +191,26 @@ export default function NotificationsScreen() {
       const dest = notificationDestination(row);
       if (!dest) return;
       if (dest.requires && !hasModule(dest.requires)) {
-        Alert.alert(
-          row.title,
-          'This is about something your plan or your module settings no longer include, so there is nothing left to open.',
-        );
+        // The heading is the notification's own title, as the server wrote it.
+        Alert.alert(row.title, t('notifications.screen.gone'));
         return;
       }
       router.push(dest.href);
     },
-    [hasModule, markRead],
+    [hasModule, markRead, t],
   );
 
   const loadError = query.isError
-    ? apiErrorMessage(query.error, 'Could not load your alerts.')
+    ? apiErrorMessage(query.error, t('notifications.screen.loadFailed'))
     : query.isPending && query.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('common.apiError.noConnection')
       : null;
 
   return (
     <Screen
       c={c}
-      title="Alerts"
-      subtitle={unread > 0 ? `${unread} unread` : 'Everything you have been told'}
+      title={t('notifications.screen.title')}
+      subtitle={unread > 0 ? t('notifications.screen.unread', { count: unread }) : t('notifications.screen.subtitle')}
       scroll={false}
       right={
         unread > 0 ? (
@@ -197,10 +218,10 @@ export default function NotificationsScreen() {
             onPress={() => markRead.mutate([])}
             disabled={markRead.isPending}
             style={styles.markAll}
-            accessibilityLabel="Mark everything read"
+            accessibilityLabel={t('notifications.screen.markAllA11y')}
           >
             <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>
-              {markRead.isPending ? '…' : 'Mark all read'}
+              {markRead.isPending ? '…' : t('notifications.screen.markAll')}
             </Text>
           </Pressable>
         ) : (
@@ -211,7 +232,7 @@ export default function NotificationsScreen() {
       {loadError ? (
         <ErrorBlock c={c} message={loadError} onRetry={() => void query.refetch()} />
       ) : query.isPending ? (
-        <Loading c={c} label="Loading your alerts…" />
+        <Loading c={c} label={t('notifications.screen.loading')} />
       ) : (
         <FlatList
           data={rows}
@@ -232,8 +253,8 @@ export default function NotificationsScreen() {
             <EmptyBlock
               c={c}
               icon="bell-outline"
-              title="Nothing yet"
-              body="New bookings, orders and plan notices land here — including the ones that arrive while your phone is off."
+              title={t('notifications.screen.emptyTitle')}
+              body={t('notifications.screen.emptyBody')}
             />
           }
         />

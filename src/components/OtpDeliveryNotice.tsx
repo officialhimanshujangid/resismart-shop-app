@@ -2,6 +2,7 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 
 import { AppButton } from './AppButton';
 import { ColorScheme, radii } from '../constants/colors';
@@ -52,10 +53,15 @@ import { OtpAltVia, OtpDeliveredVia, OtpVia } from '../api/auth.api';
  * is possible.
  */
 
-/** Only `whatsapp` and `sms` are ever offered; an inbox is not a rung. */
-const ALT_LABEL: Record<OtpAltVia, string> = {
-  whatsapp: 'Send it on WhatsApp instead',
-  sms: 'Send it by SMS instead',
+/**
+ * Only `whatsapp` and `sms` are ever offered; an inbox is not a rung.
+ *
+ * Catalogue KEYS, not sentences: the rung name is the server's enum and is what
+ * `onRetry` posts back, so only the wording moves between languages.
+ */
+const ALT_LABEL_KEY: Record<OtpAltVia, string> = {
+  whatsapp: 'auth.otpNotice.altWhatsapp',
+  sms: 'auth.otpNotice.altSms',
 };
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
@@ -74,12 +80,12 @@ const ALT_ICON: Record<OtpAltVia, IconName> = {
  * would reintroduce exactly the kind of client-side fiction this screen exists
  * to remove — so it stays honest and vague for that one case.
  */
-function sendingLine(via: OtpVia, whatsappAvailable: boolean | null): string {
-  if (via === 'whatsapp') return 'Sending a code on WhatsApp…';
-  if (via === 'sms') return 'Sending a code by SMS…';
-  if (whatsappAvailable === true) return 'Sending a code on WhatsApp…';
-  if (whatsappAvailable === false) return 'Sending a code by SMS…';
-  return 'Sending your code…';
+function sendingLineKey(via: OtpVia, whatsappAvailable: boolean | null): string {
+  if (via === 'whatsapp') return 'auth.otpNotice.sendingWhatsapp';
+  if (via === 'sms') return 'auth.otpNotice.sendingSms';
+  if (whatsappAvailable === true) return 'auth.otpNotice.sendingWhatsapp';
+  if (whatsappAvailable === false) return 'auth.otpNotice.sendingSms';
+  return 'auth.otpNotice.sendingUnknown';
 }
 
 /**
@@ -112,11 +118,13 @@ function AltRoute({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
+  const label = t(ALT_LABEL_KEY[via]);
   const tint = disabled ? c.textDisabled : c.primary;
   return (
     <TouchableOpacity
       accessibilityRole="button"
-      accessibilityLabel={ALT_LABEL[via]}
+      accessibilityLabel={label}
       accessibilityState={{ disabled, busy }}
       activeOpacity={0.7}
       disabled={disabled}
@@ -128,7 +136,7 @@ function AltRoute({
       ) : (
         <MaterialCommunityIcons name={ALT_ICON[via]} size={18} color={tint} />
       )}
-      <Text style={[styles.altLabel, { color: tint }]}>{ALT_LABEL[via]}</Text>
+      <Text style={[styles.altLabel, { color: tint }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -166,6 +174,7 @@ export function OtpDeliveryNotice({
   onRetry,
   onUseEmail,
 }: OtpDeliveryNoticeProps) {
+  const { t } = useTranslation();
   // The note is worth printing only where WhatsApp was the rung we would have
   // preferred — on an emailed code nobody was expecting WhatsApp in the first
   // place, and saying so there is noise.
@@ -176,7 +185,7 @@ export function OtpDeliveryNotice({
     <View style={styles.wrap}>
       {sending ? (
         <Text style={[styles.line, { color: c.textSecondary }]}>
-          {sendingLine(sending, whatsappAvailable)}
+          {t(sendingLineKey(sending, whatsappAvailable))}
         </Text>
       ) : null}
 
@@ -192,7 +201,7 @@ export function OtpDeliveryNotice({
         <View style={[styles.alert, { backgroundColor: c.surface, borderColor: c.error }]}>
           <Text style={[styles.alertTitle, { color: c.textPrimary }]}>{failure}</Text>
           <Text style={[styles.line, { color: c.textSecondary }]}>
-            We could not reach that number right now — please try another method.
+            {t('auth.otpNotice.failureHint')}
           </Text>
         </View>
       ) : null}
@@ -209,8 +218,8 @@ export function OtpDeliveryNotice({
               total failure: WhatsApp muted platform-wide plus a 502 leaves
               `['sms']`, which is exactly the case this sentence explains. */}
           {failed
-            ? 'WhatsApp is unavailable right now, so SMS is the only route left to try.'
-            : 'WhatsApp is unavailable right now, so we are using SMS.'}
+            ? t('auth.otpNotice.whatsappDownOnlySms')
+            : t('auth.otpNotice.whatsappDownUsingSms')}
         </Text>
       ) : null}
 
@@ -229,7 +238,7 @@ export function OtpDeliveryNotice({
 
       {onUseEmail ? (
         <AppButton
-          label="Use email instead"
+          label={t('auth.otpNotice.useEmail')}
           icon="email-outline"
           mode="text"
           disabled={!!sending}

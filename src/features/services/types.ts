@@ -16,22 +16,31 @@ export type ServiceMode = PartnerServiceMode;
 export { SERVICE_PRICE_TYPES };
 export type { ServicePriceType };
 
-/** How each pricing style reads to the partner choosing it. */
-export const PRICE_TYPE_LABEL: Record<ServicePriceType, string> = {
-  FIXED: 'A fixed price',
-  FROM: 'Starts from',
-  QUOTE: 'Quoted after a look',
+/**
+ * HOW EACH PRICING STYLE AND MODE READS ON SCREEN — a catalogue key per value,
+ * not the words.
+ *
+ * The KEYS are `SERVICE_PRICE_TYPES` and `SERVICE_MODES`, which come from
+ * `api-contract.generated.ts` and are the WIRE values: `priceType` and `modes[]`
+ * on the service, validated server-side against the same generated set. Those
+ * literals never move. Only the labels and hints are translated — the same
+ * split `features/billing/types.ts` is the worked example of.
+ */
+export const PRICE_TYPE_LABEL_KEY: Record<ServicePriceType, string> = {
+  FIXED: 'services.priceType.FIXED',
+  FROM: 'services.priceType.FROM',
+  QUOTE: 'services.priceType.QUOTE',
 };
 
-export const PRICE_TYPE_HINT: Record<ServicePriceType, string> = {
-  FIXED: 'The resident sees this exact amount and pays it.',
-  FROM: 'The resident sees "from ₹…", and the final bill can be higher.',
-  QUOTE: 'No price is shown. You quote once you have seen the job.',
+export const PRICE_TYPE_HINT_KEY: Record<ServicePriceType, string> = {
+  FIXED: 'services.priceType.FIXEDHint',
+  FROM: 'services.priceType.FROMHint',
+  QUOTE: 'services.priceType.QUOTEHint',
 };
 
-export const MODE_LABEL: Record<ServiceMode, string> = {
-  AT_PARTNER: 'At your place',
-  AT_CUSTOMER: "At the customer's home",
+export const MODE_LABEL_KEY: Record<ServiceMode, string> = {
+  AT_PARTNER: 'services.mode.AT_PARTNER',
+  AT_CUSTOMER: 'services.mode.AT_CUSTOMER',
 };
 
 /** = `MIN_SERVICE_DURATION_MIN` / `MAX_SERVICE_DURATION_MIN` in `partner-service.model.ts`. */

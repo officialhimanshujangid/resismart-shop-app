@@ -1,19 +1,25 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Modal, useColorScheme, Pressable } from 'react-native';
 import { Text, ActivityIndicator, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 
 import { PartnerOrder } from '../types';
 import { KnownOrderVerb, filterKnownVerbs, verbNeedsReason } from '../api';
-import { ORDER_VERB_LABELS } from '../backend-mirror';
+import { ORDER_STATUS_LABEL_KEYS, ORDER_VERB_LABEL_KEYS } from '../backend-mirror';
 import { OrderStatusChip } from './OrderStatusChip';
 import { useOrderReturnEligibility, hasReturnableItems } from '../returnEligibility';
 import { themeColors, radii } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
+// The verbatim mirror of `partner-tax.util.ts#computeDocumentTax` this app
+// already carries for the billing composer — see `pricedLines` below for why an
+// order screen needs it and what stops it from being believed on faith.
+import { previewDocumentTax } from '../../billing/taxPreview';
 // The app's shared error state, from the same UI kit every settings and list
 // screen already draws — not a second, order-shaped way of saying "that failed".
 import { ErrorBlock } from '../../more/ui';
+import { formatI18nDate } from '../../../i18n';
 
 interface OrderDetailModalProps {
   order: PartnerOrder | null;
@@ -43,6 +49,7 @@ interface OrderDetailModalProps {
 }
 
 export function OrderDetailModal({ order, loading, error, onRetry, pending, canManage, onClose, onAction, onRecordReturn }: OrderDetailModalProps) {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const visible = loading || Boolean(order) || Boolean(error);
   const verbs = order ? filterKnownVerbs(order.allowedVerbs) : [];
@@ -50,6 +57,59 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
   // M5 gate: an ISSUED order-sourced invoice must exist, and something must
   // still be returnable — see `returnEligibility.ts` for why this cannot be
   // read off `allowedVerbs` (`returnItems` is not a transition verb).
+  /**
+   * The per-line TAXABLE value, which the order view does not carry.
+   *
+   * `item.linePaise` is `gross − discount` in the LINE'S OWN basis
+   * (`order.service.ts#priceOrderLines`), so on the default inclusive product it
+   * already contains the GST — while `amounts.subPaise` is the sum of the
+   * taxable BASES and a `Tax` row is printed under it. Three true figures that
+   * do not add up, the same defect the invoice detail card was fixed for.
+   *
+   * `OrderItem` has no `taxablePaise` to print instead, so it is re-derived here
+   * through the mirror of the server's own `computeDocumentTax`. Two things make
+   * that honest rather than a guess:
+   *
+   *   • The taxable value does NOT depend on place of supply. `computeLine`
+   *     derives it from qty, rate, discount, rate percent and the inclusive
+   *     flag — every one of them on the snapshot — and the supplier state only
+   *     decides how the tax POOL is later split into CGST+SGST or IGST. Neither
+   *     of those inputs is on this screen, and neither is needed: nothing below
+   *     states a split. `gstApplicable` is read back off the priced order —
+   *     the server forces every rate to zero when it is false, so a non-zero
+   *     `taxPaise` is proof it was true, and when it is zero the rates are
+   *     irrelevant to the base anyway.
+   *
+   *   • It is checked before it is believed. The derived totals must reproduce
+   *     the subtotal and tax the SERVER stored on this order, or the whole thing
+   *     is discarded and the rows fall back to what they printed before. A wrong
+   *     figure on a tax line is worse than an unaddable one, and the day the
+   *     server's util changes without this mirror following it (see that file's
+   *     "IF THE SERVER'S FUNCTION CHANGES" note), this screen goes quiet instead
+   *     of quietly lying.
+   *
+   * `roundOff: false` matches what the order was priced with — an order is not
+   * the document, and the round-off belongs to the invoice raised from it.
+   */
+  const pricedLines = useMemo(() => {
+    if (!order) return null;
+    const priced = previewDocumentTax(
+      order.items.map((item) => ({
+        qty: item.qty,
+        ratePaise: item.snapshot.ratePaise,
+        taxRatePercent: item.snapshot.taxRatePercent,
+        taxInclusive: item.snapshot.taxInclusive,
+        discountPaise: item.discountPaise,
+      })),
+      undefined,
+      undefined,
+      { gstApplicable: order.amounts.taxPaise > 0, roundOff: false },
+    );
+    const agreesWithServer = priced.totals.subPaise === order.amounts.subPaise
+      && priced.totals.taxPaise === order.amounts.taxPaise;
+    return agreesWithServer ? priced.lines : null;
+  }, [order]);
+
   const eligibility = useOrderReturnEligibility(order);
   const canRecordReturn =
     canManage &&
@@ -62,7 +122,7 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
         <View style={[styles.header, { borderBottomColor: c.divider }]}>
-          <Text style={[styles.headerTitle, { color: c.textPrimary }]}>{order?.code ?? 'Order'}</Text>
+          <Text style={[styles.headerTitle, { color: c.textPrimary }]}>{order?.code ?? t('orders.detail.fallbackTitle')}</Text>
           <Pressable onPress={onClose} hitSlop={10}>
             <MaterialCommunityIcons name="close" size={22} color={c.textSecondary} />
           </Pressable>
@@ -76,7 +136,7 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
           // Reached only while `error` is set — `visible` is false otherwise, so
           // there is no third state where the sheet is open with neither.
           <View style={styles.loadingBox}>
-            <ErrorBlock c={c} message={error ?? 'Could not load that order.'} onRetry={onRetry} />
+            <ErrorBlock c={c} message={error ?? t('orders.detail.loadFailed')} onRetry={onRetry} />
           </View>
         ) : (
           <>
@@ -84,12 +144,14 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
               <View style={styles.statusRow}>
                 <OrderStatusChip status={order.status} c={c} />
                 <Text style={[styles.deliveryMode, { color: c.textSecondary }]}>
-                  {order.deliveryMode === 'DELIVERY' ? 'Delivery' : 'Pickup'}
-                  {order.slotPreference ? ` · ${order.slotPreference}` : ''}
+                  {t(order.deliveryMode === 'DELIVERY' ? 'orders.detail.delivery' : 'orders.detail.pickup')}
+                  {/* `slotPreference` is the slot the CUSTOMER chose, as the
+                      server stored it — data on the order, not copy. */}
+                  {order.slotPreference ? t('orders.detail.slotSuffix', { slot: order.slotPreference }) : ''}
                 </Text>
               </View>
 
-              <Section title="Customer" c={c}>
+              <Section title={t('orders.detail.customer')} c={c}>
                 <Text style={[styles.customerName, { color: c.textPrimary }]}>{order.customer.name}</Text>
                 {order.customer.societyName && (
                   <Text style={[styles.customerLine, { color: c.textSecondary }]}>{order.customer.societyName}</Text>
@@ -115,51 +177,102 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
                 )}
                 {order.note && !order.customer.contactMasked && (
                   <Text style={[styles.customerLine, { color: c.textSecondary, fontStyle: 'italic' }]}>
-                    “{order.note}”
+                    {t('orders.detail.quotedNote', { note: order.note })}
                   </Text>
                 )}
               </Section>
 
-              <Section title={`Items (${order.itemCount})`} c={c}>
-                {order.items.map((item, idx) => (
-                  <View key={`${item.productId}-${idx}`} style={styles.itemRow}>
-                    <View style={styles.itemNameCol}>
-                      <Text style={[styles.itemName, { color: c.textPrimary }]}>{item.snapshot.name}</Text>
-                      <Text style={[styles.itemMeta, { color: c.textSecondary }]}>
-                        {item.qty} {item.snapshot.unit} × {formatPaise(item.snapshot.ratePaise)}
+              <Section title={t('orders.detail.items', { count: order.itemCount })} c={c}>
+                {/*
+                  Captioned only when the column and the line total are actually
+                  two different numbers — i.e. when this order carries GST. On an
+                  untaxed order the amount IS what the item cost, and a caption
+                  saying so is noise on the common case.
+                */}
+                {!!pricedLines && order.amounts.taxPaise > 0 && (
+                  <Text style={[styles.columnCaption, { color: c.textSecondary }]}>{t('orders.detail.taxableValue')}</Text>
+                )}
+                {order.items.map((item, idx) => {
+                  const priced = pricedLines?.[idx];
+                  const lineTaxPaise = priced
+                    ? priced.cgstPaise + priced.sgstPaise + priced.igstPaise + priced.cessPaise
+                    : 0;
+                  return (
+                    <View key={`${item.productId}-${idx}`} style={styles.itemRow}>
+                      <View style={styles.itemNameCol}>
+                        <Text style={[styles.itemName, { color: c.textPrimary }]}>{item.snapshot.name}</Text>
+                        <Text style={[styles.itemMeta, { color: c.textSecondary }]}>
+                          {t('orders.detail.itemMeta', { qty: item.qty, unit: item.snapshot.unit, rate: formatPaise(item.snapshot.ratePaise) })}
+                        </Text>
+                        {/*
+                          base → tax → what the customer pays for this item, in the
+                          order the invoice card and the line editor both use. The
+                          caption above says which of the two the column is; this
+                          carries the other one, so nobody has to do the addition
+                          to answer "so what is this one?".
+                        */}
+                        {!!priced && lineTaxPaise > 0 && (
+                          <Text style={[styles.itemMeta, { color: c.textSecondary }]}>
+                            {t('orders.detail.itemTaxLine', { tax: formatPaise(lineTaxPaise), total: formatPaise(priced.totalPaise) })}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={[styles.itemLine, { color: c.textPrimary }]}>
+                        {formatPaise(priced ? priced.taxablePaise : item.linePaise)}
                       </Text>
                     </View>
-                    <Text style={[styles.itemLine, { color: c.textPrimary }]}>{formatPaise(item.linePaise)}</Text>
-                  </View>
-                ))}
+                  );
+                })}
                 <Divider style={{ marginVertical: 8, backgroundColor: c.divider }} />
-                <AmountRow label="Subtotal" value={order.amounts.subPaise} c={c} />
-                {order.amounts.discountPaise > 0 && <AmountRow label="Discount" value={-order.amounts.discountPaise} c={c} />}
-                {order.amounts.taxPaise > 0 && <AmountRow label="Tax" value={order.amounts.taxPaise} c={c} />}
-                {order.amounts.deliveryPaise > 0 && <AmountRow label="Delivery" value={order.amounts.deliveryPaise} c={c} />}
-                <AmountRow label="Total" value={order.amounts.totalPaise} c={c} bold />
+                {/*
+                  "Taxable value" once there is tax to be taxable FOR, because
+                  that is what `amounts.subPaise` is — the sum of the bases — and
+                  it is the word the invoice raised from this order prints over
+                  the same figure. A partner should not have to learn that two
+                  screens mean one thing. Left as "Subtotal" on an untaxed order,
+                  where there is no base to distinguish from anything.
+                */}
+                <AmountRow
+                  label={t(order.amounts.taxPaise > 0 ? 'orders.detail.taxableValue' : 'orders.detail.subtotal')}
+                  value={order.amounts.subPaise}
+                  c={c}
+                />
+                {order.amounts.discountPaise > 0 && <AmountRow label={t('orders.detail.discount')} value={-order.amounts.discountPaise} c={c} />}
+                {order.amounts.taxPaise > 0 && <AmountRow label={t('orders.detail.tax')} value={order.amounts.taxPaise} c={c} />}
+                {order.amounts.deliveryPaise > 0 && <AmountRow label={t('orders.detail.deliveryFee')} value={order.amounts.deliveryPaise} c={c} />}
+                <AmountRow label={t('orders.detail.total')} value={order.amounts.totalPaise} c={c} bold />
                 <Text style={[styles.paymentLine, { color: c.textSecondary }]}>
-                  {order.payment.mode === 'COD' ? 'Cash on delivery' : 'Paid online'} · {order.payment.status}
+                  {/* `payment.status` is the SERVER's own payment state and has no
+                      label table on this side — printed back as it came, the same
+                      trade `UsageMeter.tsx` documents for `capacity.noun`. */}
+                  {t('orders.detail.paymentLine', {
+                    mode: t(order.payment.mode === 'COD' ? 'orders.detail.payCod' : 'orders.detail.payOnline'),
+                    status: order.payment.status,
+                  })}
                 </Text>
               </Section>
 
-              <Section title="Timeline" c={c}>
-                {order.timeline.map((t, idx) => (
+              <Section title={t('orders.detail.timeline')} c={c}>
+                {/* `entry`, not `t` — the callback used to shadow the translator. */}
+                {order.timeline.map((entry, idx) => (
                   <View key={idx} style={styles.timelineRow}>
                     <View style={[styles.timelineDot, { backgroundColor: c.primary }]} />
                     <View style={styles.timelineTextCol}>
                       <Text style={[styles.timelineStatus, { color: c.textPrimary }]}>
-                        {t.status} {t.byName ? `· ${t.byName}` : ''}
+                        {t('orders.detail.timelineEntry', {
+                          status: t(ORDER_STATUS_LABEL_KEYS[entry.status]),
+                          by: entry.byName ? t('orders.detail.timelineBy', { name: entry.byName }) : '',
+                        })}
                       </Text>
                       <Text style={[styles.timelineAt, { color: c.textSecondary }]}>
-                        {new Date(t.at).toLocaleString('en-IN')}
+                        {formatI18nDate(entry.at, t)}
                       </Text>
-                      {t.note && <Text style={[styles.timelineNote, { color: c.textSecondary }]}>{t.note}</Text>}
+                      {entry.note && <Text style={[styles.timelineNote, { color: c.textSecondary }]}>{entry.note}</Text>}
                     </View>
                   </View>
                 ))}
                 {order.ended?.reason && (
-                  <Text style={[styles.endedReason, { color: c.error }]}>Reason: {order.ended.reason}</Text>
+                  <Text style={[styles.endedReason, { color: c.error }]}>{t('orders.detail.endedReason', { reason: order.ended.reason })}</Text>
                 )}
               </Section>
             </ScrollView>
@@ -179,7 +292,7 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
                     {pending ? (
                       <ActivityIndicator size={14} color="#fff" />
                     ) : (
-                      <Text style={styles.footerBtnLabel}>{ORDER_VERB_LABELS[verb]}</Text>
+                      <Text style={styles.footerBtnLabel}>{t(ORDER_VERB_LABEL_KEYS[verb])}</Text>
                     )}
                   </Pressable>
                 ))}
@@ -192,7 +305,7 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
                   onPress={onRecordReturn}
                   style={[styles.returnBtn, { borderColor: c.error }]}
                 >
-                  <Text style={[styles.returnBtnLabel, { color: c.error }]}>Record a return</Text>
+                  <Text style={[styles.returnBtnLabel, { color: c.error }]}>{t('orders.detail.recordReturn')}</Text>
                 </Pressable>
               </View>
             )}
@@ -241,7 +354,11 @@ const styles = StyleSheet.create({
   customerName: { fontSize: 15, fontWeight: '600' },
   customerLine: { fontSize: 13, lineHeight: 18 },
   maskNote: { fontSize: 12, marginTop: 4, lineHeight: 17, fontStyle: 'italic' },
-  itemRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  columnCaption: { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4, textAlign: 'right' },
+  // `flex-start`: a taxed line carries three lines of text on the left, and an
+  // amount floating halfway down them reads as belonging to the caption rather
+  // than to the item it prices.
+  itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 6 },
   itemNameCol: { flex: 1, paddingRight: 8 },
   itemName: { fontSize: 13.5, fontWeight: '600' },
   itemMeta: { fontSize: 12, marginTop: 1 },

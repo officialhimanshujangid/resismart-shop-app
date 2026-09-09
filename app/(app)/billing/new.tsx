@@ -8,6 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, usePathname, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
@@ -24,7 +25,7 @@ import { previewDocumentTax } from '../../../src/features/billing/taxPreview';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import { LineEditorSheet } from '../../../src/features/billing/components/LineEditorSheet';
 import {
-  BillingScreenDocumentType, DOCUMENT_TYPE_LABEL, DocumentDirection, DraftLineInput,
+  BillingScreenDocumentType, DOCUMENT_TYPE_LABEL_KEY, DocumentDirection, DraftLineInput,
   GST_STATES, PartnerPartyRecord, SALES_DOCUMENT_TYPES, PURCHASE_DOCUMENT_TYPES, behaviourOf,
 } from '../../../src/features/billing/types';
 import { toHref } from '../../../src/features/billing/routeHref';
@@ -89,6 +90,7 @@ function lineFromProduct(product: {
 }
 
 export default function NewInvoiceScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const pathname = usePathname();
@@ -247,6 +249,10 @@ export default function NewInvoiceScreen() {
     if (itemName || ratePaise) {
       setLines([{
         key: nextLineKey(),
+        // NOT translated. This becomes `lines[].itemName` on a real document
+        // and is printed on the bill and read back by reports and search — a
+        // line whose name depends on the phone's UI language would make the
+        // same job appear under two different item names.
         itemName: itemName || 'Service',
         unit: 'JOB',
         qty: 1,
@@ -412,11 +418,11 @@ export default function NewInvoiceScreen() {
 
   const handleIssue = useCallback(async () => {
     if (lines.length === 0) {
-      setErrorMessage('Add at least one item first.');
+      setErrorMessage(t('billing.new.needItem'));
       return;
     }
     if (behaviour.requiresParty && !selectedParty) {
-      setErrorMessage(`Pick a supplier first — a ${DOCUMENT_TYPE_LABEL[docType].toLowerCase()} always names one.`);
+      setErrorMessage(t('billing.new.needSupplier', { type: t(DOCUMENT_TYPE_LABEL_KEY[docType]).toLowerCase() }));
       return;
     }
     setSubmitting(true);
@@ -437,6 +443,9 @@ export default function NewInvoiceScreen() {
           // "The party needs a name on the document" — so an empty walk-in
           // field still produces a legal document rather than a 400 the
           // partner cannot see the reason for.
+          // NOT translated, for the same reason as the seeded line name above:
+          // this is written to `partySnapshot.name` on the document, printed on
+          // the bill, and matched by parties search and the outstanding report.
           name: walkinName.trim() || 'Walk-in customer',
           phone: walkinPhone.trim() || undefined,
           // Left off entirely when unset rather than sent as '': the server
@@ -508,12 +517,12 @@ export default function NewInvoiceScreen() {
       return;
     }
     if (settled?.status === 'BLOCKED_UPGRADE') {
-      setErrorMessage(settled.lastError ?? 'Your plan has reached its invoice limit for this month.');
+      setErrorMessage(settled.lastError ?? t('billing.new.planLimit'));
       return;
     }
     if (settled?.status === 'FAILED') {
       setErrorMessage(
-        `${settled.lastError ?? 'Could not create this bill.'} It has been saved — retry it from Billing → Drafts.`,
+        t('billing.new.createFailed', { reason: settled.lastError ?? t('billing.new.createFailedFallback') }),
       );
       return;
     }
@@ -521,15 +530,15 @@ export default function NewInvoiceScreen() {
     // happens automatically the moment the connection returns.
     router.replace('/(app)/billing/drafts');
   }, [lines, selectedParty, walkinName, walkinPhone, walkinState, docType, behaviour, addDraft, retryDraft,
-    sourceType, sourceId, jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned]);
+    sourceType, sourceId, jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned, t]);
 
   if (!canManage) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]}>
         <View style={styles.deniedBox}>
-          <Text style={[styles.deniedTitle, { color: c.textPrimary }]}>You can view billing, not raise it</Text>
+          <Text style={[styles.deniedTitle, { color: c.textPrimary }]}>{t('billing.new.deniedTitle')}</Text>
           <Text style={[styles.deniedBody, { color: c.textSecondary }]}>
-            Ask an admin to grant Billing at Full access to create invoices.
+            {t('billing.new.deniedBody')}
           </Text>
         </View>
       </SafeAreaView>
@@ -539,8 +548,8 @@ export default function NewInvoiceScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
       <View style={styles.topBar}>
-        <IconButton icon="close" onPress={() => router.back()} accessibilityLabel="Close" />
-        <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>New invoice</Text>
+        <IconButton icon="close" onPress={() => router.back()} accessibilityLabel={t('billing.new.close')} />
+        <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>{t('billing.new.title')}</Text>
         <View style={{ width: 48 }} />
       </View>
 
@@ -551,8 +560,8 @@ export default function NewInvoiceScreen() {
             onValueChange={(v) => setDirection(v as DocumentDirection)}
             density="small"
             buttons={[
-              { value: 'SALES', label: 'Sales' },
-              { value: 'PURCHASE', label: 'Purchase' },
+              { value: 'SALES', label: t('billing.new.dirSales') },
+              { value: 'PURCHASE', label: t('billing.new.dirPurchase') },
             ]}
           />
 
@@ -562,13 +571,13 @@ export default function NewInvoiceScreen() {
               onValueChange={(v) => setDocType(v as BillingScreenDocumentType)}
               density="small"
               style={{ minWidth: '100%' }}
-              buttons={typesForDirection.map((t) => ({ value: t, label: DOCUMENT_TYPE_LABEL[t] }))}
+              buttons={typesForDirection.map((type) => ({ value: type, label: t(DOCUMENT_TYPE_LABEL_KEY[type]) }))}
             />
           </ScrollView>
 
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-              {direction === 'PURCHASE' ? 'Supplier' : 'Customer'}
+              {direction === 'PURCHASE' ? t('billing.new.supplier') : t('billing.new.customer')}
             </Text>
             {direction === 'SALES' && (
               <SegmentedButtons
@@ -579,8 +588,8 @@ export default function NewInvoiceScreen() {
                 }}
                 density="small"
                 buttons={[
-                  { value: 'WALKIN', label: 'Walk-in' },
-                  { value: 'SEARCH', label: 'Existing party' },
+                  { value: 'WALKIN', label: t('billing.new.walkIn') },
+                  { value: 'SEARCH', label: t('billing.new.existingParty') },
                 ]}
               />
             )}
@@ -589,16 +598,16 @@ export default function NewInvoiceScreen() {
                 <View style={styles.walkinRow}>
                   <TextInput
                     mode="outlined"
-                    label="Name (optional)"
+                    label={t('billing.new.nameOptional')}
                     value={walkinName}
                     onChangeText={setWalkinName}
-                    placeholder="Walk-in customer"
+                    placeholder={t('billing.new.walkInPlaceholder')}
                     style={styles.walkinInput}
                     outlineStyle={{ borderRadius: radii.field }}
                   />
                   <TextInput
                     mode="outlined"
-                    label="Phone (optional)"
+                    label={t('billing.new.phoneOptional')}
                     value={walkinPhone}
                     onChangeText={setWalkinPhone}
                     keyboardType="phone-pad"
@@ -617,9 +626,9 @@ export default function NewInvoiceScreen() {
                   <View pointerEvents="none">
                     <TextInput
                       mode="outlined"
-                      label="Place of supply (state)"
+                      label={t('billing.new.placeOfSupply')}
                       value={walkinState}
-                      placeholder="Same state — CGST + SGST"
+                      placeholder={t('billing.new.placeOfSupplyPlaceholder')}
                       editable={false}
                       // Not `walkinInput`: that carries `flex: 1` for the
                       // name/phone row, and this is a full-width block of its own.
@@ -631,8 +640,8 @@ export default function NewInvoiceScreen() {
                 </Pressable>
                 <Text style={[styles.stateHint, { color: c.textSecondary }]}>
                   {walkinState
-                    ? `Taxed for ${walkinState}. Out-of-state customers are charged IGST.`
-                    : 'Leave it blank for a counter sale in your own state. Set it when the customer is from elsewhere — it decides whether the bill charges CGST + SGST or IGST.'}
+                    ? t('billing.new.placeOfSupplySet', { state: walkinState })
+                    : t('billing.new.placeOfSupplyHint')}
                 </Text>
               </>
             ) : selectedParty ? (
@@ -649,7 +658,7 @@ export default function NewInvoiceScreen() {
               <View>
                 <TextInput
                   mode="outlined"
-                  placeholder="Search by name or phone"
+                  placeholder={t('billing.new.searchParty')}
                   value={partyQuery}
                   onChangeText={setPartyQuery}
                   style={styles.walkinInput}
@@ -667,34 +676,34 @@ export default function NewInvoiceScreen() {
           </Surface>
 
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Dates</Text>
-            <DateField label="Document date" value={documentDate} onChangeText={setDocumentDate} mode="date" />
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.new.dates')}</Text>
+            <DateField label={t('billing.new.documentDate')} value={documentDate} onChangeText={setDocumentDate} mode="date" />
             {behaviour.dateField === 'dueDate' && (
               <DateField
-                label="Due date"
+                label={t('billing.new.dueDate')}
                 value={dueDate}
                 onChangeText={setDueDate}
                 mode="date"
                 minimumDate={documentDate ? new Date(`${documentDate}T00:00:00`) : undefined}
-                placeholder="When payment is due"
+                placeholder={t('billing.new.dueDatePlaceholder')}
               />
             )}
             {behaviour.dateField === 'validUntil' && (
               <DateField
-                label="Valid until"
+                label={t('billing.new.validUntil')}
                 value={validUntil}
                 onChangeText={setValidUntil}
                 mode="date"
                 minimumDate={documentDate ? new Date(`${documentDate}T00:00:00`) : undefined}
-                placeholder="How long this quote holds"
+                placeholder={t('billing.new.validUntilPlaceholder')}
               />
             )}
             {behaviour.stockNeedsGoodsFlag && (
               <View style={styles.goodsRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>Goods actually returned?</Text>
+                  <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('billing.new.goodsReturned')}</Text>
                   <Text style={{ color: c.textSecondary, fontSize: 11, marginTop: 2 }}>
-                    On for a returned item, off for a price correction — this decides whether it goes back on the shelf.
+                    {t('billing.new.goodsReturnedHint')}
                   </Text>
                 </View>
                 <Switch value={goodsReturned} onValueChange={setGoodsReturned} />
@@ -704,15 +713,15 @@ export default function NewInvoiceScreen() {
 
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <View style={styles.cardHeaderRow}>
-              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Items</Text>
+              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.new.items')}</Text>
               <Button mode="contained-tonal" icon="barcode-scan" compact onPress={() => setScannerOpen(true)}>
-                Scan
+                {t('billing.new.scan')}
               </Button>
             </View>
 
             <TextInput
               mode="outlined"
-              placeholder="Search your catalogue"
+              placeholder={t('billing.new.searchCatalogue')}
               value={productQuery}
               onChangeText={setProductQuery}
               style={styles.walkinInput}
@@ -723,22 +732,53 @@ export default function NewInvoiceScreen() {
               <Pressable key={p._id} onPress={() => addOrBumpLine(lineFromProduct(p))} style={styles.resultRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.resultName, { color: c.textPrimary }]}>{p.name}</Text>
-                  <Text style={[styles.resultMeta, { color: c.textSecondary }]}>{formatPaise(p.sellPaise)} / {p.unit}</Text>
+                  <Text style={[styles.resultMeta, { color: c.textSecondary }]}>{t('billing.new.perUnit', { price: formatPaise(p.sellPaise), unit: p.unit })}</Text>
                 </View>
                 <IconButton icon="plus-circle-outline" size={20} onPress={() => addOrBumpLine(lineFromProduct(p))} />
               </Pressable>
             ))}
 
-            {lines.length > 0 && <Divider style={{ marginVertical: 8 }} />}
+            {lines.length > 0 && (
+              <>
+                <Divider style={{ marginVertical: 8 }} />
+                {/*
+                  The column is CAPTIONED, because the number under it is the
+                  taxable value and not what the customer pays for the item.
+
+                  It used to print the priced `totalPaise` — tax INSIDE — above a
+                  "Taxable value" row that is the sum of the BASES and CGST/SGST
+                  rows that then appear to add the same tax a second time. Three
+                  true figures reconciling to nothing, on the one screen that is
+                  read out loud with the customer standing at the counter; the
+                  invoice detail card was fixed for exactly this.
+
+                  It also answers the objection that put `totalPaise` here in the
+                  first place — an exclusive line reading "₹100" under a bill that
+                  says "₹118" — with the two LABELS rather than with the wrong
+                  number: this caption says which of the two amounts the column
+                  is, and the per-line caption below carries the other one and
+                  ends on the ₹118 the customer is actually asked for.
+                */}
+                <View style={styles.lineHeaderRow}>
+                  <Text style={[styles.columnCaption, { color: c.textSecondary }]}>{t('billing.new.taxableValue')}</Text>
+                  {/* Holds the caption over the amounts instead of over the trash
+                      can. Paper draws an IconButton at `size + 2×8` padding with a
+                      6px margin each side, so the pair at `size={16}` is
+                      2 × (16 + 16 + 12), plus the row's two 4px gaps. */}
+                  <View style={styles.lineHeaderSpacer} />
+                </View>
+              </>
+            )}
             {/*
-              The row shows the PRICED total from the preview, not `qty × rate`.
-              On an exclusive line those are different numbers, and a row that
-              says ₹100 under a bill that says ₹118 is the drift this whole
-              change exists to remove. `preview.lines` is positional against
-              `lines` — the same contract `computeDocumentTax` keeps — so the
-              index is the join.
+              `preview.lines` is positional against `lines` — the same contract
+              `computeDocumentTax` keeps — so the index is the join.
             */}
-            {lines.map((line, idx) => (
+            {lines.map((line, idx) => {
+              const priced = preview.lines[idx];
+              const lineTaxPaise = priced
+                ? priced.cgstPaise + priced.sgstPaise + priced.igstPaise + priced.cessPaise
+                : 0;
+              return (
               <View key={line.key} style={styles.lineRow}>
                 <Pressable style={{ flex: 1 }} onPress={() => setEditingKey(line.key)}>
                   <Text style={[styles.lineName, { color: c.textPrimary }]} numberOfLines={1}>
@@ -746,11 +786,26 @@ export default function NewInvoiceScreen() {
                   </Text>
                   <Text style={[styles.lineMeta, { color: c.textSecondary }]}>
                     {formatPaise(line.ratePaise)} × {line.qty} {line.unit ?? ''}
-                    {(line.discountPaise ?? 0) > 0 ? ` · −${formatPaise(line.discountPaise)}` : ''}
+                    {(line.discountPaise ?? 0) > 0 ? t('billing.new.lineDiscount', { amount: formatPaise(line.discountPaise) }) : ''}
                     {gstApplicable
-                      ? ` · ${line.taxRatePercent ?? 0}% ${(line.taxInclusive ?? true) ? 'incl.' : 'extra'}`
+                      ? t('billing.new.lineTaxSuffix', {
+                        rate: line.taxRatePercent ?? 0,
+                        mode: (line.taxInclusive ?? true) ? t('billing.new.lineTaxInclusive') : t('billing.new.lineTaxExtra'),
+                      })
                       : ''}
                   </Text>
+                  {/*
+                    base → tax → what this item costs, on one line, in the same
+                    order `LineEditorSheet` walks the partner through when they
+                    type the line. A fourth column does not fit at 360dp next to a
+                    qty stepper and two buttons; this does, and it means nobody has
+                    to do the addition to answer "so what is this one?".
+                  */}
+                  {lineTaxPaise > 0 && (
+                    <Text style={[styles.lineMeta, { color: c.textSecondary }]}>
+                      {t('billing.new.lineTaxLine', { tax: formatPaise(lineTaxPaise), total: formatPaise(priced.totalPaise) })}
+                    </Text>
+                  )}
                 </Pressable>
                 <View style={styles.qtyStepper}>
                   <IconButton icon="minus" size={16} onPress={() => updateQty(line.key, -1)} />
@@ -758,19 +813,20 @@ export default function NewInvoiceScreen() {
                   <IconButton icon="plus" size={16} onPress={() => updateQty(line.key, 1)} />
                 </View>
                 <Text style={[styles.lineAmount, { color: c.textPrimary }]}>
-                  {formatPaise(preview.lines[idx]?.totalPaise ?? 0)}
+                  {formatPaise(priced?.taxablePaise ?? 0)}
                 </Text>
                 {/* Both, deliberately: removing a mis-scanned line is the most
                     common correction at a counter and must stay one tap, and the
                     pencil is what says the tax fields are in there at all — a
                     tappable row with no affordance is a feature nobody finds. */}
-                <IconButton icon="pencil-outline" size={16} onPress={() => setEditingKey(line.key)} accessibilityLabel={`Edit ${line.itemName}`} />
-                <IconButton icon="trash-can-outline" size={16} onPress={() => removeLine(line.key)} accessibilityLabel={`Remove ${line.itemName}`} />
+                <IconButton icon="pencil-outline" size={16} onPress={() => setEditingKey(line.key)} accessibilityLabel={t('billing.new.editLine', { item: line.itemName })} />
+                <IconButton icon="trash-can-outline" size={16} onPress={() => removeLine(line.key)} accessibilityLabel={t('billing.new.removeLine', { item: line.itemName })} />
               </View>
-            ))}
+              );
+            })}
 
             <Button mode="text" icon="pencil-plus-outline" compact onPress={() => setEditingKey('NEW')} style={{ alignSelf: 'flex-start' }}>
-              Add a one-off item
+              {t('billing.new.addOneOff')}
             </Button>
           </Surface>
 
@@ -784,28 +840,48 @@ export default function NewInvoiceScreen() {
               thumb on the Issue button was not the number the customer would be
               asked for, and on an exclusive-priced line it was not even close.
             */}
-            <TotalLine label="Taxable value" value={totals.subPaise} c={c} />
-            {totals.discountPaise > 0 && <TotalLine label="Discount" value={-totals.discountPaise} c={c} />}
-            {gstApplicable && preview.interState && <TotalLine label="IGST" value={totals.igstPaise} c={c} />}
+            <TotalLine label={t('billing.new.taxableValue')} value={totals.subPaise} c={c} />
+            {/*
+              A caption, NOT a signed row. `previewDocumentTax` derives each
+              line's `taxablePaise` from `gross − discount`, so `subPaise` above
+              is ALREADY net of every line discount — a "− ₹50" row under it
+              invited the partner to take the same ₹50 off a second time and land
+              below the Total printed on the button they are about to press.
+              The invoice detail card and the web both dropped the row for this
+              reason; the figure stays, because "how much did I knock off" is
+              worth knowing — just not as an operation.
+            */}
+            {totals.discountPaise > 0 && (
+              <Text style={[styles.totalHint, { color: c.textSecondary }]}>
+                {t('billing.new.afterDiscounts', { amount: formatPaise(totals.discountPaise) })}
+              </Text>
+            )}
+            {gstApplicable && preview.interState && <TotalLine label={t('billing.new.igst')} value={totals.igstPaise} c={c} />}
             {gstApplicable && !preview.interState && (
               <>
-                <TotalLine label="CGST" value={totals.cgstPaise} c={c} />
-                <TotalLine label="SGST" value={totals.sgstPaise} c={c} />
+                <TotalLine label={t('billing.new.cgst')} value={totals.cgstPaise} c={c} />
+                <TotalLine label={t('billing.new.sgst')} value={totals.sgstPaise} c={c} />
               </>
             )}
-            {totals.cessPaise > 0 && <TotalLine label="Cess" value={totals.cessPaise} c={c} />}
-            {totals.roundOffPaise !== 0 && <TotalLine label="Round off" value={totals.roundOffPaise} c={c} />}
+            {totals.cessPaise > 0 && <TotalLine label={t('billing.new.cess')} value={totals.cessPaise} c={c} />}
+            {totals.roundOffPaise !== 0 && <TotalLine label={t('billing.new.roundOff')} value={totals.roundOffPaise} c={c} />}
             <Divider style={{ marginVertical: 6 }} />
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: c.textSecondary }]}>Total</Text>
+              <Text style={[styles.totalLabel, { color: c.textSecondary }]}>{t('billing.new.total')}</Text>
               <Text style={[styles.totalAmount, { color: c.textPrimary }]}>{formatPaise(totals.grandPaise)}</Text>
             </View>
             <Text style={[styles.totalHint, { color: c.textSecondary }]}>
+              {/* Two whole sentences rather than one with an optional clause
+                  spliced in: "to <state>" sits mid-sentence in English and
+                  takes a postposition after the state in Hindi, so the frame
+                  has to belong to each language. */}
               {!gstApplicable
-                ? 'No GST is charged — your business is saved as not GST registered (Settings → Business).'
+                ? t('billing.new.noGstHint')
                 : preview.interState
-                  ? `Inter-state supply${placeOfSupply ? ` to ${placeOfSupply}` : ''} — IGST. The server prices the invoice the same way.`
-                  : 'Within your state — CGST + SGST. The server prices the invoice the same way.'}
+                  ? (placeOfSupply
+                    ? t('billing.new.interStateHint', { state: placeOfSupply })
+                    : t('billing.new.interStateHintNoState'))
+                  : t('billing.new.intraStateHint')}
             </Text>
             {/*
               `gstApplicable` falls back to TRUE while the settings are still
@@ -816,7 +892,7 @@ export default function NewInvoiceScreen() {
               customer upward at the counter.
             */}
             {businessQuery.isPending && (
-              <Text style={[styles.totalHint, { color: c.textSecondary }]}>Checking your GST registration…</Text>
+              <Text style={[styles.totalHint, { color: c.textSecondary }]}>{t('billing.new.checkingGst')}</Text>
             )}
             {/*
               The nudge that answers the original complaint.
@@ -830,8 +906,10 @@ export default function NewInvoiceScreen() {
             */}
             {gstApplicable && untaxedLineCount > 0 && (
               <Text style={[styles.totalHint, { color: c.warning }]}>
-                {untaxedLineCount === 1 ? '1 item has' : `${untaxedLineCount} items have`} no GST rate set.
-                Tap the pencil on {untaxedLineCount === 1 ? 'it' : 'them'} to pick one.
+                {/* One key per plural form. The English was assembled from four
+                    fragments whose agreement ("has"/"have", "it"/"them") is a
+                    fact about English, not about the count. */}
+                {t('billing.new.untaxed', { count: untaxedLineCount })}
               </Text>
             )}
           </Surface>
@@ -853,7 +931,9 @@ export default function NewInvoiceScreen() {
           disabled={submitting || lines.length === 0 || invoiceCapacity.atLimit}
           style={{ borderRadius: radii.field, marginTop: 8 }}
         >
-          {docType === 'TAX_INVOICE' ? `Issue invoice — ${formatPaise(totals.grandPaise)}` : 'Save & issue'}
+          {docType === 'TAX_INVOICE'
+            ? t('billing.new.issueInvoice', { amount: formatPaise(totals.grandPaise) })
+            : t('billing.new.saveAndIssue')}
         </Button>
       </View>
 
@@ -864,8 +944,8 @@ export default function NewInvoiceScreen() {
           contentContainerStyle={[styles.scannerModal, { backgroundColor: c.background }]}
         >
           <View style={styles.scannerHeader}>
-            <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>Scan items</Text>
-            <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel="Done scanning" />
+            <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>{t('billing.new.scanItems')}</Text>
+            <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel={t('billing.new.doneScanning')} />
           </View>
           {/* The hint now names the ONE physical gesture the latch depends on.
               A held pack is one line, not a climbing count, so a cashier
@@ -875,7 +955,7 @@ export default function NewInvoiceScreen() {
           <BarcodeScannerView
             active={scannerOpen}
             onResult={handleScanResult}
-            hint="Each item adds a line. For two of the same, lift the phone away and scan it again."
+            hint={t('billing.new.scanHint')}
           />
         </Modal>
       </Portal>
@@ -907,8 +987,8 @@ export default function NewInvoiceScreen() {
           contentContainerStyle={[styles.stateModal, { backgroundColor: c.surface }]}
         >
           <View style={styles.cardHeaderRow}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>Place of supply</Text>
-            <IconButton icon="close" onPress={() => setStatePickerOpen(false)} accessibilityLabel="Close" />
+            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.new.placeOfSupplyTitle')}</Text>
+            <IconButton icon="close" onPress={() => setStatePickerOpen(false)} accessibilityLabel={t('billing.new.close')} />
           </View>
           <ScrollView>
             <Pressable
@@ -916,9 +996,20 @@ export default function NewInvoiceScreen() {
               style={[styles.stateRow, { borderBottomColor: c.divider }]}
             >
               <Text style={{ color: !walkinState ? c.primary : c.textPrimary, fontWeight: !walkinState ? '700' : '400' }}>
-                Same state as my business
+                {t('billing.new.sameState')}
               </Text>
             </Pressable>
+            {/*
+              THE STATE NAMES STAY IN ENGLISH, on the row as well as on the
+              wire. `s` is both what is rendered and what is stored as
+              `placeOfSupply`, and the server resolves it to a GST state code by
+              matching the NAME (`GST_STATE_CODES`) — an unrecognised name is
+              read as no answer, which means intra-state, which means the wrong
+              CGST/SGST-vs-IGST split on a real invoice. Showing a Hindi label
+              here would require a second table mapping it back, i.e. a second
+              answer to a tax question inside the client. See the header on
+              `GST_STATES` in `features/billing/types.ts`.
+            */}
             {GST_STATES.map((s) => (
               <Pressable
                 key={s}
@@ -941,7 +1032,7 @@ export default function NewInvoiceScreen() {
   );
 }
 
-/** One line of the totals breakup. Negative values (a discount) print with the sign `formatPaise` gives them. */
+/** One line of the totals breakup. Negative values (a downward round-off) print with the sign `formatPaise` gives them. */
 function TotalLine({ label, value, c }: { label: string; value: number; c: ReturnType<typeof themeColors> }) {
   return (
     <View style={styles.breakupRow}>
@@ -975,6 +1066,12 @@ const styles = StyleSheet.create({
   resultName: { fontSize: 13, fontWeight: '600' },
   resultMeta: { fontSize: 12 },
   lineRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
+  // No `gap` here on purpose: the spacer's width is measured from the right edge
+  // of the row, so a gap between it and the caption would push the caption off
+  // the amount column by exactly that much.
+  lineHeaderRow: { flexDirection: 'row', alignItems: 'center' },
+  lineHeaderSpacer: { width: 96 },
+  columnCaption: { flex: 1, textAlign: 'right', fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
   lineName: { fontSize: 13, fontWeight: '600' },
   lineMeta: { fontSize: 11, marginTop: 2 },
   qtyStepper: { flexDirection: 'row', alignItems: 'center' },

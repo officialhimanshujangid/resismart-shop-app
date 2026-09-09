@@ -1,16 +1,21 @@
 import React from 'react';
 import { StyleSheet, useColorScheme, View } from 'react-native';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { toHref } from '../../../src/features/billing/routeHref';
-import { Card, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { Card, ChipRow, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { LANGUAGE_NATIVE_NAME, Language, SUPPORTED } from '../../../src/i18n';
+import { useLanguage } from '../../../src/i18n/useLanguage';
 
 export default function SettingsHubScreen() {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const { can, entitlements, moduleState } = usePartnerEntitlements();
-  const level = can('SETTINGS', 'FULL') ? 'Manage' : 'View only';
+  const { language, setLanguage } = useLanguage();
+  const level = can('SETTINGS', 'FULL') ? t('settings.hub.levelManage') : t('settings.hub.levelViewOnly');
 
   /**
    * Invoice settings belongs to the INVOICING module, and this row used to
@@ -52,18 +57,18 @@ export default function SettingsHubScreen() {
    * field, still falls through to the verification status below.
    */
   const verificationSubtitle = entitlements.visibility?.discoverable === false
-    ? 'Residents cannot find you yet — see what is missing'
+    ? t('settings.hub.verificationNotDiscoverable')
     : entitlements.visibility?.transactable === false
-      ? 'You are live — we are still checking your documents'
+      ? t('settings.hub.verificationNotTransactable')
       : entitlements.business?.verificationStatus === 'VERIFIED'
-        ? 'Verified. Documents and status'
-        : 'Documents and approval status';
+        ? t('settings.hub.verificationVerified')
+        : t('settings.hub.verificationPending');
 
   const Divider = () => <View style={[styles.divider, { backgroundColor: c.divider }]} />;
 
   return (
-    <Screen c={c} title="Settings" subtitle={level} back={false}>
-      <SectionLabel c={c}>Business</SectionLabel>
+    <Screen c={c} title={t('settings.hub.title')} subtitle={level} back={false}>
+      <SectionLabel c={c}>{t('settings.hub.businessSection')}</SectionLabel>
       <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
         {/* "for your bills" is doing real work in that subtitle. This screen and
             "Address & map pin" below both show City / State / Pincode and they
@@ -73,8 +78,8 @@ export default function SettingsHubScreen() {
         <Row
           c={c}
           icon="office-building-outline"
-          title="Business details"
-          subtitle="Legal name, GSTIN and the registered address for your bills"
+          title={t('settings.hub.businessDetails')}
+          subtitle={t('settings.hub.businessDetailsSub')}
           onPress={() => router.push('/settings/business')}
         />
         {invoicingState !== 'OFF' && (
@@ -83,11 +88,11 @@ export default function SettingsHubScreen() {
             <Row
               c={c}
               icon="receipt-text-outline"
-              title="Invoice settings"
+              title={t('settings.hub.invoice')}
               subtitle={
                 invoicingState === 'LOCKED'
-                  ? 'Not on your plan — see what a plan with billing includes'
-                  : 'Theme, numbering, bank details, thermal printing'
+                  ? t('settings.hub.invoiceLocked')
+                  : t('settings.hub.invoiceSub')
               }
               onPress={
                 invoicingState === 'LOCKED'
@@ -103,22 +108,25 @@ export default function SettingsHubScreen() {
           receipt ResiSmart has issued. Reachable at SETTINGS READ like the rest
           of this hub; the screen withholds the money from anyone the
           `/billing/**` routes will not authorise, rather than hiding itself. */}
-      <SectionLabel c={c}>Plan & billing</SectionLabel>
+      <SectionLabel c={c}>{t('settings.hub.planSection')}</SectionLabel>
       <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
         <Row
           c={c}
           icon="card-account-details-outline"
-          title="Your plan"
+          title={t('settings.hub.plan')}
           subtitle={
             entitlements.plan.isTrial
-              ? 'On trial — see when it ends, and what your plan includes'
-              : `${entitlements.plan.name} · renewal, usage and invoices`
+              ? t('settings.hub.planTrialSub')
+              // `plan.name` is empty when the server named no plan — the
+              // sentinel `usePartnerEntitlements#normalise` sets. Named here
+              // rather than in the hook, because this is where it is read.
+              : t('settings.hub.planSub', { plan: entitlements.plan.name || t('settings.plan.unknownName') })
           }
           onPress={() => router.push(toHref('/settings/plan'))}
         />
       </Card>
 
-      <SectionLabel c={c}>Getting found</SectionLabel>
+      <SectionLabel c={c}>{t('settings.hub.foundSection')}</SectionLabel>
       <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
         {/* The map pin had no editor after registration either, and it is the
             field discovery actually measures: `expo-location` and every
@@ -128,8 +136,8 @@ export default function SettingsHubScreen() {
         <Row
           c={c}
           icon="map-marker-outline"
-          title="Address & map pin"
-          subtitle="The listing residents see, and the pin they are measured against"
+          title={t('settings.hub.address')}
+          subtitle={t('settings.hub.addressSub')}
           onPress={() => router.push('/settings/address')}
         />
         <Divider />
@@ -139,8 +147,8 @@ export default function SettingsHubScreen() {
         <Row
           c={c}
           icon="map-marker-radius-outline"
-          title="Where you work"
-          subtitle="Customers come to you, you travel to them, or both"
+          title={t('settings.hub.whereYouWork')}
+          subtitle={t('settings.hub.whereYouWorkSub')}
           onPress={() => router.push('/settings/where-you-work')}
         />
         <Divider />
@@ -153,19 +161,19 @@ export default function SettingsHubScreen() {
         <Row
           c={c}
           icon="shield-check-outline"
-          title="Verification"
+          title={t('settings.hub.verification')}
           subtitle={verificationSubtitle}
           onPress={() => router.push('/settings/verification')}
         />
       </Card>
 
-      <SectionLabel c={c}>Alerts & modules</SectionLabel>
+      <SectionLabel c={c}>{t('settings.hub.alertsSection')}</SectionLabel>
       <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
         <Row
           c={c}
           icon="whatsapp"
-          title="WhatsApp alerts"
-          subtitle="Bookings, orders and plan alerts on WhatsApp"
+          title={t('settings.hub.whatsapp')}
+          subtitle={t('settings.hub.whatsappSub')}
           onPress={() => router.push('/settings/notifications')}
         />
         <Divider />
@@ -175,9 +183,38 @@ export default function SettingsHubScreen() {
         <Row
           c={c}
           icon="view-grid-outline"
-          title="Modules"
-          subtitle="Bookings, Catalogue, Orders, Invoicing, Promotion — on or off"
+          title={t('settings.hub.modules')}
+          subtitle={t('settings.hub.modulesSub')}
           onPress={() => router.push('/settings/modules')}
+        />
+      </Card>
+
+      {/*
+        The language, and it belongs to the PHONE rather than to the account —
+        `DEVICE_KEYS.LANGUAGE`, so it survives a sign-out and a business switch
+        (`constants/app.ts:32-48`). A counter phone is shared; the person holding
+        it reads what they read whoever is signed in.
+
+        Reachable at SETTINGS READ, unlike every other row in this hub that
+        writes something: this writes nothing on the server that a member of
+        staff is not already entitled to change about themselves, and gating the
+        language behind a permission would leave a Hindi-reading assistant
+        working in English because the proprietor holds the FULL grant.
+
+        The hint is not decoration. Picking Hindi here also changes what the
+        SERVER sends — `syncLanguage()` mirrors it to `User.language`, which is
+        the only field `messaging.service.ts:808` reads when it chooses which
+        half of `notification-copy.ts` to send — and a partner who is not told
+        that has no way to discover it.
+      */}
+      <SectionLabel c={c}>{t('settings.language.section')}</SectionLabel>
+      <Card c={c}>
+        <Row c={c} icon="translate" title={t('settings.language.title')} subtitle={t('settings.language.hint')} />
+        <ChipRow
+          c={c}
+          value={language}
+          options={SUPPORTED.map((l) => ({ key: l as Language, label: LANGUAGE_NATIVE_NAME[l] }))}
+          onChange={setLanguage}
         />
       </Card>
     </Screen>

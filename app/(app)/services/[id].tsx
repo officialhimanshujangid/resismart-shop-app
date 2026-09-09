@@ -3,6 +3,7 @@ import { Alert, View, StyleSheet, useColorScheme } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -15,6 +16,7 @@ import {
 } from '../../../src/features/services';
 
 export default function ServiceDetailScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -40,15 +42,17 @@ export default function ServiceDetailScreen() {
   const confirmWithdraw = () => {
     if (!serviceQuery.data) return;
     Alert.alert(
-      `Stop offering "${serviceQuery.data.name}"?`,
-      'Residents stop seeing it and it cannot be booked. Anything already booked keeps its own record of the name and price and goes ahead as agreed.',
+      // The same two catalogue entries `services/index.tsx#confirmWithdraw`
+      // asks with — one dialog, word for word, in both places.
+      t('services.withdraw.title', { name: serviceQuery.data.name }),
+      t('services.withdraw.body'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Stop offering it', style: 'destructive',
+          text: t('services.withdraw.confirm'), style: 'destructive',
           onPress: () => withdrawService.mutate(id, {
             onSuccess: () => router.back(),
-            onError: (e: unknown) => Alert.alert('Could not do that', apiErrorMessage(e)),
+            onError: (e: unknown) => Alert.alert(t('services.detail.actionFailed'), apiErrorMessage(e)),
           }),
         },
       ],
@@ -57,7 +61,7 @@ export default function ServiceDetailScreen() {
 
   const reoffer = () => {
     updateService.mutate({ isActive: true }, {
-      onError: (e: unknown) => Alert.alert('Could not do that', apiErrorMessage(e)),
+      onError: (e: unknown) => Alert.alert(t('services.detail.actionFailed'), apiErrorMessage(e)),
     });
   };
 
@@ -70,9 +74,9 @@ export default function ServiceDetailScreen() {
    * rather than firing it into a dead radio.
    */
   const loadError = serviceQuery.isError
-    ? apiErrorMessage(serviceQuery.error, 'Could not load this service.')
+    ? apiErrorMessage(serviceQuery.error, t('services.detail.loadFailed'))
     : serviceQuery.isPending && serviceQuery.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('services.detail.noConnection')
       : null;
 
   if (loadError) {
@@ -97,12 +101,12 @@ export default function ServiceDetailScreen() {
       categories={categoriesQuery.data ?? []}
       allowedModes={allowedModes}
       canManage={canManage}
-      submitLabel={serviceQuery.data.isActive ? 'Save changes' : 'Save'}
+      submitLabel={serviceQuery.data.isActive ? t('services.detail.saveChanges') : t('common.save')}
       submitting={updateService.isPending}
       onSubmit={(body) => {
         updateService.mutate(body, {
           onSuccess: () => router.back(),
-          onError: (e: unknown) => Alert.alert('Could not save changes', apiErrorMessage(e)),
+          onError: (e: unknown) => Alert.alert(t('services.detail.saveFailed'), apiErrorMessage(e)),
         });
       }}
       footer={

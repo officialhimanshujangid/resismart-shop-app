@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, useColorScheme, Linking, Platform } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { IconButton, Text, TextInput, ActivityIndicator } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
 
 import { useProductScanner } from './useProductScanner';
 import { useRememberedScanMethod } from './scanMethod';
@@ -50,6 +51,10 @@ export interface BarcodeScannerViewProps {
 }
 
 export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies = false }: BarcodeScannerViewProps) {
+  // `hint` has NO `t(…)` default parameter — a translator called in a default
+  // would resolve once at module load and freeze the language. The fallback is
+  // applied with `??` inside the render below instead.
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
@@ -126,25 +131,25 @@ export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies
           />
         ) : (
           <View style={styles.permissionCard}>
-            <Text style={styles.permissionTitle}>Camera not available</Text>
+            <Text style={styles.permissionTitle}>{t('components.scanner.cameraUnavailable')}</Text>
             <Text style={styles.permissionBody}>
-              {permission?.canAskAgain === false
-                ? 'Camera access was refused. Turn it on in Settings, or type the code below.'
-                : 'Allow camera access to scan, or type the code below.'}
+              {t(permission?.canAskAgain === false
+                ? 'components.scanner.permissionRefused'
+                : 'components.scanner.permissionAsk')}
             </Text>
             {permission?.canAskAgain === false ? (
               <IconButton
                 icon="cog-outline"
                 mode="contained"
                 onPress={() => void Linking.openSettings()}
-                accessibilityLabel="Open settings"
+                accessibilityLabel={t('components.scanner.openSettings')}
               />
             ) : (
               <IconButton
                 icon="camera-outline"
                 mode="contained"
                 onPress={() => void requestPermission()}
-                accessibilityLabel="Allow camera access"
+                accessibilityLabel={t('components.scanner.allowCamera')}
               />
             )}
           </View>
@@ -158,12 +163,12 @@ export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies
               containerColor="rgba(0,0,0,0.45)"
               iconColor="#fff"
               onPress={() => setTorch((v) => !v)}
-              accessibilityLabel={torch ? 'Turn torch off' : 'Turn torch on'}
+              accessibilityLabel={t(torch ? 'components.scanner.torchOff' : 'components.scanner.torchOn')}
             />
             {looking && (
               <View style={styles.lookingPill}>
                 <ActivityIndicator size={14} color="#fff" />
-                <Text style={styles.lookingText}>Looking up…</Text>
+                <Text style={styles.lookingText}>{t('components.scanner.lookingUp')}</Text>
               </View>
             )}
           </View>
@@ -178,14 +183,14 @@ export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies
         {manualExpanded ? (
           <>
             <Text style={[styles.hint, { color: c.textSecondary }]}>
-              {hint ?? 'Damaged or smudged barcode? Type the code instead.'}
+              {hint ?? t('components.scanner.manualHint')}
             </Text>
             <View style={styles.manualRow}>
               <TextInput
                 mode="outlined"
                 value={manualCode}
                 onChangeText={setManualCode}
-                placeholder="Type a barcode or SKU"
+                placeholder={t('components.scanner.manualPlaceholder')}
                 autoCapitalize="characters"
                 autoCorrect={false}
                 style={styles.manualInput}
@@ -202,7 +207,7 @@ export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies
                     setManualExpanded(false);
                     setMethod('camera');
                   }}
-                  accessibilityLabel="Switch to camera"
+                  accessibilityLabel={t('components.scanner.switchToCamera')}
                 />
               )}
             </View>
@@ -212,7 +217,7 @@ export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies
             icon="keyboard-outline"
             mode="outlined"
             onPress={() => setManualExpanded(true)}
-            accessibilityLabel="Enter code manually"
+            accessibilityLabel={t('components.scanner.enterManually')}
           />
         )}
       </View>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Modal, Portal, Switch, Text, TextInput } from 'react-native-paper';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../constants/colors';
 import { formatPaise, paiseToInput, parseRupeesToPaise } from '../../../lib/money';
@@ -62,6 +63,7 @@ const blankDraft = (): DraftLineInput => ({
 export function LineEditorSheet({
   visible, line, supplierState, placeOfSupply, gstApplicable, onDismiss, onSave, onRemove, c,
 }: LineEditorSheetProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [hsn, setHsn] = useState('');
   const [qty, setQty] = useState('1');
@@ -131,20 +133,22 @@ export function LineEditorSheet({
         contentContainerStyle={[styles.sheet, { backgroundColor: c.surface }]}
       >
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
-          <Text style={[styles.title, { color: c.textPrimary }]}>{line ? 'Edit item' : 'Add a one-off item'}</Text>
+          <Text style={[styles.title, { color: c.textPrimary }]}>
+            {line ? t('billing.lineEditor.editTitle') : t('billing.lineEditor.addTitle')}
+          </Text>
 
           <TextInput
-            mode="outlined" label="Item name" value={name} onChangeText={setName}
+            mode="outlined" label={t('billing.lineEditor.itemName')} value={name} onChangeText={setName}
             style={styles.field} outlineStyle={{ borderRadius: radii.field }}
           />
 
           <View style={styles.row}>
             <TextInput
-              mode="outlined" label="Qty" value={qty} onChangeText={setQty} keyboardType="decimal-pad"
+              mode="outlined" label={t('billing.lineEditor.qty')} value={qty} onChangeText={setQty} keyboardType="decimal-pad"
               style={[styles.field, styles.half]} outlineStyle={{ borderRadius: radii.field }}
             />
             <TextInput
-              mode="outlined" label="Rate (₹)" value={rate} onChangeText={setRate} keyboardType="decimal-pad"
+              mode="outlined" label={t('billing.lineEditor.rate')} value={rate} onChangeText={setRate} keyboardType="decimal-pad"
               style={[styles.field, styles.half]} outlineStyle={{ borderRadius: radii.field }}
             />
           </View>
@@ -156,19 +160,22 @@ export function LineEditorSheet({
               // and being stopped at the field is better than being stopped at
               // the counter with a customer waiting.
               maxLength={12}
-              mode="outlined" label="HSN / SAC" value={hsn} onChangeText={setHsn} autoCapitalize="characters"
+              mode="outlined" label={t('billing.lineEditor.hsn')} value={hsn} onChangeText={setHsn} autoCapitalize="characters"
               style={[styles.field, styles.half]} outlineStyle={{ borderRadius: radii.field }}
             />
             <TextInput
-              mode="outlined" label="Discount (₹)" value={discount} onChangeText={setDiscount} keyboardType="decimal-pad"
+              mode="outlined" label={t('billing.lineEditor.discount')} value={discount} onChangeText={setDiscount} keyboardType="decimal-pad"
               style={[styles.field, styles.half]} outlineStyle={{ borderRadius: radii.field }}
             />
           </View>
 
-          <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>Unit</Text>
+          <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('billing.lineEditor.unit')}</Text>
+          {/* The unit CODES are the label — `PCS`, `KG`, `JOB` are what the
+              server stores in `unit` and what prints on the bill, so they are
+              not words to translate. */}
           <ChipRow options={DOC_UNITS.map((u) => ({ key: u, label: u }))} value={unit} onChange={setUnit} c={c} />
 
-          <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>GST rate</Text>
+          <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('billing.lineEditor.gstRate')}</Text>
           <ChipRow
             options={TAX_SLABS.map((s) => ({ key: String(s), label: `${s}%` }))}
             value={String(taxRatePercent)}
@@ -178,44 +185,43 @@ export function LineEditorSheet({
 
           <View style={[styles.switchRow, { borderColor: c.divider }]}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>Rate includes GST</Text>
+              <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('billing.lineEditor.rateIncludesGst')}</Text>
               <Text style={{ color: c.textSecondary, fontSize: 11, marginTop: 2, lineHeight: 15 }}>
                 {taxInclusive
-                  ? 'The rate above is what the customer pays; the GST is taken out of it.'
-                  : 'The GST is added on top of the rate above.'}
+                  ? t('billing.lineEditor.inclusiveHint')
+                  : t('billing.lineEditor.exclusiveHint')}
               </Text>
             </View>
             <Switch value={taxInclusive} onValueChange={setTaxInclusive} />
           </View>
 
           <View style={[styles.previewBox, { backgroundColor: c.surfaceVariant }]}>
-            <PreviewRow label="Taxable value" value={priced?.taxablePaise ?? 0} c={c} />
+            <PreviewRow label={t('billing.lineEditor.taxableValue')} value={priced?.taxablePaise ?? 0} c={c} />
             {!gstApplicable ? (
               <Text style={{ color: c.textSecondary, fontSize: 11, marginTop: 4, lineHeight: 15 }}>
-                Your business is saved as not GST registered, so no tax is charged on any line. Change that in
-                Settings → Business if it is wrong.
+                {t('billing.lineEditor.notGstRegistered')}
               </Text>
             ) : preview.interState ? (
-              <PreviewRow label={`IGST ${taxRatePercent}%`} value={priced?.igstPaise ?? 0} c={c} />
+              <PreviewRow label={t('billing.lineEditor.igst', { rate: taxRatePercent })} value={priced?.igstPaise ?? 0} c={c} />
             ) : (
               <>
-                <PreviewRow label={`CGST ${taxRatePercent / 2}%`} value={priced?.cgstPaise ?? 0} c={c} />
-                <PreviewRow label={`SGST ${taxRatePercent / 2}%`} value={priced?.sgstPaise ?? 0} c={c} />
+                <PreviewRow label={t('billing.lineEditor.cgst', { rate: taxRatePercent / 2 })} value={priced?.cgstPaise ?? 0} c={c} />
+                <PreviewRow label={t('billing.lineEditor.sgst', { rate: taxRatePercent / 2 })} value={priced?.sgstPaise ?? 0} c={c} />
               </>
             )}
-            <PreviewRow label="Line total" value={priced?.totalPaise ?? 0} c={c} bold />
+            <PreviewRow label={t('billing.lineEditor.lineTotal')} value={priced?.totalPaise ?? 0} c={c} bold />
           </View>
 
           <View style={styles.actions}>
             {!!onRemove && (
               <Button mode="text" textColor={c.error} onPress={onRemove}>
-                Remove
+                {t('billing.lineEditor.remove')}
               </Button>
             )}
             <View style={{ flex: 1 }} />
-            <Button mode="text" onPress={onDismiss}>Cancel</Button>
+            <Button mode="text" onPress={onDismiss}>{t('billing.lineEditor.cancel')}</Button>
             <Button mode="contained" onPress={submit} disabled={!valid}>
-              {line ? 'Save' : 'Add item'}
+              {line ? t('billing.lineEditor.save') : t('billing.lineEditor.add')}
             </Button>
           </View>
         </ScrollView>

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
@@ -41,6 +42,7 @@ import { Card, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/fe
  * move it.
  */
 export default function AddressScreen() {
+  const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
   const { can, refresh } = usePartnerEntitlements();
@@ -109,9 +111,9 @@ export default function AddressScreen() {
       // problem that has just been fixed.
       void queryClient.invalidateQueries({ queryKey: qk.onboarding.status() });
       refresh();
-      Alert.alert('Saved', 'Residents will be matched to you from this address and pin.');
+      Alert.alert(t('settings.address.savedTitle'), t('settings.address.savedBody'));
     },
-    onError: (e) => Alert.alert('Could not save', apiErrorMessage(e)),
+    onError: (e) => Alert.alert(t('settings.address.couldNotSave'), apiErrorMessage(e)),
   });
 
   const onSave = () => {
@@ -119,38 +121,35 @@ export default function AddressScreen() {
     // here so the answer names the box on screen rather than arriving as a
     // validation path.
     if (name.trim().length < 2) {
-      Alert.alert('Business name', 'Residents see this name, so it needs at least two characters.');
+      Alert.alert(t('settings.address.nameErrorTitle'), t('settings.address.nameErrorBody'));
       return;
     }
     if (address.trim().length < 5) {
-      Alert.alert('Address', 'Add the full address residents will see — at least five characters.');
+      Alert.alert(t('settings.address.addressErrorTitle'), t('settings.address.addressErrorBody'));
       return;
     }
     if (!city.trim() || !state.trim()) {
-      Alert.alert('City and state', 'Both are on the checklist ResiSmart reviews, so neither can be left empty.');
+      Alert.alert(t('settings.address.cityStateErrorTitle'), t('settings.address.cityStateErrorBody'));
       return;
     }
     if (!/^\d{6}$/.test(pincode.trim())) {
-      Alert.alert('Pincode', 'Enter a 6-digit pincode.');
+      Alert.alert(t('settings.address.pincodeErrorTitle'), t('settings.address.pincodeErrorBody'));
       return;
     }
     if (!coords) {
-      Alert.alert(
-        'The map pin is not set',
-        'Residents find businesses by distance, so without it you are in nobody’s area. Tap your shop on the map, or type a latitude between -90 and 90 and a longitude between -180 and 180.',
-      );
+      Alert.alert(t('settings.address.pinErrorTitle'), t('settings.address.pinErrorBody'));
       return;
     }
     save.mutate();
   };
 
-  if (query.isPending) return <Screen c={c} title="Address & map pin"><Loading c={c} /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('settings.address.title')}><Loading c={c} /></Screen>;
   if (query.isError) {
     return (
-      <Screen c={c} title="Address & map pin">
+      <Screen c={c} title={t('settings.address.title')}>
         <ErrorBlock
           c={c}
-          message={apiErrorMessage(query.error, 'We could not load your business just now.')}
+          message={apiErrorMessage(query.error, t('settings.address.couldNotLoad'))}
           onRetry={() => void query.refetch()}
         />
       </Screen>
@@ -158,21 +157,20 @@ export default function AddressScreen() {
   }
 
   return (
-    <Screen c={c} title="Address & map pin" subtitle={canEdit ? undefined : 'View only'}>
+    <Screen c={c} title={t('settings.address.title')} subtitle={canEdit ? undefined : t('settings.address.viewOnly')}>
       <Card c={c}>
-        <SectionLabel c={c}>What residents see</SectionLabel>
+        <SectionLabel c={c}>{t('settings.address.listingSection')}</SectionLabel>
         <Text style={{ color: c.textSecondary, marginBottom: 4 }}>
-          This is the name and address on your listing, and the pin residents are measured against. It is a
-          different record from Settings → Business details, which is the address printed on your bills.
+          {t('settings.address.listingNote')}
         </Text>
-        <AppInput label="Business name" value={name} onChangeText={setName} disabled={!canEdit} />
-        <AppInput label="Full address" value={address} onChangeText={setAddress} multiline disabled={!canEdit} />
+        <AppInput label={t('settings.address.name')} value={name} onChangeText={setName} disabled={!canEdit} />
+        <AppInput label={t('settings.address.fullAddress')} value={address} onChangeText={setAddress} multiline disabled={!canEdit} />
         <View style={styles.row}>
-          <AppInput label="City" value={city} onChangeText={setCity} style={styles.half} disabled={!canEdit} />
-          <AppInput label="State" value={state} onChangeText={setState} style={styles.half} disabled={!canEdit} />
+          <AppInput label={t('settings.address.city')} value={city} onChangeText={setCity} style={styles.half} disabled={!canEdit} />
+          <AppInput label={t('settings.address.state')} value={state} onChangeText={setState} style={styles.half} disabled={!canEdit} />
         </View>
         <AppInput
-          label="Pincode"
+          label={t('settings.address.pincode')}
           value={pincode}
           onChangeText={setPincode}
           keyboardType="numeric"
@@ -181,10 +179,9 @@ export default function AddressScreen() {
       </Card>
 
       <Card c={c}>
-        <SectionLabel c={c}>The map pin</SectionLabel>
+        <SectionLabel c={c}>{t('settings.address.pinSection')}</SectionLabel>
         <Text style={{ color: c.textSecondary }}>
-          Resident search is a distance query, so this is the field that decides whether you appear at all —
-          not the address above it.
+          {t('settings.address.pinNote')}
         </Text>
 
         {/* The map writes THROUGH the two boxes below rather than around them —
@@ -197,7 +194,7 @@ export default function AddressScreen() {
               carrying the decimal point AND the minus sign on both platforms,
               and a coordinate needs both. */}
           <AppInput
-            label="Latitude"
+            label={t('settings.address.latitude')}
             value={latText}
             onChangeText={setLatText}
             keyboardType="numeric"
@@ -205,7 +202,7 @@ export default function AddressScreen() {
             disabled={!canEdit}
           />
           <AppInput
-            label="Longitude"
+            label={t('settings.address.longitude')}
             value={lngText}
             onChangeText={setLngText}
             keyboardType="numeric"
@@ -216,15 +213,15 @@ export default function AddressScreen() {
         <Text style={{ color: coords || !(latText || lngText) ? c.textSecondary : c.error, fontSize: 12.5 }}>
           {latText || lngText
             ? coords
-              ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)} — a valid point on the map.`
-              : 'Latitude is between -90 and 90, longitude between -180 and 180 — and (0, 0) is in the sea.'
-            : 'No pin set yet. Place it on the map above, or copy the two numbers out of a maps app.'}
+              ? t('settings.address.pinValid', { lat: coords.lat.toFixed(5), lng: coords.lng.toFixed(5) })
+              : t('settings.address.pinInvalid')
+            : t('settings.address.pinEmpty')}
         </Text>
       </Card>
 
       {canEdit && (
         <View style={{ marginTop: 4 }}>
-          <AppButton label="Save" onPress={onSave} loading={save.isPending} disabled={save.isPending} />
+          <AppButton label={t('settings.address.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} />
         </View>
       )}
     </Screen>

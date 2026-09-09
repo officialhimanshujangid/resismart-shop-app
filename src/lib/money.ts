@@ -17,6 +17,23 @@ export type Paise = number;
  * expects (`₹12,34,567.00`, not `₹1,234,567.00`) and is available in Hermes on
  * both platforms in SDK 54. Non-finite input renders as a dash rather than
  * "NaN" — a field that has not loaded yet must not look like a broken total.
+ *
+ * ── 'en-IN' STAYS, even in Hindi, and this is a decision rather than an
+ * oversight ────────────────────────────────────────────────────────────────
+ *
+ * Dates in this app go through the catalogue instead of `Intl` (see
+ * `formatI18nDate` in `src/i18n/index.ts`) because a date contains a WORD — the
+ * month — and Android's ICU coverage under Hermes is not reliable enough to
+ * trust with it silently.
+ *
+ * A rupee amount contains no words. `hi-IN` and `en-IN` produce the identical
+ * string here: the same ₹, the same 2-2-3 grouping, and the same Latin digits
+ * (CLDR's default numbering system for `hi` is `latn`, not `deva`). So passing
+ * the reader's locale would buy nothing — and it would risk the exact failure
+ * the date note describes, a device whose ICU lacks `hi-IN` falling back to a
+ * root locale that groups `₹1,234,567.00`. A shopkeeper misreading a total by a
+ * factor of ten on an invoice is not a cosmetic bug. One fixed locale is the
+ * safer answer for a value that is already language-neutral.
  */
 export function formatPaise(paise: Paise | null | undefined, options?: { showDecimals?: boolean }): string {
   if (paise === null || paise === undefined || !Number.isFinite(paise)) return '—';

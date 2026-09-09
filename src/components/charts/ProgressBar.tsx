@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { Text } from 'react-native-paper';
 
+import { useTranslation } from 'react-i18next';
 import { ColorScheme, radii } from '../../constants/colors';
 
 /**
@@ -37,11 +38,15 @@ export function ProgressBar({
   /** Full override for the screen-reader summary. */
   accessibilityLabel?: string;
 }) {
+  const { t } = useTranslation();
   const safeMax = max > 0 ? max : 0;
   const fraction = safeMax > 0 ? Math.min(1, Math.max(0, value / safeMax)) : 0;
   const barColor = color ?? (tone === 'danger' ? c.error : tone === 'warn' ? c.warning : c.primary);
-  const shownValue = valueLabel ?? (safeMax > 0 ? `${Math.round(fraction * 100)}%` : '—');
-  const defaultA11yLabel = `${label ?? 'Progress'}: ${shownValue}${safeMax > 0 ? ` (${value} of ${max})` : ''}`;
+  const shownValue = valueLabel ?? (safeMax > 0 ? t('components.chart.percent', { percent: Math.round(fraction * 100) }) : '—');
+  const defaultA11yLabel = t('components.chart.progressSummary', {
+    label: label ?? t('components.chart.progressLabel'),
+    value: shownValue,
+  }) + (safeMax > 0 ? t('components.chart.progressOf', { value, max }) : '');
 
   return (
     <View style={{ gap: 4 }} accessible accessibilityRole="image" accessibilityLabel={accessibilityLabel ?? defaultA11yLabel}>

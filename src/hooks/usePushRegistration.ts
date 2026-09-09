@@ -8,6 +8,8 @@ import { notificationApi } from '../api/notification.api';
 import { store } from '../lib/store';
 import { DEVICE_KEYS, PUSH_CHANNEL_URGENT, PUSH_CHANNEL_DEFAULT } from '../constants/app';
 import { qk } from '../lib/queryKeys';
+import i18n from '../i18n';
+import { useLanguage } from '../i18n/useLanguage';
 
 /**
  * Register this device so a new booking reaches a partner who is not looking at
@@ -50,13 +52,20 @@ import { qk } from '../lib/queryKeys';
 
 /** Android 8+ fixes importance, sound and DND behaviour when the channel is
  *  created, not when a message is sent — both must exist before any push can
- *  arrive at a killed app. */
+ *  arrive at a killed app.
+ *
+ *  `i18n.t` on the singleton, not a `t` from a hook: this is called from an
+ *  effect and re-called on a language change (see `usePushRegistration`), and
+ *  the same reasoning `features/billing/pdf.ts` records applies — the singleton
+ *  is the instance every screen already renders from. The two names below are
+ *  the only strings in this app a partner reads OUTSIDE it, in Android's own
+ *  notification settings. */
 async function ensureAndroidChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Promise.all([
     Notifications.setNotificationChannelAsync(PUSH_CHANNEL_URGENT, {
-      name: 'Urgent alerts',
-      description: 'New bookings and orders that need you now.',
+      name: i18n.t('notifications.channels.urgent.name'),
+      description: i18n.t('notifications.channels.urgent.description'),
       importance: Notifications.AndroidImportance.MAX,
       sound: 'urgent',
       vibrationPattern: [0, 400, 250, 400],
@@ -64,8 +73,8 @@ async function ensureAndroidChannels(): Promise<void> {
       bypassDnd: true,
     }),
     Notifications.setNotificationChannelAsync(PUSH_CHANNEL_DEFAULT, {
-      name: 'Notifications',
-      description: 'Everything else — status updates, reminders, plan notices.',
+      name: i18n.t('notifications.channels.default.name'),
+      description: i18n.t('notifications.channels.default.description'),
       importance: Notifications.AndroidImportance.HIGH,
       sound: 'notification',
       vibrationPattern: [0, 250, 250, 250],
@@ -112,6 +121,33 @@ export interface PushRegistrationInput {
 
 export function usePushRegistration({ enabled, partnerId }: PushRegistrationInput): void {
   const queryClient = useQueryClient();
+  const { language } = useLanguage();
+
+  /**
+   * The channels are (re-)declared on every language change, not only on the
+   * first launch.
+   *
+   * A channel's name and description are read when it is CREATED, and a channel
+   * is never re-created once it exists — so a partner who installs in English
+   * and switches to Hindi would keep reading "Urgent alerts" in Android's own
+   * notification settings forever, which is the one place this app cannot
+   * re-render. Re-issuing `createNotificationChannel` for an id that already
+   * exists is the documented way to fix that, and it is safe precisely because
+   * it is so narrow: Android updates the name, description and group of an
+   * existing channel and NOTHING else. Importance, sound, vibration and DND
+   * belong to the partner once the channel exists, and a rename must not — and
+   * here cannot — undo a tone they chose themselves.
+   *
+   * Its own effect rather than a line inside the registration effect below: that
+   * one is keyed on the session and must not re-run for a language switch, and
+   * this one must not wait for a push token to be worth doing.
+   */
+  useEffect(() => {
+    if (Constants.appOwnership === 'expo') return; // push was removed from Expo Go on SDK 53+
+    // Never fatal, for the same reason the registration effect swallows its own
+    // failures: a channel that could not be named is not worth a broken launch.
+    void ensureAndroidChannels().catch((error) => console.warn('[push] channels skipped:', error));
+  }, [language]);
 
   useEffect(() => {
     if (!enabled || !partnerId) return;
@@ -124,7 +160,9 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
         if (!Device.isDevice) return;
 
         installHandlerOnce();
-        await ensureAndroidChannels();
+        // The channels are the effect above's job now, not this one's — it
+        // mounts in the same commit, so they still exist well before any push
+        // can arrive, and they no longer depend on a token being obtained.
 
         const existing = await Notifications.getPermissionsAsync();
         const granted =

@@ -3,8 +3,10 @@ import { Alert, RefreshControl, ScrollView, StyleSheet, useColorScheme, View } f
 import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette } from '../../../src/constants/colors';
+import { formatI18nDate } from '../../../src/i18n';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { boostApi, BoostPackage, BoostPackagesResponse, BoostReach, MyBoostsResponse } from '../../../src/api/boost.api';
@@ -43,6 +45,7 @@ import { Card, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../sr
  * actually finish it and rejected — see the note on `buy`.
  */
 export default function PromotionScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -73,10 +76,12 @@ export default function PromotionScreen() {
    */
   const buy = async (pkg: BoostPackage) => {
     if (pkg.pricePaise > 0) {
+      // `pkg.label` is the owner's own package name as the server sends it and
+      // is interpolated untouched — see `UsageMeter.tsx` for the trade this app
+      // makes on server-supplied text.
       Alert.alert(
-        `${pkg.label} — ${formatPaise(pkg.pricePaise)}`,
-        'This app cannot take the payment for a boost yet. Buy it on the ResiSmart web dashboard under '
-        + 'Promotion, and it will show up here the moment it is paid for.',
+        t('promotion.buy.priceTitle', { label: pkg.label, price: formatPaise(pkg.pricePaise) }),
+        t('promotion.buy.paidBody'),
       );
       return;
     }
@@ -86,19 +91,19 @@ export default function PromotionScreen() {
       const res = await boostApi.checkout(pkg.id);
       if ('free' in res) {
         void queryClient.invalidateQueries({ queryKey: qk.promotion() });
-        Alert.alert('Boost applied', res.message);
+        // `res.message` is the server's own confirmation, shown as it arrives.
+        Alert.alert(t('promotion.buy.applied'), res.message);
         return;
       }
       // Only reachable if the owner repriced the package between this screen
       // loading and the tap. The order is real and is waiting to be paid, so
       // the message says so rather than pretending nothing happened.
       Alert.alert(
-        `${res.packageLabel} — ${formatPaise(res.amountPaise)}`,
-        'The price of this package changed while the screen was open, and this app cannot take a payment. '
-        + `Order ${res.orderId} is waiting — finish it on the ResiSmart web dashboard.`,
+        t('promotion.buy.priceTitle', { label: res.packageLabel, price: formatPaise(res.amountPaise) }),
+        t('promotion.buy.repricedBody', { orderId: res.orderId }),
       );
     } catch (err) {
-      Alert.alert('Could not start checkout', apiErrorMessage(err));
+      Alert.alert(t('promotion.buy.failed'), apiErrorMessage(err));
     } finally {
       setBuying(null);
     }
@@ -112,15 +117,15 @@ export default function PromotionScreen() {
       <Hero
         isDark={isDark}
         rounded={false}
-        eyebrow="Grow"
-        title="Promotion"
-        subtitle="Appear above other businesses near you"
+        eyebrow={t('promotion.hero.eyebrow')}
+        title={t('promotion.hero.title')}
+        subtitle={t('promotion.hero.subtitle')}
       />
 
       {loading ? (
         <Loading c={c} />
       ) : packages.isError || boosts.isError || !packages.data || !boosts.data ? (
-        <ErrorBlock c={c} message={apiErrorMessage(packages.error ?? boosts.error, 'Could not load promotion.')} onRetry={refreshAll} />
+        <ErrorBlock c={c} message={apiErrorMessage(packages.error ?? boosts.error, t('promotion.screen.loadFailed'))} onRetry={refreshAll} />
       ) : (
         <PromotionBody
           c={c}
@@ -149,6 +154,7 @@ function PromotionBody({
   refreshing: boolean;
   onRefresh: () => void;
 }) {
+  const { t } = useTranslation();
   /**
    * One reach fetch per DISTINCT radius among the packages, not one per card —
    * two packages that sell the same radius must read the same number, and
@@ -195,40 +201,48 @@ function PromotionBody({
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       {!pkgData.boostAvailable && (
         <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>Not on your plan</Text>
-          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{pkgData.message || 'Upgrade your plan to buy a boost.'}</Text>
+          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>{t('promotion.locked.title')}</Text>
+          {/* `pkgData.message` is the server's own refusal — it names the plan
+              and the ceiling — and is shown as it arrives. Only the fallback is
+              ours to translate. */}
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{pkgData.message || t('promotion.locked.body')}</Text>
         </Card>
       )}
 
       {boostData.current && (
         <>
-          <SectionLabel c={c}>Running now</SectionLabel>
+          <SectionLabel c={c}>{t('promotion.current.label')}</SectionLabel>
           <Card c={c}>
+            {/* The package name is the owner's own, straight from the server. */}
             <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 16 }}>{boostData.current.package.label}</Text>
+            {/* Two whole keys rather than a base plus an appended " · Top
+                placement": the suffix is a clause, and a language that orders
+                it differently cannot glue it on the end. */}
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
-              {boostData.current.package.radiusKm} km radius{boostData.current.package.topPlacement ? ' · Top placement' : ''}
+              {t(boostData.current.package.topPlacement ? 'promotion.current.radiusTop' : 'promotion.current.radius',
+                { km: boostData.current.package.radiusKm })}
             </Text>
+            {/* `_one`/`_other`, never an English `-s`. */}
             <Text style={{ color: c.primary, fontWeight: '600', fontSize: 13 }}>
-              {boostData.current.daysRemaining} day{boostData.current.daysRemaining === 1 ? '' : 's'} left
+              {t('promotion.current.daysLeft', { count: boostData.current.daysRemaining })}
             </Text>
           </Card>
         </>
       )}
 
-      <SectionLabel c={c}>Packages</SectionLabel>
+      <SectionLabel c={c}>{t('promotion.screen.packagesLabel')}</SectionLabel>
       {noLocation && (
         <Card c={c} style={{ backgroundColor: c.surfaceVariant }}>
-          <Text style={{ color: c.textPrimary, fontWeight: '600' }}>We do not have your shop on the map yet</Text>
+          <Text style={{ color: c.textPrimary, fontWeight: '600' }}>{t('promotion.noLocation.title')}</Text>
           <Text style={{ color: c.textSecondary, fontSize: 13 }}>
-            Add your business location in Settings and each package below will say how many societies and
-            residents it reaches.
+            {t('promotion.noLocation.body')}
           </Text>
         </Card>
       )}
       {!pkgData.partnersEnabled ? (
-        <EmptyBlock c={c} icon="rocket-launch-outline" title="Promotion is currently switched off" body="Check back later." />
+        <EmptyBlock c={c} icon="rocket-launch-outline" title={t('promotion.off.title')} body={t('promotion.off.body')} />
       ) : pkgData.packages.length === 0 ? (
-        <EmptyBlock c={c} icon="rocket-launch-outline" title="No packages on sale right now" />
+        <EmptyBlock c={c} icon="rocket-launch-outline" title={t('promotion.screen.empty')} />
       ) : (
         pkgData.packages.map((pkg) => (
           <Card key={pkg.id} c={c} style={styles.pkgCard}>
@@ -236,15 +250,16 @@ function PromotionBody({
               <View style={{ flex: 1 }}>
                 <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 15 }}>{pkg.label}</Text>
                 <Text style={{ color: c.textSecondary, fontSize: 12 }}>
-                  {pkg.durationDays} days · {pkg.radiusKm} km{pkg.topPlacement ? ' · Top placement' : ''}
+                  {t(pkg.topPlacement ? 'promotion.pkg.metaTop' : 'promotion.pkg.meta',
+                    { count: pkg.durationDays, km: pkg.radiusKm })}
                 </Text>
                 <Text style={{ color: c.primary, fontWeight: '600', fontSize: 16, marginTop: 4 }}>
-                  {pkg.pricePaise === 0 ? 'Free' : formatPaise(pkg.pricePaise)}
+                  {pkg.pricePaise === 0 ? t('promotion.pkg.free') : formatPaise(pkg.pricePaise)}
                 </Text>
               </View>
               {canSpend && (
                 <AppButton
-                  label="Buy"
+                  label={t('promotion.pkg.buy')}
                   onPress={() => onBuy(pkg)}
                   loading={buying === pkg.id}
                   disabled={buying !== null || !pkgData.boostAvailable}
@@ -265,21 +280,28 @@ function PromotionBody({
         ))
       )}
 
-      <SectionLabel c={c}>History</SectionLabel>
+      <SectionLabel c={c}>{t('promotion.screen.historyLabel')}</SectionLabel>
       {boostData.history.length > 0 ? (
         <Card c={c} style={{ padding: 0 }}>
           {boostData.history.map((b, i) => (
             <View key={b.id} style={[styles.historyRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{b.package.label}</Text>
-                <Text style={{ color: c.textSecondary, fontSize: 11 }}>{new Date(b.purchasedAt).toLocaleDateString('en-IN')} · {b.status}</Text>
+                {/* `formatI18nDate`, never `toLocaleDateString`: this app runs
+                    on Hermes and Android's ICU coverage cannot be relied on —
+                    the full account is in `src/i18n/index.ts`. `b.status` is
+                    the server's own word and arrives translated or not by the
+                    server, so it is printed as it comes. */}
+                <Text style={{ color: c.textSecondary, fontSize: 11 }}>
+                  {t('promotion.screen.historyLine', { date: formatI18nDate(b.purchasedAt, t), status: b.status })}
+                </Text>
               </View>
               <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(b.amountPaise)}</Text>
             </View>
           ))}
         </Card>
       ) : (
-        <EmptyBlock c={c} icon="history" title="No boosts bought yet" />
+        <EmptyBlock c={c} icon="history" title={t('promotion.screen.historyEmpty')} />
       )}
     </ScrollView>
   );
@@ -307,25 +329,40 @@ function ReachLine({
   reach: BoostReach | undefined;
   loading: boolean;
 }) {
+  const { t } = useTranslation();
   if (loading) {
-    return <Text style={{ color: c.textSecondary, fontSize: 12 }}>Working out who this reaches…</Text>;
+    return <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('promotion.reach.working')}</Text>;
   }
   if (!reach) {
-    return <Text style={{ color: c.textSecondary, fontSize: 12 }}>Reach unavailable right now.</Text>;
+    return <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('promotion.reach.unavailable')}</Text>;
   }
   const clamped = reach.effectiveRadiusKm > 0 && reach.effectiveRadiusKm < pkg.radiusKm;
   return (
     <>
+      {/*
+        The two counts stay BOLD, so the sentence is assembled from separate
+        keys rather than interpolated into one — the same shape
+        `services/index.tsx`'s footer note uses for its highlighted phrase.
+        Each noun is `_one`/`_other`, never an English `-s`, and the radius is
+        its own trailing key so a language that puts "within N km" somewhere
+        else in the sentence can move it.
+
+        `toLocaleString('en-IN')` is kept deliberately: it is NUMBER GROUPING
+        (1,20,000 — the Indian lakh/crore grouping), not a translated word, and
+        it is what a reader of either language expects on this screen. The rule
+        this app states is against `toLocaleDateString`/`toLocaleTimeString`,
+        whose failure is a silently English weekday or month.
+      */}
       <Text style={{ color: c.textSecondary, fontSize: 12 }}>
         <Text style={{ color: c.textPrimary, fontWeight: '700' }}>{reach.societyCount.toLocaleString('en-IN')}</Text>
-        {reach.societyCount === 1 ? ' society' : ' societies'} ·{' '}
+        {' '}{t('promotion.reach.societiesUnit', { count: reach.societyCount })} ·{' '}
         <Text style={{ color: c.textPrimary, fontWeight: '700' }}>{reach.residentCount.toLocaleString('en-IN')}</Text>
-        {reach.residentCount === 1 ? ' resident' : ' residents'} within {reach.effectiveRadiusKm} km
+        {' '}{t('promotion.reach.residentsUnit', { count: reach.residentCount })}
+        {' '}{t('promotion.reach.withinKm', { km: reach.effectiveRadiusKm })}
       </Text>
       {clamped && (
         <Text style={{ color: c.textSecondary, fontSize: 11 }}>
-          Your business only serves {reach.effectiveRadiusKm} km, so the extra radius adds nothing until you
-          widen it in Settings.
+          {t('promotion.reach.clamped', { km: reach.effectiveRadiusKm })}
         </Text>
       )}
     </>

@@ -4,6 +4,7 @@ import { FAB, Searchbar, Switch, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
@@ -24,9 +25,13 @@ import { Hero, GlassStat } from '../../../src/components/Hero';
  * second, the precise bug the model's header documents.
  */
 
-const TABS: { key: PartySide; label: string }[] = [
-  { key: 'CUSTOMER', label: 'Customers' },
-  { key: 'SUPPLIER', label: 'Suppliers' },
+/**
+ * `key` is the WIRE value — it is posted as `side` and turned into the `$in`
+ * filter above — so it stays an English literal. Only `labelKey` is display.
+ */
+const TABS: { key: PartySide; labelKey: string }[] = [
+  { key: 'CUSTOMER', labelKey: 'parties.list.tabCustomers' },
+  { key: 'SUPPLIER', labelKey: 'parties.list.tabSuppliers' },
 ];
 
 /**
@@ -40,6 +45,7 @@ const PAGE_LIMIT = 20;
 export default function PartiesListScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { t } = useTranslation();
   const { can, ready } = usePartnerEntitlements();
   const { capacity } = usePlanUsage();
   const queryClient = useQueryClient();
@@ -118,21 +124,21 @@ export default function PartiesListScreen() {
       // A restored party counts against `max_customers` again.
       void queryClient.invalidateQueries({ queryKey: qk.usage() });
     },
-    onError: (e: unknown) => Alert.alert('Could not restore that party', apiErrorMessage(e)),
+    onError: (e: unknown) => Alert.alert(t('parties.list.restoreFailed'), apiErrorMessage(e)),
   });
 
   const confirmUnhide = useCallback(
     (party: PartnerParty) => {
       Alert.alert(
-        'Show this party again?',
-        `"${party.name}" goes back on your list and can be billed again. Their history was never deleted.`,
+        t('parties.list.unhideTitle'),
+        t('parties.list.unhideBody', { name: party.name }),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Show again', onPress: () => unhide.mutate(party._id) },
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('parties.list.unhideConfirm'), onPress: () => unhide.mutate(party._id) },
         ],
       );
     },
-    [unhide],
+    [unhide, t],
   );
 
   const renderItem = ({ item }: { item: PartnerParty }) => (
@@ -144,8 +150,8 @@ export default function PartiesListScreen() {
         <View style={{ flex: 1 }}>
           <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{item.name}</Text>
           <Text style={[styles.meta, { color: c.textSecondary }]} numberOfLines={1}>
-            {item.phone || item.email || (item.isWalkIn ? 'Walk-in' : '—')}
-            {item.kind === 'BOTH' ? ' · Customer & supplier' : ''}
+            {item.phone || item.email || (item.isWalkIn ? t('parties.list.walkIn') : '—')}
+            {item.kind === 'BOTH' ? t('parties.list.kindBothSuffix') : ''}
           </Text>
         </View>
         {showHidden && canManage ? (
@@ -153,10 +159,10 @@ export default function PartiesListScreen() {
             onPress={() => confirmUnhide(item)}
             disabled={unhide.isPending}
             style={[styles.unhideBtn, { borderColor: c.primary }]}
-            accessibilityLabel={`Show ${item.name} again`}
+            accessibilityLabel={t('parties.list.unhideLabel', { name: item.name })}
           >
             <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12 }}>
-              {unhide.isPending ? '…' : 'Show again'}
+              {unhide.isPending ? '…' : t('parties.list.unhideConfirm')}
             </Text>
           </Pressable>
         ) : (
@@ -170,7 +176,9 @@ export default function PartiesListScreen() {
               {formatPaise(Math.abs(item.outstandingPaise))}
             </Text>
             <Text style={[styles.balanceLabel, { color: c.textDisabled }]}>
-              {item.outstandingPaise > 0 ? 'they owe' : item.outstandingPaise < 0 ? 'you owe' : 'settled'}
+              {item.outstandingPaise > 0
+                ? t('parties.list.theyOwe')
+                : item.outstandingPaise < 0 ? t('parties.list.youOwe') : t('parties.list.settled')}
             </Text>
           </View>
         )}
@@ -184,31 +192,33 @@ export default function PartiesListScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <Hero
         isDark={isDark}
-        eyebrow="Parties"
-        title="Customers & suppliers"
-        subtitle="Everyone you bill, buy from, and settle with."
+        eyebrow={t('parties.list.eyebrow')}
+        title={t('parties.list.title')}
+        subtitle={t('parties.list.subtitle')}
         style={styles.hero}
       >
         {query.data ? (
           <GlassStat
             icon={side === 'CUSTOMER' ? 'account-outline' : 'truck-outline'}
-            label={showHidden ? 'Hidden' : side === 'CUSTOMER' ? 'Customers' : 'Suppliers'}
+            label={showHidden
+              ? t('parties.list.statHidden')
+              : t(side === 'CUSTOMER' ? 'parties.list.tabCustomers' : 'parties.list.tabSuppliers')}
             value={heroCount}
           />
         ) : null}
       </Hero>
 
       <View style={styles.controls}>
-        <ChipRow c={c} value={side} options={TABS} onChange={setSide} />
+        <ChipRow c={c} value={side} options={TABS.map((tab) => ({ key: tab.key, label: t(tab.labelKey) }))} onChange={setSide} />
         <Searchbar
-          placeholder="Search name, phone, GSTIN"
+          placeholder={t('parties.list.searchPlaceholder')}
           value={q}
           onChangeText={setQ}
           style={[styles.search, { backgroundColor: c.surfaceVariant }]}
           inputStyle={{ fontSize: 14 }}
         />
         <View style={styles.hiddenToggle}>
-          <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>Show hidden parties</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>{t('parties.list.showHidden')}</Text>
           <Switch value={showHidden} onValueChange={setShowHidden} color={c.primary} />
         </View>
       </View>
@@ -216,7 +226,7 @@ export default function PartiesListScreen() {
       {query.isPending && rows.length === 0 ? (
         <Loading c={c} />
       ) : query.isError && rows.length === 0 ? (
-        <ErrorBlock c={c} message={apiErrorMessage(query.error, 'Could not load your parties.')} onRetry={() => query.refetch()} />
+        <ErrorBlock c={c} message={apiErrorMessage(query.error, t('parties.list.loadFailed'))} onRetry={() => query.refetch()} />
       ) : (
         <FlatList
           data={rows}
@@ -239,17 +249,17 @@ export default function PartiesListScreen() {
               icon="account-group-outline"
               title={
                 showHidden
-                  ? 'Nothing hidden'
+                  ? t('parties.list.emptyHiddenTitle')
                   : q
-                    ? 'No match'
-                    : side === 'CUSTOMER' ? 'No customers yet' : 'No suppliers yet'
+                    ? t('parties.list.emptySearchTitle')
+                    : t(side === 'CUSTOMER' ? 'parties.list.emptyCustomersTitle' : 'parties.list.emptySuppliersTitle')
               }
               body={
                 showHidden
-                  ? 'Parties you hide appear here, and can be put back at any time.'
+                  ? t('parties.list.emptyHiddenBody')
                   : q
-                    ? 'Try a different name, phone or GSTIN.'
-                    : 'Add one with the button below.'
+                    ? t('parties.list.emptySearchBody')
+                    : t('parties.list.emptyBody')
               }
             />
           }
@@ -261,7 +271,7 @@ export default function PartiesListScreen() {
       {canManage && !showHidden && (
         <FAB
           icon="plus"
-          label={cap.atLimit ? 'Limit reached' : 'Add party'}
+          label={cap.atLimit ? t('parties.list.limitReached') : t('parties.list.addParty')}
           disabled={cap.atLimit}
           style={[styles.fab, { backgroundColor: cap.atLimit ? c.textDisabled : c.primary }]}
           color={c.textInverse}

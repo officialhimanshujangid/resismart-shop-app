@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
 import { Switch, Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -12,12 +13,9 @@ import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 
-const REG_LABEL: Record<GstRegistrationType, string> = {
-  REGULAR: 'Regular', COMPOSITION: 'Composition', UNREGISTERED: 'Unregistered', SEZ: 'SEZ', EXPORT: 'Export',
-};
-const REG_OPTIONS = GST_REGISTRATION_TYPES.map((k) => ({ key: k, label: REG_LABEL[k] }));
 
 export default function BusinessSettingsScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -25,6 +23,17 @@ export default function BusinessSettingsScreen() {
   const queryClient = useQueryClient();
 
   const query = useQuery({ queryKey: qk.businessSettings(), queryFn: settingsApi.business.get });
+
+  /**
+   * The LABELS are translated; the KEYS are not, and must not be.
+   * `registrationType` is posted back verbatim and stored as the enum
+   * `partner-business-settings.model.ts` validates against — a Hindi value here
+   * would be rejected, or silently coerced to UNREGISTERED.
+   */
+  const regOptions = useMemo(
+    () => GST_REGISTRATION_TYPES.map((k) => ({ key: k, label: t(`settings.business.reg.${k}`) })),
+    [t],
+  );
 
   const [businessName, setBusinessName] = useState('');
   const [phone, setPhone] = useState('');
@@ -68,36 +77,36 @@ export default function BusinessSettingsScreen() {
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.businessSettings() });
-      Alert.alert('Saved', 'Your business details are updated.');
+      Alert.alert(t('settings.business.savedTitle'), t('settings.business.savedBody'));
     },
-    onError: (err) => Alert.alert('Could not save', apiErrorMessage(err)),
+    onError: (err) => Alert.alert(t('settings.business.couldNotSave'), apiErrorMessage(err)),
   });
 
   const onSave = () => {
     const next: Record<string, string> = {};
-    if (!businessName.trim()) next.businessName = 'A business needs a name for its bills.';
-    if (isGstRegistered && !gstin.trim()) next.gstin = 'A GST-registered business needs its GSTIN.';
+    if (!businessName.trim()) next.businessName = t('settings.business.needName');
+    if (isGstRegistered && !gstin.trim()) next.gstin = t('settings.business.needGstin');
     setErrors(next);
     if (Object.keys(next).length) return;
     save.mutate();
   };
 
-  if (query.isPending) return <Screen c={c} title="Business details"><Loading c={c} /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('settings.business.title')}><Loading c={c} /></Screen>;
   if (query.isError) {
-    return <Screen c={c} title="Business details"><ErrorBlock c={c} message={apiErrorMessage(query.error, 'Could not load your business details.')} onRetry={() => query.refetch()} /></Screen>;
+    return <Screen c={c} title={t('settings.business.title')}><ErrorBlock c={c} message={apiErrorMessage(query.error, t('settings.business.couldNotLoad'))} onRetry={() => query.refetch()} /></Screen>;
   }
 
   return (
-    <Screen c={c} title="Business details">
+    <Screen c={c} title={t('settings.business.title')}>
       <Card c={c}>
-        <SectionLabel c={c}>Business</SectionLabel>
-        <AppInput label="Business / legal name" value={businessName} onChangeText={setBusinessName} disabled={!canEdit} error={errors.businessName} />
-        <AppInput label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" disabled={!canEdit} />
-        <AppInput label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" disabled={!canEdit} />
+        <SectionLabel c={c}>{t('settings.business.section')}</SectionLabel>
+        <AppInput label={t('settings.business.name')} value={businessName} onChangeText={setBusinessName} disabled={!canEdit} error={errors.businessName} />
+        <AppInput label={t('settings.business.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" disabled={!canEdit} />
+        <AppInput label={t('settings.business.email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" disabled={!canEdit} />
       </Card>
 
       <Card c={c}>
-        <SectionLabel c={c}>Registered address</SectionLabel>
+        <SectionLabel c={c}>{t('settings.business.addressSection')}</SectionLabel>
         {/*
           These three boxes are the trap on this screen.
 
@@ -110,34 +119,33 @@ export default function BusinessSettingsScreen() {
           fix that is actually true.
         */}
         <Text style={{ color: c.textSecondary, marginBottom: 6, fontSize: 12.5, lineHeight: 18 }}>
-          This is the address on your invoices. The address residents search — and the map pin they are
-          measured against — is in Settings → Address &amp; map pin.
+          {t('settings.business.addressNote')}
         </Text>
-        <AppInput label="Billing address" value={billingAddress} onChangeText={setBillingAddress} multiline disabled={!canEdit} />
+        <AppInput label={t('settings.business.billingAddress')} value={billingAddress} onChangeText={setBillingAddress} multiline disabled={!canEdit} />
         <View style={styles.row}>
-          <AppInput label="City" value={city} onChangeText={setCity} style={styles.half} disabled={!canEdit} />
-          <AppInput label="State" value={state} onChangeText={setState} style={styles.half} disabled={!canEdit} />
+          <AppInput label={t('settings.business.city')} value={city} onChangeText={setCity} style={styles.half} disabled={!canEdit} />
+          <AppInput label={t('settings.business.state')} value={state} onChangeText={setState} style={styles.half} disabled={!canEdit} />
         </View>
-        <AppInput label="Pincode" value={pincode} onChangeText={setPincode} keyboardType="numeric" disabled={!canEdit} />
+        <AppInput label={t('settings.business.pincode')} value={pincode} onChangeText={setPincode} keyboardType="numeric" disabled={!canEdit} />
       </Card>
 
       <Card c={c}>
-        <SectionLabel c={c}>GST</SectionLabel>
+        <SectionLabel c={c}>{t('settings.business.gstSection')}</SectionLabel>
         <View style={styles.switchRow}>
-          <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '600' }}>Registered under GST</Text>
+          <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '600' }}>{t('settings.business.gstRegistered')}</Text>
           <Switch value={isGstRegistered} onValueChange={setIsGstRegistered} color={c.primary} disabled={!canEdit} />
         </View>
         {isGstRegistered && (
           <>
-            <AppInput label="GSTIN" value={gstin} onChangeText={(v) => setGstin(v.toUpperCase())} autoCapitalize="characters" disabled={!canEdit} error={errors.gstin} />
-            <Text style={[styles.label, { color: c.textSecondary }]}>Registration type</Text>
-            <ChipRow c={c} value={registrationType} options={REG_OPTIONS} onChange={setRegistrationType} />
+            <AppInput label={t('settings.business.gstin')} value={gstin} onChangeText={(v) => setGstin(v.toUpperCase())} autoCapitalize="characters" disabled={!canEdit} error={errors.gstin} />
+            <Text style={[styles.label, { color: c.textSecondary }]}>{t('settings.business.registrationType')}</Text>
+            <ChipRow c={c} value={registrationType} options={regOptions} onChange={setRegistrationType} />
           </>
         )}
       </Card>
 
       {canEdit && (
-        <AppButton label="Save changes" onPress={onSave} loading={save.isPending} disabled={save.isPending} style={{ marginTop: 8 }} />
+        <AppButton label={t('settings.business.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} style={{ marginTop: 8 }} />
       )}
     </Screen>
   );

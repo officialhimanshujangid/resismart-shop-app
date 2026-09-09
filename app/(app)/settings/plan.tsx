@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Alert, Linking, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette, ColorScheme } from '../../../src/constants/colors';
 import { WEB_BILLING_URL } from '../../../src/constants/app';
@@ -14,6 +15,10 @@ import { formatPaise } from '../../../src/lib/money';
 import { sharePlatformInvoicePdf } from '../../../src/features/billing/pdf';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import { Card, ErrorBlock, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { formatI18nDate } from '../../../src/i18n';
+
+/** The `t` this file needs — the whole signature, narrowed to what it calls. */
+type TFunc = (key: string, opts?: Record<string, unknown>) => string;
 
 /**
  * The plan this business is on — READ ONLY, and that is the whole design.
@@ -57,29 +62,18 @@ import { Card, ErrorBlock, Row, Screen, SectionLabel } from '../../../src/featur
  * screen still learns what the business is on; only the money is withheld.
  */
 
-/** `subscription.status` / `planStatus.status` → something a proprietor reads. */
-const STATUS_LABEL: Record<string, string> = {
-  active: 'Active',
-  trialing: 'On trial',
-  past_due: 'Payment overdue',
-  pending_payment: 'Awaiting payment',
-  cancelled: 'Cancelled',
-  expired: 'Expired',
-  scheduled: 'Starts later',
-  free: 'Free plan',
-  unknown: 'Unknown',
-};
-
 /** Which statuses are a problem the partner has to act on. */
 const ALARMING = new Set(['past_due', 'pending_payment', 'expired', 'cancelled']);
 
-/** `2026-09-06T…` → `6 Sep 2026`. Renders a dash rather than "Invalid Date". */
-function formatDay(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
+/**
+ * `2026-09-06T…` → `6 Sep 2026`, or `6 सित 2026`.
+ *
+ * Through the catalogue rather than `toLocaleDateString(locale)` — see
+ * `formatI18nDate`'s own note on why `Intl` is not trusted with a month NAME on
+ * Hermes. A dash rather than "Invalid Date" for anything unreadable.
+ */
+const formatDay = (iso: string | null | undefined, t: TFunc): string =>
+  (iso ? formatI18nDate(iso, t) : '—');
 
 /**
  * Whole days from now until `iso`, or `null` when there is no readable date.
@@ -108,6 +102,7 @@ function KeyValue({ c, label, value, tone }: { c: ColorScheme; label: string; va
 }
 
 export default function PlanScreen() {
+  const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { entitlements, ready, moduleState, refresh } = usePartnerEntitlements();
@@ -136,11 +131,11 @@ export default function PlanScreen() {
   const openWebBilling = useCallback(() => {
     Linking.openURL(WEB_BILLING_URL).catch(() =>
       Alert.alert(
-        'Could not open your browser',
-        `Go to ${WEB_BILLING_URL} on a computer or phone browser to change your plan.`,
+        t('settings.plan.browserFailedTitle'),
+        t('settings.plan.browserFailedBody', { url: WEB_BILLING_URL }),
       ),
     );
-  }, []);
+  }, [t]);
 
   /**
    * Share one receipt.
@@ -152,10 +147,11 @@ export default function PlanScreen() {
    */
   const shareInvoice = useCallback(
     async (invoice: TenantInvoice) => {
-      const label = invoice.customInvoiceNumber || `ResiSmart invoice ${formatDay(invoice.createdAt)}`;
+      const label = invoice.customInvoiceNumber
+        || t('settings.plan.invoiceFallbackLabel', { date: formatDay(invoice.createdAt, t) });
       if (invoice.razorpayInvoiceUrl) {
         Linking.openURL(invoice.razorpayInvoiceUrl).catch(() =>
-          Alert.alert('Could not open that invoice', 'Your browser refused to open the link.'),
+          Alert.alert(t('settings.plan.openInvoiceFailedTitle'), t('settings.plan.openInvoiceFailedBody')),
         );
         return;
       }
@@ -163,17 +159,17 @@ export default function PlanScreen() {
       try {
         await sharePlatformInvoicePdf(invoice._id, label);
       } catch (e: unknown) {
-        Alert.alert('Could not get that invoice', apiErrorMessage(e, 'No PDF is available for this invoice yet.'));
+        Alert.alert(t('settings.plan.getInvoiceFailedTitle'), apiErrorMessage(e, t('settings.plan.getInvoiceFailedBody')));
       } finally {
         setSharingId(null);
       }
     },
-    [],
+    [t],
   );
 
   if (!ready) {
     return (
-      <Screen c={c} title="Your plan">
+      <Screen c={c} title={t('settings.plan.title')}>
         <View style={styles.center}><ActivityIndicator color={c.primary} /></View>
       </Screen>
     );
@@ -185,9 +181,14 @@ export default function PlanScreen() {
   // their grace window still has a subscription row naming the plan that
   // lapsed, and `planStatus` is the half that says so. `entitlements.plan` is
   // the fallback, and it is the only answer a staff member gets at all.
-  const planName = sub?.planStatus?.planName || plan.name;
+  // The third fallback is the translated one: `plan.name` is empty when the
+  // server named no plan (`usePartnerEntitlements#normalise`'s sentinel), and
+  // this screen prints the result as its own title.
+  const planName = sub?.planStatus?.planName || plan.name || t('settings.plan.unknownName');
   const status = sub?.planStatus?.status || plan.status;
-  const statusLabel = STATUS_LABEL[status] ?? status;
+  // An unrecognised status prints itself — `subscription.status` is the
+  // server's and can gain a member without this screen going blank.
+  const statusLabel = t(`settings.plan.status.${status}`, { defaultValue: status });
   const trialDays = plan.isTrial ? daysUntil(plan.trialEndsAt) : null;
 
   /**
@@ -204,15 +205,15 @@ export default function PlanScreen() {
   const graceEndsAt = sub?.planStatus?.graceEndsAt ?? null;
 
   const subError = subscriptionQuery.isError
-    ? apiErrorMessage(subscriptionQuery.error, 'Could not load your subscription.')
+    ? apiErrorMessage(subscriptionQuery.error, t('settings.plan.subLoadFailed'))
     : subscriptionQuery.isPending && subscriptionQuery.isPaused
-      ? 'No connection. Check your network and try again.'
+      ? t('settings.plan.noConnection')
       : null;
 
   const invoices = invoicesQuery.data ?? [];
 
   return (
-    <Screen c={c} title="Your plan" subtitle={planName}>
+    <Screen c={c} title={t('settings.plan.title')} subtitle={planName}>
       {/* ── the headline ─────────────────────────────────────────────── */}
       <Card c={c}>
         <View style={styles.headlineRow}>
@@ -220,7 +221,7 @@ export default function PlanScreen() {
             <Text style={[styles.planName, { color: c.textPrimary }]} numberOfLines={2}>{planName}</Text>
             <Text style={{ color: ALARMING.has(status) ? c.error : c.textSecondary, fontSize: 13, marginTop: 2 }}>
               {statusLabel}
-              {plan.isFreeTier ? ' · free tier' : ''}
+              {plan.isFreeTier ? t('settings.plan.freeTierSuffix') : ''}
             </Text>
           </View>
         </View>
@@ -231,17 +232,20 @@ export default function PlanScreen() {
         {plan.isTrial && (
           <View style={[styles.banner, { backgroundColor: (trialDays !== null && trialDays <= 3) ? palette.coral.soft : c.surfaceVariant }]}>
             <Text style={{ color: (trialDays !== null && trialDays <= 3) ? palette.coral[600] : c.textPrimary, fontWeight: '600', fontSize: 13 }}>
+              {/* `_one` / `_other`, not an `-s`. Hindi cannot suffix, and CLDR
+                  puts 0 AND 1 in `one` for it — which is why zero is handled by
+                  its own branch above rather than left to the plural. */}
               {trialDays === null
-                ? 'You are on a free trial.'
+                ? t('settings.plan.trialNoDeadline')
                 : trialDays < 0
-                  ? 'Your free trial has ended.'
+                  ? t('settings.plan.trialEnded')
                   : trialDays === 0
-                    ? 'Your free trial ends today.'
-                    : `Your free trial ends in ${trialDays} ${trialDays === 1 ? 'day' : 'days'}.`}
+                    ? t('settings.plan.trialEndsToday')
+                    : t('settings.plan.trialEndsIn', { count: trialDays })}
             </Text>
             <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>
-              {plan.trialEndsAt ? `Ends ${formatDay(plan.trialEndsAt)}. ` : ''}
-              Choose a plan before then to keep everything you have set up.
+              {plan.trialEndsAt ? t('settings.plan.trialEndsOn', { date: formatDay(plan.trialEndsAt, t) }) : ''}
+              {t('settings.plan.trialChoose')}
             </Text>
           </View>
         )}
@@ -249,7 +253,7 @@ export default function PlanScreen() {
         {graceEndsAt && (
           <View style={[styles.banner, { backgroundColor: palette.coral.soft }]}>
             <Text style={{ color: palette.coral[600], fontWeight: '600', fontSize: 13 }}>
-              Payment is overdue. Your plan keeps working until {formatDay(graceEndsAt)}.
+              {t('settings.plan.graceBanner', { date: formatDay(graceEndsAt, t) })}
             </Text>
           </View>
         )}
@@ -262,23 +266,29 @@ export default function PlanScreen() {
 
         {isAdmin && sub && (
           <>
-            <KeyValue c={c} label="Billing cycle" value={sub.subscription?.tenure ?? (plan.isFreeTier ? 'Not billed' : '—')} />
             <KeyValue
               c={c}
-              label={ALARMING.has(status) ? 'Ended on' : 'Renews on'}
-              value={formatDay(endDate)}
+              label={t('settings.plan.billingCycle')}
+              value={sub.subscription?.tenure ?? (plan.isFreeTier ? t('settings.plan.notBilled') : '—')}
+            />
+            <KeyValue
+              c={c}
+              label={ALARMING.has(status) ? t('settings.plan.endedOn') : t('settings.plan.renewsOn')}
+              value={formatDay(endDate, t)}
               tone={ALARMING.has(status) ? c.error : undefined}
             />
-            {nextAmount && <KeyValue c={c} label="Next payment" value={nextAmount} />}
+            {nextAmount && <KeyValue c={c} label={t('settings.plan.nextPayment')} value={nextAmount} />}
             {sub.subscription?.autoPayActive && (
-              <KeyValue c={c} label="Auto-pay" value="On — we will charge your saved mandate" />
+              <KeyValue c={c} label={t('settings.plan.autoPay')} value={t('settings.plan.autoPayOn')} />
             )}
             {/* The whole point of `nextPriceNotice`: they are told the new rate
                 and the date, instead of finding out on an invoice. */}
             {sub.nextPriceNotice && (
               <Text style={{ color: c.warning, fontSize: 12, marginTop: 2 }}>
-                From {formatDay(sub.nextPriceNotice.effectiveFrom)} this plan renews at{' '}
-                {formatPaise(sub.nextPriceNotice.wouldBecomePaise)}.
+                {t('settings.plan.priceNotice', {
+                  date: formatDay(sub.nextPriceNotice.effectiveFrom, t),
+                  amount: formatPaise(sub.nextPriceNotice.wouldBecomePaise),
+                })}
               </Text>
             )}
             {/* `?? []` because a server older than the `upcoming` key sends no
@@ -286,8 +296,10 @@ export default function PlanScreen() {
                 first screen — a crash here would be a blank plan page. */}
             {(sub.upcoming ?? []).length > 0 && (
               <Text style={{ color: c.textSecondary, fontSize: 12 }}>
-                {sub.upcoming.length === 1 ? 'A new term is' : `${sub.upcoming.length} new terms are`} already scheduled —
-                next one starts {formatDay(sub.upcoming[0]?.startDate)}.
+                {t('settings.plan.upcomingTerms', {
+                  count: sub.upcoming.length,
+                  date: formatDay(sub.upcoming[0]?.startDate, t),
+                })}
               </Text>
             )}
           </>
@@ -295,8 +307,7 @@ export default function PlanScreen() {
 
         {!isAdmin && (
           <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>
-            Only the business owner can see what the plan costs and when it renews. Everything below is what your
-            plan lets this business do.
+            {t('settings.plan.staffNotice')}
           </Text>
         )}
       </Card>
@@ -304,13 +315,13 @@ export default function PlanScreen() {
       <Row
         c={c}
         icon="open-in-new"
-        title="Change your plan"
-        subtitle="Opens the ResiSmart web panel, where plans are bought and changed"
+        title={t('settings.plan.changePlan')}
+        subtitle={t('settings.plan.changePlanSub')}
         onPress={openWebBilling}
       />
 
       {/* ── what the plan includes ───────────────────────────────────── */}
-      <SectionLabel c={c}>What your plan includes</SectionLabel>
+      <SectionLabel c={c}>{t('settings.plan.includesHeading')}</SectionLabel>
       <Card c={c} style={styles.listCard}>
         {PARTNER_MODULES.map((module: PartnerModule, i) => {
           const info = PARTNER_MODULE_INFO[module];
@@ -320,20 +331,20 @@ export default function PlanScreen() {
           // I", and the one nobody is looking at is the one that drifts.
           const detail =
             state === 'ON'
-              ? 'Included and switched on'
+              ? t('settings.plan.moduleOnDetail')
               : state === 'OFF'
-                ? 'Included — you have switched it off in Settings → Modules'
-                : 'Not on your plan';
+                ? t('settings.plan.moduleOffDetail')
+                : t('settings.plan.moduleLockedDetail');
           return (
             <View key={module}>
               <Row
                 c={c}
                 icon={info.icon}
-                title={info.label}
-                subtitle={`${detail} · ${info.blurb}`}
+                title={t(`modules.${module}.label`)}
+                subtitle={t('settings.plan.moduleSubtitle', { detail, blurb: t(`modules.${module}.blurb`) })}
                 right={
                   <Text style={{ color: state === 'LOCKED' ? c.textDisabled : state === 'OFF' ? c.warning : c.success, fontSize: 12, fontWeight: '600' }}>
-                    {state === 'ON' ? 'On' : state === 'OFF' ? 'Off' : 'Locked'}
+                    {state === 'ON' ? t('settings.plan.moduleOn') : state === 'OFF' ? t('settings.plan.moduleOff') : t('settings.plan.moduleLocked')}
                   </Text>
                 }
               />
@@ -349,7 +360,7 @@ export default function PlanScreen() {
           not an error — nothing is drawn rather than a row of zeroes. */}
       {usageRows && usageRows.length > 0 && (
         <>
-          <SectionLabel c={c}>What you have used</SectionLabel>
+          <SectionLabel c={c}>{t('settings.plan.usedHeading')}</SectionLabel>
           <Card c={c}>
             {usageRows.map((row) => {
               const cap = capacity(row.key);
@@ -366,11 +377,11 @@ export default function PlanScreen() {
       {/* ── the receipts ─────────────────────────────────────────────── */}
       {isAdmin && (
         <>
-          <SectionLabel c={c}>Invoices from ResiSmart</SectionLabel>
+          <SectionLabel c={c}>{t('settings.plan.invoicesHeading')}</SectionLabel>
           {invoicesQuery.isError ? (
             <ErrorBlock
               c={c}
-              message={apiErrorMessage(invoicesQuery.error, 'Could not load your invoices.')}
+              message={apiErrorMessage(invoicesQuery.error, t('settings.plan.invoicesLoadFailed'))}
               onRetry={() => void invoicesQuery.refetch()}
             />
           ) : invoicesQuery.isPending ? (
@@ -378,7 +389,7 @@ export default function PlanScreen() {
           ) : invoices.length === 0 ? (
             <Card c={c}>
               <Text style={{ color: c.textSecondary, fontSize: 13 }}>
-                Nothing yet. Invoices appear here after your first payment.
+                {t('settings.plan.invoicesEmpty')}
               </Text>
             </Card>
           ) : (
@@ -391,7 +402,7 @@ export default function PlanScreen() {
                     <Row
                       c={c}
                       icon={paid ? 'receipt' : invoice.status === 'REFUNDED' ? 'cash-refund' : 'clock-outline'}
-                      title={invoice.customInvoiceNumber || formatDay(invoice.paidAt || invoice.createdAt)}
+                      title={invoice.customInvoiceNumber || formatDay(invoice.paidAt || invoice.createdAt, t)}
                       subtitle={
                         `${formatPaise(invoice.amount)} · ${invoice.status ?? 'PENDING'}` +
                         (invoice.planId?.name ? ` · ${invoice.planId.name}` : '') +
@@ -402,7 +413,7 @@ export default function PlanScreen() {
                           <ActivityIndicator color={c.primary} size={18} />
                         ) : hasFile ? (
                           <Text style={{ color: c.primary, fontSize: 12, fontWeight: '600' }}>
-                            {invoice.razorpayInvoiceUrl ? 'Open' : 'Share'}
+                            {invoice.razorpayInvoiceUrl ? t('settings.plan.invoiceOpen') : t('settings.plan.invoiceShare')}
                           </Text>
                         ) : undefined
                       }
@@ -420,8 +431,8 @@ export default function PlanScreen() {
       <Row
         c={c}
         icon="refresh"
-        title="Refresh"
-        subtitle="Re-check your plan, your modules and your usage"
+        title={t('settings.plan.refresh')}
+        subtitle={t('settings.plan.refreshSub')}
         onPress={() => {
           refresh();
           void subscriptionQuery.refetch();

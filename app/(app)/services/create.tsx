@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Alert } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { apiErrorMessage, isUpgradeRequired } from '../../../src/api/axios';
@@ -16,6 +17,7 @@ import { ServiceForm, ServiceMode, SERVICE_MODES, useCreateService } from '../..
  * `cap.atLimit` is re-checked at submit time too.
  */
 export default function CreateServiceScreen() {
+  const { t } = useTranslation();
   const { can } = usePartnerEntitlements();
   const canManage = can('CATALOG_MANAGE', 'FULL');
   const { capacity } = usePlanUsage();
@@ -41,21 +43,23 @@ export default function CreateServiceScreen() {
       categories={categoriesQuery.data ?? []}
       allowedModes={allowedModes}
       canManage={canManage}
-      submitLabel="Add it"
+      submitLabel={t('services.create.submit')}
       submitting={createService.isPending}
       onSubmit={(body) => {
         if (cap.atLimit) {
-          Alert.alert('Plan limit reached', 'You are at your plan’s service limit — remove one first, or ask to upgrade.');
+          Alert.alert(t('services.create.limitTitle'), t('services.create.limitBody'));
           return;
         }
         createService.mutate(body, {
           onSuccess: () => router.back(),
           onError: (e: unknown) => {
+            // The server's own refusal is what the partner reads here — it names
+            // the ceiling and the plan; only the heading is ours.
             if (isUpgradeRequired(e)) {
-              Alert.alert('Plan limit reached', apiErrorMessage(e));
+              Alert.alert(t('services.create.limitTitle'), apiErrorMessage(e));
               return;
             }
-            Alert.alert('Could not add that service', apiErrorMessage(e));
+            Alert.alert(t('services.create.addFailed'), apiErrorMessage(e));
           },
         });
       }}

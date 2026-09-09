@@ -7,7 +7,7 @@ export type { AdjustStockInput } from './hooks';
 export { catalogApi } from './api';
 export type { ProductListPage } from './api';
 export {
-  STOCK_ADJUST_MODES, STOCK_ADJUST_REASON_CODES, STOCK_ADJUST_REASON_LABELS,
+  STOCK_ADJUST_MODES, STOCK_ADJUST_REASON_CODES, STOCK_ADJUST_REASON_LABEL_KEYS,
 } from './types';
 export type {
   Product, ProductCategory, ProductListFilters, ProductFormInput, CreateProductInput,
