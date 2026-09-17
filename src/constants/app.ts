@@ -1,4 +1,5 @@
-export const API_BASE_URL = 'https://resismart-backend-q0lf.onrender.com/api/v1';
+// OLD (suspended Render): export const API_BASE_URL = 'https://resismart-backend-q0lf.onrender.com/api/v1';
+export const API_BASE_URL = 'https://resismart-backend-67ua.onrender.com/api/v1';
 
 /**
  * The WEB OAuth client id — the audience every Google ID token is checked
