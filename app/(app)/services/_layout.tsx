@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 
 /**
  * The gate for `/services` — this app's C3 price-list screens (list, create,
@@ -51,7 +52,7 @@ export default function ServicesLayout() {
     >
       {/* `name` is the route segment and never moves; only the header title is
           translated. */}
-      <Stack.Screen name="index" options={{ title: t('services.nav.list') }} />
+      <Stack.Screen name="index" options={{ title: t('services.nav.list'), headerRight: () => <HelpButton c={c} /> }} />
       <Stack.Screen name="create" options={{ title: t('services.nav.create'), presentation: 'modal' }} />
       <Stack.Screen name="[id]" options={{ title: t('services.nav.detail') }} />
     </Stack>

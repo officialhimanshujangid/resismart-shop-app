@@ -19,6 +19,7 @@ import {
 import { ChipRow, EmptyBlock, ErrorBlock, Loading } from '../../../src/features/more/ui';
 import { toHref } from '../../../src/features/billing/routeHref';
 import { Hero, GlassStat } from '../../../src/components/Hero';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 
 /**
  * Payments, both directions — C1. `IN`/`OUT` are two tabs of the SAME model
@@ -101,6 +102,7 @@ export default function PaymentsScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <Hero
+        action={<HelpButton c={c} variant="hero" />}
         isDark={isDark}
         eyebrow={t('payments.list.eyebrow')}
         title={t('payments.list.title')}

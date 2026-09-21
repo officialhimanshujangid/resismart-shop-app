@@ -1,3 +1,4 @@
+import '@/lib/web-alert';
 import React, { useEffect, useRef, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';

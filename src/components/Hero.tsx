@@ -54,6 +54,12 @@ export interface HeroProps {
   style?: StyleProp<ViewStyle>;
   /** `GlassStat` tiles, rendered in a wrap row beneath the headline. */
   children?: React.ReactNode;
+  /**
+   * Dashboard mode: one small control pinned top-right (the Help "?", PLAN-02).
+   * The eyebrow and title are padded clear of it so a long business name never
+   * runs underneath.
+   */
+  action?: React.ReactNode;
 }
 
 const ON_HERO = 'rgba(255,255,255,0.92)';
@@ -71,6 +77,7 @@ export function Hero({
   colors,
   style,
   children,
+  action,
 }: HeroProps) {
   const scheme = isDark ? DarkColors : Colors;
   const ramp: GradientTuple = colors ?? [scheme.gradientStart, scheme.gradientEnd, scheme.gradientAccent];
@@ -95,14 +102,15 @@ export function Hero({
         </View>
       ) : (
         <>
-          {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+          {action ? <View style={styles.action}>{action}</View> : null}
+          {eyebrow ? <Text style={[styles.eyebrow, action ? styles.clearAction : null]}>{eyebrow}</Text> : null}
           {title ? (
-            <Text style={styles.title} numberOfLines={2}>
+            <Text style={[styles.title, action ? styles.clearAction : null]} numberOfLines={2}>
               {title}
             </Text>
           ) : null}
           {headline ? (
-            <View style={styles.headline}>
+            <View style={[styles.headline, action ? styles.clearAction : null]}>
               {/* The revenue figure is the one thing on this screen that must
                   never be cut off, and it is the thing most likely to be — a
                   long rupee amount at a large system font scale. It shrinks to
@@ -219,6 +227,8 @@ const styles = StyleSheet.create({
   headlineLabel: { color: ON_HERO_SOFT, fontSize: 13, fontWeight: '600', marginBottom: 6 },
   subtitle: { color: ON_HERO_SOFT, fontSize: 13.5, lineHeight: 19, marginTop: 2 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
+  action: { position: 'absolute', top: 12, right: 12, zIndex: 1 },
+  clearAction: { paddingRight: 44 },
 
   // glass tile
   glass: {

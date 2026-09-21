@@ -12,11 +12,13 @@ import { themeColors } from '../../../src/constants/colors';
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-const tabIcon =
-  (name: IconName) =>
-  ({ color, size }: { color: string; size: number }) => (
+const tabIcon = (name: IconName) => {
+  // Named so React DevTools and `react/display-name` can identify it.
+  const TabIcon = ({ color, size }: { color: string; size: number }) => (
     <MaterialCommunityIcons name={name} size={size} color={color} />
   );
+  return TabIcon;
+};
 
 /**
  * The tab bar, gated on `GET /partners/me/entitlements`, FAIL-CLOSED.

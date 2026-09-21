@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { themeColors, radii, palette } from '../../../src/constants/colors';
+import { themeColors, palette } from '../../../src/constants/colors';
 import { formatI18nDate } from '../../../src/i18n';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
@@ -14,6 +14,7 @@ import { formatPaise } from '../../../src/lib/money';
 import { apiErrorCode, apiErrorMessage } from '../../../src/api/axios';
 import { AppButton } from '../../../src/components/AppButton';
 import { Hero } from '../../../src/components/Hero';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 import { Card, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
 
 /**
@@ -115,6 +116,7 @@ export default function PromotionScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <Hero
+        action={<HelpButton c={c} variant="hero" />}
         isDark={isDark}
         rounded={false}
         eyebrow={t('promotion.hero.eyebrow')}

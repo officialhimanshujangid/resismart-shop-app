@@ -12,6 +12,7 @@ import { PartnerModule } from '../../../src/types/api-contract.generated';
 import { Card, Row, SectionLabel } from '../../../src/features/more/ui';
 import { ContextPicker } from '../../../src/components/ContextPicker';
 import { useNotifications } from '../../../src/features/notifications/hooks';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 
 /**
  * The More tab: everything that is not a bottom tab.
@@ -261,11 +262,14 @@ export default function MoreScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <View style={styles.headerBlock}>
-        <Text style={[styles.title, { color: c.textPrimary }]}>{t('more.title')}</Text>
-        <Text style={[styles.business, { color: c.textSecondary }]} numberOfLines={1}>
-          {profile?.tenantName || t('more.yourBusiness')}
-        </Text>
+      <View style={[styles.headerBlock, styles.headerRow]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.title, { color: c.textPrimary }]}>{t('more.title')}</Text>
+          <Text style={[styles.business, { color: c.textSecondary }]} numberOfLines={1}>
+            {profile?.tenantName || t('more.yourBusiness')}
+          </Text>
+        </View>
+        <HelpButton c={c} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -398,6 +402,11 @@ export default function MoreScreen() {
                 </>
               )}
               <View style={[styles.divider, { backgroundColor: c.divider }]} />
+              {/* Help (PLAN-02). Ungated like Alerts: how-to text is not a
+                  permission surface, and the server already filters each
+                  article by this person's role. */}
+              <Row c={c} icon="help-circle-outline" title={t('help.moreRowTitle')} subtitle={t('help.moreRowSub')} onPress={() => router.push('/help')} />
+              <View style={[styles.divider, { backgroundColor: c.divider }]} />
               <Row c={c} icon="logout" title={t('more.signOut')} onPress={handleSignOut} danger />
             </Card>
           </>
@@ -440,6 +449,7 @@ export default function MoreScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   headerBlock: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 12 },
   title: { fontSize: 24, fontWeight: '600' },
   business: { fontSize: 13, marginTop: 2 },
   scroll: { flex: 1 },

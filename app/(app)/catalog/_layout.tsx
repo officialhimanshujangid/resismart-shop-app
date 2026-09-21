@@ -5,6 +5,7 @@ import { Stack, Redirect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 
 /**
  * The catalog's own header stack, nested under `(app)/_layout`'s Stack —
@@ -54,7 +55,7 @@ export default function CatalogLayout() {
         contentStyle: { backgroundColor: c.background },
       }}
     >
-      <Stack.Screen name="index" options={{ title: t('catalog.nav.index') }} />
+      <Stack.Screen name="index" options={{ title: t('catalog.nav.index'), headerRight: () => <HelpButton c={c} /> }} />
       <Stack.Screen name="create" options={{ title: t('catalog.nav.create'), presentation: 'modal' }} />
       <Stack.Screen name="[id]" options={{ title: t('catalog.nav.detail') }} />
       <Stack.Screen name="scan" options={{ title: t('catalog.nav.scan'), headerShown: false }} />

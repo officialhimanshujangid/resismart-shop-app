@@ -2009,5 +2009,34 @@
         "description": "Everything else — status updates, reminders, plan notices."
       }
     }
+  },
+  "help": {
+    "title": "Help",
+    "openHelp": "Help for this screen",
+    "moreRowTitle": "Help",
+    "moreRowSub": "How to use the app, step by step",
+    "searchPlaceholder": "Type your question…",
+    "resultsSection": "Results",
+    "searching": "Searching…",
+    "noResultsTitle": "Nothing found for \"{{q}}\"",
+    "noResultsBody": "Try fewer or simpler words. Hindi, English or Hinglish all work.",
+    "thisScreenSection": "Help for this screen",
+    "noScreenHelpTitle": "No help for this screen yet",
+    "noScreenHelpBody": "We are still writing it. Try searching above, or pick a topic below.",
+    "topicsSection": "All topics",
+    "noTopicsTitle": "Help is on its way",
+    "noTopicsBody": "Simple how-to guides for this app are being written and will appear here soon.",
+    "noArticlesTitle": "No questions in this topic yet",
+    "couldNotLoad": "Could not load help. Please try again.",
+    "stepsLabel": "Steps",
+    "takeMeThere": "Take me there",
+    "footnote": "Tap any question to see the answer.",
+    "stillStuck": "Still stuck?",
+    "chatOnWhatsapp": "Chat on WhatsApp",
+    "supportHours": "We reply Mon–Sat, 10:00–19:00 IST",
+    "whatsappMessage": "Hi ResiSmart support, I need help with the partner app.",
+    "whatsappMessageAbout": "Hi ResiSmart support, I need help with {{topic}}",
+    "whatsappFailedTitle": "Could not open WhatsApp",
+    "whatsappFailedBody": "Please check WhatsApp is installed on this phone, or message us at +91 79764 26576."
   }
 }

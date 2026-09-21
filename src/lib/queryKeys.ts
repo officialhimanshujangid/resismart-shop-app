@@ -157,4 +157,11 @@ export const qk = {
   promotionReach: (radiusKm: number) => ['promotion', 'reach', radiusKm] as const,
   businessSettings: () => ['settings', 'business'] as const,
   whatsappSettings: () => ['settings', 'whatsapp'] as const,
+
+  // In-app Help (PLAN-02). Keyed by language as well: the server answers in
+  // one language, so a switch to Hindi must be a different cache entry.
+  helpModules: (lang: string) => ['help', 'modules', lang] as const,
+  helpModule: (module: string, lang: string) => ['help', 'module', module, lang] as const,
+  helpRoute: (path: string, lang: string) => ['help', 'route', path, lang] as const,
+  helpSearch: (q: string, lang: string) => ['help', 'search', q, lang] as const,
 } as const;

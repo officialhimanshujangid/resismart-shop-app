@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { Hero } from '../../../src/components/Hero';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction, useBookingsList } from '../../../src/features/bookings/hooks';
@@ -241,7 +242,7 @@ export default function BookingsScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       {/* The title is `modules.BOOKINGS.label`, the same catalogue entry the tab
           bar and the More menu read — a module is called one thing in this app. */}
-      <Hero isDark={isDark} rounded={false} eyebrow={t('bookings.list.eyebrow')} title={t('modules.BOOKINGS.label')} />
+      <Hero isDark={isDark} action={<HelpButton c={c} variant="hero" />} rounded={false} eyebrow={t('bookings.list.eyebrow')} title={t('modules.BOOKINGS.label')} />
       <View style={styles.controls}>
         <Searchbar
           placeholder={t('bookings.list.searchPlaceholder')}

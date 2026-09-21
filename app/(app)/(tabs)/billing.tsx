@@ -19,6 +19,7 @@ import { DocumentStatusChip } from '../../../src/features/billing/components/Sta
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import { toHref } from '../../../src/features/billing/routeHref';
 import { Hero, GlassStat } from '../../../src/components/Hero';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 import { ErrorBlock } from '../../../src/features/more/ui';
 import { apiErrorMessage } from '../../../src/api/axios';
 
@@ -109,6 +110,7 @@ export default function BillingScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <Hero
+        action={<HelpButton c={c} variant="hero" />}
         isDark={isDark}
         eyebrow={t('billing.list.eyebrow')}
         title={t('billing.list.title')}

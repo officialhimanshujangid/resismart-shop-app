@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +19,7 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { AppButton } from '../../../src/components/AppButton';
 import { DateField } from '../../../src/components/DateField';
 import { Hero } from '../../../src/components/Hero';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
 import { MiniBars, DonutRing, ProgressBar } from '../../../src/components/charts';
 
@@ -179,7 +180,7 @@ export default function ReportsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
-      <Hero isDark={isDark} rounded={false} eyebrow={t('reports.page.eyebrow')} title={t('reports.page.title')} />
+      <Hero isDark={isDark} action={<HelpButton c={c} variant="hero" />} rounded={false} eyebrow={t('reports.page.eyebrow')} title={t('reports.page.title')} />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
         <ChipRow c={c} value={key} options={REPORT_TABS.map((tab) => ({ key: tab.key, label: t(tab.labelKey) }))} onChange={setKey} />

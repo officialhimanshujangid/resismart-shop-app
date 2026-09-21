@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 
 import { ColorScheme, radii } from '../../constants/colors';
 import { useIsOnline } from '../../hooks/useIsOnline';
+import { HelpButton } from '../help/HelpButton';
 
 /**
  * Shared chrome for every screen under More — parties, staff, reports,
@@ -23,6 +24,7 @@ export function Screen({
   children,
   scroll = true,
   floating,
+  help = true,
 }: {
   title: string;
   subtitle?: string;
@@ -41,6 +43,12 @@ export function Screen({
    * staying pinned to the screen.
    */
   floating?: React.ReactNode;
+  /**
+   * The "?" that opens Help for this screen (PLAN-02). It only ever fills the
+   * EMPTY right slot: a screen that passes its own `right` keeps it untouched.
+   * False on the Help screens themselves.
+   */
+  help?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -57,7 +65,7 @@ export function Screen({
             <Text style={[styles.subtitle, { color: c.textSecondary }]} numberOfLines={1}>{subtitle}</Text>
           ) : null}
         </View>
-        {right ?? <View style={styles.backSpacer} />}
+        {right ?? (help ? <HelpButton c={c} /> : <View style={styles.backSpacer} />)}
       </View>
       {scroll ? (
         <ScrollView style={styles.body} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">

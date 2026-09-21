@@ -16,6 +16,7 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { qk } from '../../../src/lib/queryKeys';
 import { Kpi, findKpi, findSeries, formatKpiValue } from '../../../src/api/analytics.api';
 import { Hero, GlassStat } from '../../../src/components/Hero';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 import { MiniBars } from '../../../src/components/charts';
 
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
@@ -360,6 +361,7 @@ export default function TodayScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <Hero
+          action={<HelpButton c={c} variant="hero" />}
           isDark={isDark}
           // `tabs.today` rather than a second key: the eyebrow and the tab name
           // this screen sits under are the same word for the same screen.

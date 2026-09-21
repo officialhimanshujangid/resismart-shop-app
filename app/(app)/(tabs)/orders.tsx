@@ -10,12 +10,13 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { Hero } from '../../../src/components/Hero';
+import { HelpButton } from '../../../src/features/help/HelpButton';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
 import {
   useOrders, useOrder, useOrderTransition,
   OrderCard, OrderDetailModal, ReasonPromptModal, RecordReturnModal,
-  filterKnownVerbs, verbNeedsReason,
+  verbNeedsReason,
 } from '../../../src/features/orders';
 import type { KnownOrderVerb, PartnerOrder, ReasonPromptTarget, OrderReturnResult } from '../../../src/features/orders';
 import { formatPaise } from '../../../src/lib/money';
@@ -300,7 +301,7 @@ export default function OrdersScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       {/* The title is `modules.ORDERS.label`, the same catalogue entry the tab
           bar and the More menu read — a module is called one thing in this app. */}
-      <Hero isDark={isDark} rounded={false} eyebrow={t('orders.list.eyebrow')} title={t('modules.ORDERS.label')} />
+      <Hero isDark={isDark} action={<HelpButton c={c} variant="hero" />} rounded={false} eyebrow={t('orders.list.eyebrow')} title={t('modules.ORDERS.label')} />
 
       <Searchbar
         placeholder={t('orders.list.searchPlaceholder')}
