@@ -587,6 +587,14 @@
     }
   },
   "billing": {
+    "transportReason": {
+      "SUPPLY_OF_LIQUID_GAS": "Liquid gas (quantity not known)",
+      "JOB_WORK": "Job work",
+      "SUPPLY_ON_APPROVAL": "Supply on approval",
+      "EXHIBITION_OR_FAIR": "Exhibition or fair",
+      "OWN_USE": "Own use",
+      "OTHER": "Other reason"
+    },
     "documentType": {
       "TAX_INVOICE": "Tax invoice",
       "QUOTATION": "Quotation",
@@ -721,6 +729,14 @@
       "dueDatePlaceholder": "When payment is due",
       "validUntil": "Valid until",
       "validUntilPlaceholder": "How long this quote holds",
+      "deliveryDate": "Delivery by",
+      "deliveryDatePlaceholder": "Optional — when you want the goods",
+      "deliveryBeforeDocument": "The delivery date cannot be before the document date.",
+      "transportReason": "Reason for transport",
+      "transportReasonHint": "GST Rule 55 — the challan cannot be issued without one.",
+      "transportReasonNote": "Describe the reason",
+      "transportReasonRequired": "Choose the reason for transport before issuing the challan.",
+      "transportReasonNoteRequired": "Describe the reason for transport when you pick “Other reason”.",
       "goodsReturned": "Goods actually returned?",
       "goodsReturnedHint": "On for a returned item, off for a price correction — this decides whether it goes back on the shelf.",
       "items": "Items",
@@ -780,6 +796,8 @@
       "paymentOutRecorded": "Payment out recorded.",
       "paymentFailed": "That payment could not be recorded.",
       "gstin": "GSTIN: {{gstin}}",
+      "deliveryBy": "Deliver by {{date}}",
+      "transportReason": "Reason for transport: {{reason}}",
       "items": "Items",
       "taxableValue": "Taxable value",
       "lineQty": "{{qty}} {{unit}} × {{rate}}",
@@ -1670,7 +1688,14 @@
       "extendedTo": "Extended to {{time}} · {{left}} left",
       "timeLeft": "{{left}} left of the booked {{planned}}",
       "flatSuffix": " · {{flat}}",
-      "societySuffix": " · {{society}}"
+      "societySuffix": " · {{society}}",
+      "taxInvoice": "Tax invoice"
+    },
+    "taxInvoice": {
+      "confirmTitle": "Issue the tax invoice?",
+      "confirmBody": "A numbered invoice for {{service}} at {{amount}}, GST included (none if you are not GST registered). It cannot be edited once issued.",
+      "confirmAction": "Issue invoice",
+      "failedTitle": "Could not open the invoice"
     },
     "action": {
       "subtitle": "{{code}} · {{service}}",
@@ -1765,7 +1790,9 @@
       "staffBlurb": "Who works here, their roles, and what each role may touch.",
       "settings": "Settings",
       "settingsBlurb": "Business details, how invoices look, and WhatsApp alerts."
-    }
+    },
+    "deleteAccount": "Delete account",
+    "deleteAccountSub": "Remove your login and personal details for good"
   },
   "tabs": {
     "today": "Today",
@@ -2038,5 +2065,49 @@
     "whatsappMessageAbout": "Hi ResiSmart support, I need help with {{topic}}",
     "whatsappFailedTitle": "Could not open WhatsApp",
     "whatsappFailedBody": "Please check WhatsApp is installed on this phone, or message us at +91 79764 26576."
+  },
+  "account": {
+    "delete": {
+      "title": "Delete account",
+      "warningTitle": "This permanently deletes your account",
+      "warningBody": "You will be signed out on every device and cannot sign back in with this account. This cannot be undone.",
+      "deletedSection": "What is deleted",
+      "deleted": {
+        "login": "Your login — phone, email, password and Google sign-in",
+        "photo": "Your profile photo",
+        "details": "Your personal details, such as your name",
+        "devices": "Notifications to your devices",
+        "workspaces": "Your access to every partner and society workspace"
+      },
+      "keptSection": "What is kept",
+      "kept": {
+        "invoices": "Invoices, bills and payments you were part of — Indian tax law requires us to keep these",
+        "business": "Business records that belong to the business, not to you"
+      },
+      "readPolicy": "Read the full policy at resismart.in/delete-account",
+      "browserFailedTitle": "Could not open the browser",
+      "browserFailedBody": "Open {{url}} on any device to read the full policy.",
+      "sendHint": "To confirm it is you, we will send a 6-digit code to the phone or email you sign in with.",
+      "sendCode": "Send code",
+      "sendFailedTitle": "Could not send the code",
+      "sendFailed": "Could not send the code. Please try again.",
+      "blockedTitle": "Hand over your business first",
+      "yourPhone": "your phone",
+      "yourEmail": "your email",
+      "sentWhatsapp": "We sent a 6-digit code on WhatsApp to {{to}}.",
+      "sentSms": "We sent a 6-digit code by SMS to {{to}}.",
+      "sentEmail": "We sent a 6-digit code by email to {{to}}.",
+      "codeLabel": "6-digit code",
+      "codeIncomplete": "Enter all 6 digits of the code.",
+      "confirmButton": "Delete my account",
+      "confirmFailed": "That code did not work. Check it and try again.",
+      "resend": "Send a new code",
+      "resendIn": "Send a new code in {{seconds}}s",
+      "finalTitle": "Delete your account?",
+      "finalBody": "Your login, photo and personal details will be removed and you will lose access to every workspace. This cannot be undone.",
+      "finalConfirm": "Delete",
+      "doneTitle": "Account deleted",
+      "doneBody": "Your account has been deleted."
+    }
   }
 }

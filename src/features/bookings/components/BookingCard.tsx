@@ -140,7 +140,17 @@ interface Props {
   onOpenForm: (verb: BookingVerb) => void;
   compact?: boolean;
   isDark: boolean;
+  /**
+   * Open (or raise) the bill for a finished job. Drawn only when handed in and
+   * only on COMPLETED / INVOICED / PAID — a job not yet done has nothing to bill.
+   */
+  onTaxInvoice?: () => void;
+  /** True while that open/raise is in flight for THIS card. */
+  taxInvoiceBusy?: boolean;
 }
+
+/** The statuses a job can be billed in — `BILLABLE_BOOKING_STATUSES` on the server. */
+const BILLABLE_STATUSES = new Set<string>(['COMPLETED', 'INVOICED', 'PAID']);
 
 /**
  * One booking, drawn once and reused by both the Today timeline and the
@@ -154,7 +164,9 @@ interface Props {
  * nothing else, without this component asking a separate "may I manage
  * bookings" question that could disagree with the table.
  */
-export function BookingCard({ booking, pending, onQuickAction, onOpenForm, compact, isDark }: Props) {
+export function BookingCard({
+  booking, pending, onQuickAction, onOpenForm, compact, isDark, onTaxInvoice, taxInvoiceBusy,
+}: Props) {
   const { t } = useTranslation();
   const c = themeColors(isDark);
   const verbs = routedVerbsOf(booking);
@@ -237,6 +249,23 @@ export function BookingCard({ booking, pending, onQuickAction, onOpenForm, compa
             </Button>
           ))}
           {pending && <ActivityIndicator size="small" style={{ marginLeft: 4 }} />}
+        </View>
+      )}
+
+      {!compact && onTaxInvoice && BILLABLE_STATUSES.has(booking.status) && (
+        <View style={styles.actions}>
+          <Button
+            mode="outlined"
+            compact
+            icon="file-document-outline"
+            disabled={taxInvoiceBusy}
+            loading={taxInvoiceBusy}
+            onPress={onTaxInvoice}
+            style={styles.actionBtn}
+            labelStyle={styles.actionLabel}
+          >
+            {t('bookings.card.taxInvoice')}
+          </Button>
         </View>
       )}
     </Surface>

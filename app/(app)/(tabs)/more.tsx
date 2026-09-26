@@ -408,6 +408,20 @@ export default function MoreScreen() {
               <Row c={c} icon="help-circle-outline" title={t('help.moreRowTitle')} subtitle={t('help.moreRowSub')} onPress={() => router.push('/help')} />
               <View style={[styles.divider, { backgroundColor: c.divider }]} />
               <Row c={c} icon="logout" title={t('more.signOut')} onPress={handleSignOut} danger />
+              <View style={[styles.divider, { backgroundColor: c.divider }]} />
+              {/* Delete account (Google Play's in-app deletion rule). Ungated like
+                  Alerts and Help: it is this PERSON's account, and a member of
+                  staff with no grant at all must still be able to leave. Last in
+                  the card, below Sign out, so it is never the row a thumb lands
+                  on by habit. */}
+              <Row
+                c={c}
+                icon="account-remove-outline"
+                title={t('more.deleteAccount')}
+                subtitle={t('more.deleteAccountSub')}
+                onPress={() => router.push('/account/delete')}
+                danger
+              />
             </Card>
           </>
         )}

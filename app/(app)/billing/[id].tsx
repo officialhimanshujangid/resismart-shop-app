@@ -16,7 +16,9 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { documentsApi } from '../../../src/features/billing/documents.api';
 import { shareDocumentPdf } from '../../../src/features/billing/pdf';
 import { getThermalPrinter } from '../../../src/features/printing';
-import { CONVERSION_TARGETS, DOCUMENT_TYPE_LABEL_KEY, PartnerDocumentType, behaviourOf } from '../../../src/features/billing/types';
+import {
+  CONVERSION_TARGETS, DOCUMENT_TYPE_LABEL_KEY, PartnerDocumentType, behaviourOf, TRANSPORT_REASON_LABEL_KEY,
+} from '../../../src/features/billing/types';
 import { DocumentStatusChip } from '../../../src/features/billing/components/StatusChip';
 import { toHref } from '../../../src/features/billing/routeHref';
 import { paymentsApi } from '../../../src/features/payments/payments.api';
@@ -477,6 +479,20 @@ export default function DocumentDetailScreen() {
           <Text style={[styles.docDate, { color: c.textSecondary }]}>
             {formatI18nDate(doc.documentDate, t)}
           </Text>
+          {!!doc.deliveryDate && (
+            <Text style={[styles.docDate, { color: c.textSecondary }]}>
+              {t('billing.detail.deliveryBy', { date: formatI18nDate(doc.deliveryDate, t) })}
+            </Text>
+          )}
+          {!!doc.transportReason && (
+            <Text style={[styles.docDate, { color: c.textSecondary }]}>
+              {t('billing.detail.transportReason', {
+                reason: doc.transportReason === 'OTHER' && doc.transportReasonNote
+                  ? doc.transportReasonNote
+                  : t(TRANSPORT_REASON_LABEL_KEY[doc.transportReason]),
+              })}
+            </Text>
+          )}
         </Surface>
 
         <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>

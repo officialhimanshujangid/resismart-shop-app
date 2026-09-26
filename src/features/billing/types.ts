@@ -69,6 +69,31 @@ export const DOCUMENT_TYPE_LABEL_KEY: Record<PartnerDocumentType, string> = {
   DEBIT_NOTE: 'billing.documentType.DEBIT_NOTE',
 };
 
+/**
+ * CGST Rule 55's reasons a delivery challan may move goods under — mirrors
+ * `TRANSPORT_REASONS` in `backend/src/models/partner-document.model.ts`. The code
+ * is what is stored and sent; only the words are translated here. The PDF
+ * prints its own English words (`TRANSPORT_REASON_LABELS` in the backend render
+ * model) — the printed challan is a legal document in one language.
+ */
+export const TRANSPORT_REASONS = [
+  'SUPPLY_OF_LIQUID_GAS', 'JOB_WORK', 'SUPPLY_ON_APPROVAL', 'EXHIBITION_OR_FAIR', 'OWN_USE', 'OTHER',
+] as const;
+export type TransportReason = typeof TRANSPORT_REASONS[number];
+
+export const TRANSPORT_REASON_LABEL_KEY: Record<TransportReason, string> = {
+  SUPPLY_OF_LIQUID_GAS: 'billing.transportReason.SUPPLY_OF_LIQUID_GAS',
+  JOB_WORK: 'billing.transportReason.JOB_WORK',
+  SUPPLY_ON_APPROVAL: 'billing.transportReason.SUPPLY_ON_APPROVAL',
+  EXHIBITION_OR_FAIR: 'billing.transportReason.EXHIBITION_OR_FAIR',
+  OWN_USE: 'billing.transportReason.OWN_USE',
+  OTHER: 'billing.transportReason.OTHER',
+};
+
+/** Which of the two extra fields a type carries — the backend's `statesTransportReason` / `statesDeliveryDate` columns. */
+export const statesTransportReason = (type: PartnerDocumentType): boolean => type === 'DELIVERY_CHALLAN';
+export const statesDeliveryDate = (type: PartnerDocumentType): boolean => type === 'PURCHASE_ORDER';
+
 // ──────────────────────────────────────────────────────────── behaviour
 
 /**
@@ -280,6 +305,12 @@ export interface PartnerDocumentRecord {
   paidPaise: number;
   dueDate?: string;
   validUntil?: string;
+  /** Delivery challan only — a CGST Rule 55 code. */
+  transportReason?: TransportReason;
+  /** The reason in words, when `transportReason` is OTHER. */
+  transportReasonNote?: string;
+  /** Purchase order only — when the goods are wanted. */
+  deliveryDate?: string;
   reverseCharge: boolean;
   goodsReturned: boolean;
   pdfUrl?: string;
@@ -365,6 +396,11 @@ export interface InvoiceDraft {
   validUntil?: string;
   /** Only meaningful when the type's `stockNeedsGoodsFlag` is true (CREDIT_NOTE, DEBIT_NOTE). */
   goodsReturned?: boolean;
+  /** Delivery challan only (CGST Rule 55) — `issue` refuses a challan without one. */
+  transportReason?: TransportReason;
+  transportReasonNote?: string;
+  /** Purchase order only — ISO date string, never before `documentDate`. */
+  deliveryDate?: string;
   /**
    * The job or order this bill is FOR, when it was started from one.
    *
@@ -400,6 +436,9 @@ export interface AddDraftInput {
   dueDate?: string;
   validUntil?: string;
   goodsReturned?: boolean;
+  transportReason?: TransportReason;
+  transportReasonNote?: string;
+  deliveryDate?: string;
   /** The job this bill is for, when the screen was opened from one. */
   sourceType?: 'BOOKING' | 'ORDER';
   sourceId?: string;

@@ -3,7 +3,7 @@ import {
   KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, useColorScheme, View,
 } from 'react-native';
 import {
-  ActivityIndicator, Button, Divider, IconButton, Modal, Portal, SegmentedButtons, Snackbar, Surface, Switch, Text, TextInput,
+  ActivityIndicator, Button, Chip, Divider, IconButton, Modal, Portal, SegmentedButtons, Snackbar, Surface, Switch, Text, TextInput,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, usePathname, useLocalSearchParams } from 'expo-router';
@@ -27,6 +27,7 @@ import { LineEditorSheet } from '../../../src/features/billing/components/LineEd
 import {
   BillingScreenDocumentType, DOCUMENT_TYPE_LABEL_KEY, DocumentDirection, DraftLineInput,
   GST_STATES, PartnerPartyRecord, SALES_DOCUMENT_TYPES, PURCHASE_DOCUMENT_TYPES, behaviourOf,
+  TRANSPORT_REASONS, TRANSPORT_REASON_LABEL_KEY, TransportReason, statesTransportReason, statesDeliveryDate,
 } from '../../../src/features/billing/types';
 import { toHref } from '../../../src/features/billing/routeHref';
 // Reached only when this screen was opened FROM a booking or an order — see
@@ -136,6 +137,11 @@ export default function NewInvoiceScreen() {
   const [dueDate, setDueDate] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [goodsReturned, setGoodsReturned] = useState(false);
+  /** Delivery challan (CGST Rule 55): why the goods move. `null` = not chosen yet. */
+  const [transportReason, setTransportReason] = useState<TransportReason | null>(null);
+  const [transportReasonNote, setTransportReasonNote] = useState('');
+  /** Purchase order: when the goods are wanted — optional, "YYYY-MM-DD". */
+  const [deliveryDate, setDeliveryDate] = useState('');
 
   // ---- party ----
   // A purchase document always names a supplier (`requiresParty: true` for
@@ -206,6 +212,8 @@ export default function NewInvoiceScreen() {
     if (behaviour.dateField !== 'dueDate') setDueDate('');
     if (behaviour.dateField !== 'validUntil') setValidUntil('');
     if (!behaviour.stockNeedsGoodsFlag) setGoodsReturned(false);
+    if (!statesTransportReason(docType)) { setTransportReason(null); setTransportReasonNote(''); }
+    if (!statesDeliveryDate(docType)) setDeliveryDate('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docType]);
 
@@ -425,6 +433,22 @@ export default function NewInvoiceScreen() {
       setErrorMessage(t('billing.new.needSupplier', { type: t(DOCUMENT_TYPE_LABEL_KEY[docType]).toLowerCase() }));
       return;
     }
+    // This screen always ISSUES, and the server refuses to number a challan with
+    // no Rule 55 reason — said here, before a draft is queued that can only fail.
+    if (statesTransportReason(docType)) {
+      if (!transportReason) {
+        setErrorMessage(t('billing.new.transportReasonRequired'));
+        return;
+      }
+      if (transportReason === 'OTHER' && !transportReasonNote.trim()) {
+        setErrorMessage(t('billing.new.transportReasonNoteRequired'));
+        return;
+      }
+    }
+    if (statesDeliveryDate(docType) && deliveryDate && documentDate && deliveryDate < documentDate) {
+      setErrorMessage(t('billing.new.deliveryBeforeDocument'));
+      return;
+    }
     setSubmitting(true);
     setErrorMessage(null);
 
@@ -473,6 +497,11 @@ export default function NewInvoiceScreen() {
       dueDate: behaviour.dateField === 'dueDate' ? isoOf(dueDate) : undefined,
       validUntil: behaviour.dateField === 'validUntil' ? isoOf(validUntil) : undefined,
       goodsReturned: behaviour.stockNeedsGoodsFlag ? goodsReturned : undefined,
+      transportReason: statesTransportReason(docType) ? transportReason ?? undefined : undefined,
+      transportReasonNote: statesTransportReason(docType) && transportReason === 'OTHER'
+        ? transportReasonNote.trim()
+        : undefined,
+      deliveryDate: statesDeliveryDate(docType) ? isoOf(deliveryDate) : undefined,
       sourceType,
       sourceId,
     });
@@ -530,7 +559,8 @@ export default function NewInvoiceScreen() {
     // happens automatically the moment the connection returns.
     router.replace('/(app)/billing/drafts');
   }, [lines, selectedParty, walkinName, walkinPhone, walkinState, docType, behaviour, addDraft, retryDraft,
-    sourceType, sourceId, jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned, t]);
+    sourceType, sourceId, jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned,
+    transportReason, transportReasonNote, deliveryDate, t]);
 
   if (!canManage) {
     return (
@@ -697,6 +727,47 @@ export default function NewInvoiceScreen() {
                 minimumDate={documentDate ? new Date(`${documentDate}T00:00:00`) : undefined}
                 placeholder={t('billing.new.validUntilPlaceholder')}
               />
+            )}
+            {statesDeliveryDate(docType) && (
+              <DateField
+                label={t('billing.new.deliveryDate')}
+                value={deliveryDate}
+                onChangeText={setDeliveryDate}
+                mode="date"
+                minimumDate={documentDate ? new Date(`${documentDate}T00:00:00`) : undefined}
+                placeholder={t('billing.new.deliveryDatePlaceholder')}
+              />
+            )}
+            {statesTransportReason(docType) && (
+              <View style={{ gap: 6 }}>
+                <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('billing.new.transportReason')}</Text>
+                <Text style={{ color: c.textSecondary, fontSize: 11 }}>{t('billing.new.transportReasonHint')}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {TRANSPORT_REASONS.map((code) => (
+                    <Chip
+                      key={code}
+                      compact
+                      selected={transportReason === code}
+                      showSelectedCheck
+                      mode={transportReason === code ? 'flat' : 'outlined'}
+                      onPress={() => setTransportReason(code)}
+                      accessibilityState={{ selected: transportReason === code }}
+                    >
+                      {t(TRANSPORT_REASON_LABEL_KEY[code])}
+                    </Chip>
+                  ))}
+                </View>
+                {transportReason === 'OTHER' && (
+                  <TextInput
+                    mode="outlined"
+                    label={t('billing.new.transportReasonNote')}
+                    value={transportReasonNote}
+                    onChangeText={setTransportReasonNote}
+                    maxLength={200}
+                    outlineStyle={{ borderRadius: radii.field }}
+                  />
+                )}
+              </View>
             )}
             {behaviour.stockNeedsGoodsFlag && (
               <View style={styles.goodsRow}>

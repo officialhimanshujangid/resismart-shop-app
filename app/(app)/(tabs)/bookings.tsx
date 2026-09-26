@@ -11,8 +11,10 @@ import { BookingCard } from '../../../src/features/bookings/components/BookingCa
 import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction, useBookingsList } from '../../../src/features/bookings/hooks';
 import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABEL_KEYS } from '../../../src/features/bookings/booking.types';
-import { slotConflictsOf } from '../../../src/features/bookings/booking.api';
+import { bookingApi, slotConflictsOf } from '../../../src/features/bookings/booking.api';
 import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
+import { newIdempotencyKey } from '../../../src/lib/idempotency';
+import { formatPaise } from '../../../src/lib/money';
 import { ErrorBlock } from '../../../src/features/more/ui';
 // `as Href` on the push below: the destination is built with a query string, so
 // it is not one of the literal routes the generated union describes — the same
@@ -155,6 +157,64 @@ export default function BookingsScreen() {
     router.push(`/(app)/billing/new?${q.toString()}` as Href);
   }, []);
 
+  /**
+   * "Tax invoice" on a finished job: open the bill that covers it, or — after
+   * one confirmation naming the amount — raise and issue it from the booking
+   * (`POST /partners/me/bookings/:id/tax-invoice`, the P6 engine, SAC and GST
+   * decided server-side). Either way the partner lands on the document screen,
+   * which already shares and prints its PDF.
+   *
+   * A hand-raised draft already open for the job is not duplicated: the server
+   * answers 409 with its id and the draft is opened instead.
+   */
+  const [invoiceBusyId, setInvoiceBusyId] = useState<string | null>(null);
+  const openDocument = useCallback((documentId: string) => {
+    router.push(`/(app)/billing/${documentId}` as Href);
+  }, []);
+  const raiseTaxInvoice = useCallback(async (booking: PartnerBookingView) => {
+    setInvoiceBusyId(booking.id);
+    try {
+      const bill = await bookingApi.raiseTaxInvoice(booking.id, newIdempotencyKey('bkinv'));
+      openDocument(bill.documentId);
+    } catch (e) {
+      const draftId = (e as { response?: { data?: { data?: { documentId?: string } } } })?.response?.data?.data?.documentId;
+      if (apiErrorCode(e) === 'BOOKING_BILL_DRAFT_EXISTS' && draftId) {
+        openDocument(draftId);
+        return;
+      }
+      Alert.alert(t('bookings.taxInvoice.failedTitle'), apiErrorMessage(e));
+    } finally {
+      setInvoiceBusyId(null);
+    }
+  }, [openDocument, t]);
+  const openTaxInvoice = useCallback(async (booking: PartnerBookingView) => {
+    setInvoiceBusyId(booking.id);
+    let existing: Awaited<ReturnType<typeof bookingApi.taxInvoice>> = null;
+    try {
+      existing = await bookingApi.taxInvoice(booking.id);
+    } catch (e) {
+      setInvoiceBusyId(null);
+      Alert.alert(t('bookings.taxInvoice.failedTitle'), apiErrorMessage(e));
+      return;
+    }
+    setInvoiceBusyId(null);
+    if (existing) {
+      openDocument(existing.documentId);
+      return;
+    }
+    Alert.alert(
+      t('bookings.taxInvoice.confirmTitle'),
+      t('bookings.taxInvoice.confirmBody', {
+        amount: formatPaise(booking.pricing.totalPaise),
+        service: booking.serviceSnapshot.name,
+      }),
+      [
+        { text: t('common.notNow'), style: 'cancel' },
+        { text: t('bookings.taxInvoice.confirmAction'), onPress: () => { void raiseTaxInvoice(booking); } },
+      ],
+    );
+  }, [openDocument, raiseTaxInvoice, t]);
+
   const runQuick = useCallback(
     (booking: PartnerBookingView, verb: BookingVerb) => {
       const promptKey = CONFIRM_COPY_KEYS[verb];
@@ -285,6 +345,8 @@ export default function BookingsScreen() {
             pending={isPending && pendingId === item.id}
             onQuickAction={(verb) => runQuick(item, verb)}
             onOpenForm={(verb) => openForm(item, verb)}
+            onTaxInvoice={() => { void openTaxInvoice(item); }}
+            taxInvoiceBusy={invoiceBusyId === item.id}
           />
         )}
         ListEmptyComponent={

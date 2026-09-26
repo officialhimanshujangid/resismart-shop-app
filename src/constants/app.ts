@@ -123,6 +123,13 @@ export const WEB_PANEL_URL = 'https://resismart.in';
 export const WEB_BILLING_URL = `${WEB_PANEL_URL}/dashboard/billing`;
 
 /**
+ * The public page that says what deleting an account removes and what the law
+ * makes us keep — the full version of the summary on `account/delete.tsx`, and
+ * the web route for anybody who can no longer sign in to this app.
+ */
+export const WEB_DELETE_ACCOUNT_URL = `${WEB_PANEL_URL}/delete-account`;
+
+/**
  * The two Android notification channels every partner alert lands on (K2).
  *
  * Android 8+ ignores importance, sound and DND behaviour set at send time —

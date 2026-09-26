@@ -2,11 +2,26 @@
 // app uses, imported the way the linter asks for it.
 import { isAxiosError } from 'axios';
 
-import { apiClient, ApiEnvelope, unwrap } from '../../api/axios';
+import { apiClient, ApiEnvelope, unwrap, withIdempotency } from '../../api/axios';
 import {
   AssignableStaff, BookingConflictView, BookingOverrunView, BookingVerb, PagedResult,
   PartnerBookingListFilters, PartnerBookingView,
 } from './booking.types';
+
+/**
+ * The bill covering a job, as `/partners/me/bookings/:id/tax-invoice` answers
+ * it — a pointer to the document, never the document. `gstRegistered` false
+ * means the business charges no GST: the bill is a bill of supply.
+ */
+export interface BookingTaxInvoiceSummary {
+  documentId: string;
+  number?: string;
+  status: string;
+  type: string;
+  grandPaise: number;
+  documentDate: string;
+  gstRegistered: boolean;
+}
 
 /**
  * `/partners/me/bookings/...` — see `backend/src/routes/booking.routes.ts`.
@@ -111,6 +126,30 @@ export const bookingApi = {
   markPaid: (id: string, body: { note?: string } = {}) =>
     apiClient
       .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/mark-paid`, body)
+      .then((r) => unwrap(r.data)),
+
+  /**
+   * The live bill raised against this job, or `null` — `GET /:id/tax-invoice`.
+   * The document itself is opened on the Billing screen (`/(app)/billing/:id`),
+   * which already fetches, shares and prints its PDF.
+   */
+  taxInvoice: (id: string) =>
+    apiClient
+      .get<ApiEnvelope<BookingTaxInvoiceSummary | null>>(`/partners/me/bookings/${id}/tax-invoice`)
+      .then((r) => r.data.data ?? null),
+
+  /**
+   * Raise and issue the bill for a finished job, or get back the one it already
+   * has (200 rather than 201). Carries an idempotency key minted per tap, like
+   * every other create that takes a statutory number. Refuses with 409
+   * `BOOKING_BILL_DRAFT_EXISTS` (+ `data.documentId`) when a hand-raised draft is
+   * already open for the job.
+   */
+  raiseTaxInvoice: (id: string, idempotencyKey: string) =>
+    apiClient
+      .post<ApiEnvelope<BookingTaxInvoiceSummary>>(
+        `/partners/me/bookings/${id}/tax-invoice`, {}, withIdempotency(idempotencyKey),
+      )
       .then((r) => unwrap(r.data)),
 
   /**

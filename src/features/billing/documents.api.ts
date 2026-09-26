@@ -1,6 +1,7 @@
 import { apiClient, ApiEnvelope, unwrap, withIdempotency } from '../../api/axios';
 import {
   DocumentLineInput, DocumentPartySnapshot, PartnerDocumentRecord, PartnerDocumentStatus, PartnerDocumentType,
+  TransportReason,
 } from './types';
 
 /**
@@ -46,6 +47,12 @@ export interface CreateDocumentPayload {
   dueDate?: string;
   validUntil?: string;
   goodsReturned?: boolean;
+  /** Delivery challan only (CGST Rule 55). */
+  transportReason?: TransportReason;
+  /** Required by the server when `transportReason` is OTHER. */
+  transportReasonNote?: string;
+  /** Purchase order only — never before `documentDate`. */
+  deliveryDate?: string;
   sourceType?: 'BOOKING' | 'ORDER' | 'MANUAL';
   sourceId?: string;
 }
