@@ -1,45 +1,118 @@
 {
   "project_info": {
-    "project_number": "440464911801",
-    "project_id": "resismart-4364b",
-    "storage_bucket": "resismart-4364b.firebasestorage.app"
+    "project_number": "314520544586",
+    "project_id": "resismart-prod",
+    "storage_bucket": "resismart-prod.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:440464911801:android:9a1007961f34007dd2da68",
+        "mobilesdk_app_id": "1:314520544586:android:7dd7965a6278b171760db3",
         "android_client_info": {
-          "package_name": "com.himanshujangidalwar.mobilesociety"
+          "package_name": "com.resismart.guard"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "314520544586-263obg8e71qcrtp0eabhh1ff1hi3aj6e.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.resismart.guard",
+            "certificate_hash": "a20fb25c44cf2413bd9dd6e98dc58ff5759c1700"
+          }
+        },
+        {
+          "client_id": "314520544586-ovil8uf8epi5pb3577v49rnke59hbbld.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyA6I7fXx8zrcAZeyYhAM13P7NI2465UlNU"
+          "current_key": "AIzaSyCouhlXWnpCt9fv8pBKwJR1I4Z0NpQuFRI"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "314520544586-ovil8uf8epi5pb3577v49rnke59hbbld.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:440464911801:android:998bcfddbf3c52f9d2da68",
+        "mobilesdk_app_id": "1:314520544586:android:e0bf7aa41542000c760db3",
         "android_client_info": {
           "package_name": "com.resismart.shop"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "314520544586-c3q8c1s826rhjo6a6rekchvaal5e7mn4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.resismart.shop",
+            "certificate_hash": "a4fb354721a11b88ebda595f609d5c63362ddc6b"
+          }
+        },
+        {
+          "client_id": "314520544586-ovil8uf8epi5pb3577v49rnke59hbbld.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyA6I7fXx8zrcAZeyYhAM13P7NI2465UlNU"
+          "current_key": "AIzaSyCouhlXWnpCt9fv8pBKwJR1I4Z0NpQuFRI"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "314520544586-ovil8uf8epi5pb3577v49rnke59hbbld.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:314520544586:android:161527b384ba22ff760db3",
+        "android_client_info": {
+          "package_name": "com.resismart.society"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "314520544586-i94ev54je0a06c1nhccrusdae4p86gnm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.resismart.society",
+            "certificate_hash": "b5233febd83c77d019c842bcda1b5f8f1e812fa4"
+          }
+        },
+        {
+          "client_id": "314520544586-ovil8uf8epi5pb3577v49rnke59hbbld.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCouhlXWnpCt9fv8pBKwJR1I4Z0NpQuFRI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "314520544586-ovil8uf8epi5pb3577v49rnke59hbbld.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

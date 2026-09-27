@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
-import { API_BASE_URL, STORAGE_KEYS } from '../constants/app';
+import { API_BASE_URL, IN_APP_PLAN_PURCHASES, STORAGE_KEYS } from '../constants/app';
 import { storage } from '../utils/storage';
 /**
  * The i18next SINGLETON, not `useTranslation` — this file is not a component
@@ -501,6 +501,22 @@ export function apiErrorMessage(error: unknown, fallback?: string): string {
     }
     if (body?.code === 'IDEMPOTENCY_KEY_REUSED') {
       return i18n.t('common.apiError.idempotencyKeyReused');
+    }
+
+    /**
+     * A plan refusal (402 / `upgradeRequired`), also above the server's wording.
+     *
+     * The backend writes these for the web panel and ends them with "Upgrade
+     * your plan" — a pointer to a purchase this build may not make or mention
+     * (`IN_APP_PLAN_PURCHASES`). So every caller, the offline-draft queue
+     * included, gets our neutral sentence instead, split by the one distinction
+     * worth keeping: a module the plan does not include at all, versus a
+     * ceiling the plan has and has reached.
+     */
+    if (!IN_APP_PLAN_PURCHASES && isUpgradeRequired(error)) {
+      return body?.code === 'MODULE_NOT_IN_PLAN' || body?.code === 'PLAN_UPGRADE_REQUIRED'
+        ? i18n.t('common.apiError.notInPlan')
+        : i18n.t('common.apiError.planLimit');
     }
 
     // The server's own sentence, in whatever language IT sent — untranslated on

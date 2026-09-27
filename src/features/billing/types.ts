@@ -70,6 +70,39 @@ export const DOCUMENT_TYPE_LABEL_KEY: Record<PartnerDocumentType, string> = {
 };
 
 /**
+ * What a TAX_INVOICE is called when its issuer is NOT registered under GST — a
+ * bill of supply. Same rule as the printed document
+ * (`backend/src/services/partner-document-render.service.ts#isBillOfSupply`):
+ * the type is TAX_INVOICE, Business Settings say "not GST registered", and the
+ * stored document carries zero tax. The wire `type` never changes — only the
+ * words on screen do.
+ */
+export const BILL_OF_SUPPLY_LABEL_KEY = 'billing.documentType.BILL_OF_SUPPLY';
+
+/**
+ * `taxPaise` absent means "not raised yet" (a type picker, an offline draft, a
+ * conversion target): the server forces every rate to zero for an unregistered
+ * issuer, so such a document will carry no tax. `isGstRegistered` absent
+ * (settings not loaded) never reads as unregistered — the label stays as it was.
+ */
+export function isBillOfSupply(
+  type: PartnerDocumentType,
+  isGstRegistered: boolean | undefined,
+  taxPaise?: number,
+): boolean {
+  return type === 'TAX_INVOICE' && isGstRegistered === false && (taxPaise ?? 0) === 0;
+}
+
+/** `DOCUMENT_TYPE_LABEL_KEY[type]`, except a bill of supply reads as one. */
+export function documentTypeLabelKey(
+  type: PartnerDocumentType,
+  isGstRegistered: boolean | undefined,
+  taxPaise?: number,
+): string {
+  return isBillOfSupply(type, isGstRegistered, taxPaise) ? BILL_OF_SUPPLY_LABEL_KEY : DOCUMENT_TYPE_LABEL_KEY[type];
+}
+
+/**
  * CGST Rule 55's reasons a delivery challan may move goods under — mirrors
  * `TRANSPORT_REASONS` in `backend/src/models/partner-document.model.ts`. The code
  * is what is stored and sent; only the words are translated here. The PDF

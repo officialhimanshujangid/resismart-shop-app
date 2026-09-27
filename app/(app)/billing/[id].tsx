@@ -17,8 +17,9 @@ import { documentsApi } from '../../../src/features/billing/documents.api';
 import { shareDocumentPdf } from '../../../src/features/billing/pdf';
 import { getThermalPrinter } from '../../../src/features/printing';
 import {
-  CONVERSION_TARGETS, DOCUMENT_TYPE_LABEL_KEY, PartnerDocumentType, behaviourOf, TRANSPORT_REASON_LABEL_KEY,
+  CONVERSION_TARGETS, PartnerDocumentType, behaviourOf, documentTypeLabelKey, TRANSPORT_REASON_LABEL_KEY,
 } from '../../../src/features/billing/types';
+import { useIsGstRegistered } from '../../../src/features/billing/useGstRegistration';
 import { DocumentStatusChip } from '../../../src/features/billing/components/StatusChip';
 import { toHref } from '../../../src/features/billing/routeHref';
 import { paymentsApi } from '../../../src/features/payments/payments.api';
@@ -108,6 +109,10 @@ export default function DocumentDetailScreen() {
   }, [queryClient]);
 
   const doc = query.data;
+  // A TAX_INVOICE from an unregistered shop with no tax on it is a bill of
+  // supply — on paper and therefore on this screen (`documentTypeLabelKey`).
+  const isGstRegistered = useIsGstRegistered();
+  const typeLabel = doc ? t(documentTypeLabelKey(doc.type, isGstRegistered, doc.totals.taxPaise)) : '';
   /**
    * What this document is CALLED on screen — its number once issued, and a
    * translated "<type> draft" placeholder while it has none.
@@ -120,7 +125,7 @@ export default function DocumentDetailScreen() {
    * Devanagari label there would silently lose the name rather than break.)
    */
   const label = doc
-    ? (doc.number ?? t('billing.detail.draftLabel', { type: t(DOCUMENT_TYPE_LABEL_KEY[doc.type]) }))
+    ? (doc.number ?? t('billing.detail.draftLabel', { type: typeLabel }))
     : '';
 
   const handleShare = useCallback(async () => {
@@ -468,7 +473,7 @@ export default function DocumentDetailScreen() {
         <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
           <View style={styles.headerRow}>
             <View>
-              <Text style={[styles.docType, { color: c.textSecondary }]}>{t(DOCUMENT_TYPE_LABEL_KEY[doc.type])}</Text>
+              <Text style={[styles.docType, { color: c.textSecondary }]}>{typeLabel}</Text>
               <Text style={[styles.docNumber, { color: c.textPrimary }]}>{label}</Text>
             </View>
             <DocumentStatusChip status={doc.status} c={c} />
@@ -762,7 +767,7 @@ export default function DocumentDetailScreen() {
                   <Menu.Item
                     key={target}
                     onPress={() => handleConvert(target)}
-                    title={t('billing.detail.convertTo', { type: t(DOCUMENT_TYPE_LABEL_KEY[target]).toLowerCase() })}
+                    title={t('billing.detail.convertTo', { type: t(documentTypeLabelKey(target, isGstRegistered)).toLowerCase() })}
                   />
                 ))}
               </Menu>

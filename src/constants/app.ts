@@ -12,7 +12,7 @@ export const API_BASE_URL = 'https://resismart-backend-67ua.onrender.com/api/v1'
  *
  * Empty turns Google sign-in off everywhere in this app.
  */
-export const GOOGLE_WEB_CLIENT_ID = '42483573914-fl7mnssbpc8r80ljm1se9i5vt6hmcgdi.apps.googleusercontent.com';
+export const GOOGLE_WEB_CLIENT_ID = '314520544586-ovil8uf8epi5pb3577v49rnke59hbbld.apps.googleusercontent.com';
 // export const API_BASE_URL = 'http://10.182.174.83:8000/api/v1'; // local dev
 
 // These key strings deliberately keep the retired "shop" spelling. They are the on-device
@@ -121,6 +121,21 @@ export const WEB_PANEL_URL = 'https://resismart.in';
  * button that does nothing.
  */
 export const WEB_BILLING_URL = `${WEB_PANEL_URL}/dashboard/billing`;
+
+/**
+ * Whether this build may sell the ResiSmart plan or a paid boost, or point
+ * anybody to where they are sold.
+ *
+ * `false` for Google Play's Payments policy: a Play-distributed app may not sell
+ * digital services outside Play Billing, nor link, button or word its way to a
+ * place that does. With it off, the plan screen is read-only, paid boost
+ * packages are not drawn, and every locked/limit sentence is neutral.
+ *
+ * Flip only after Play Billing is integrated. It must stay a BUILD constant —
+ * never a server flag or remote config — because what a reviewed binary can do
+ * must not change after review.
+ */
+export const IN_APP_PLAN_PURCHASES = false;
 
 /**
  * The public page that says what deleting an account removes and what the law

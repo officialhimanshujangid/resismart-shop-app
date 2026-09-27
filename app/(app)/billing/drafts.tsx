@@ -10,7 +10,8 @@ import { formatPaise } from '../../../src/lib/money';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
 import { estimateDraftTotalPaise } from '../../../src/features/billing/offlineDrafts';
 import { DraftStatusChip } from '../../../src/features/billing/components/StatusChip';
-import { DOCUMENT_TYPE_LABEL_KEY, InvoiceDraft } from '../../../src/features/billing/types';
+import { InvoiceDraft, documentTypeLabelKey } from '../../../src/features/billing/types';
+import { useIsGstRegistered } from '../../../src/features/billing/useGstRegistration';
 import { toHref } from '../../../src/features/billing/routeHref';
 
 /**
@@ -122,6 +123,9 @@ function DraftRow({
   onOpen?: () => void;
 }) {
   const { t } = useTranslation();
+  // An offline draft has no server totals yet; an unregistered shop's
+  // TAX_INVOICE will be issued untaxed, i.e. as a bill of supply.
+  const isGstRegistered = useIsGstRegistered();
   const canRetry = draft.status === 'PENDING' || draft.status === 'FAILED' || draft.status === 'BLOCKED_UPGRADE';
 
   return (
@@ -138,7 +142,7 @@ function DraftRow({
       <Text style={[styles.rowMeta, { color: c.textSecondary }]}>
         {t('billing.drafts.meta', {
           count: draft.lines.length,
-          type: t(DOCUMENT_TYPE_LABEL_KEY[draft.type]),
+          type: t(documentTypeLabelKey(draft.type, isGstRegistered)),
           amount: formatPaise(estimateDraftTotalPaise(draft.lines)),
         })}
       </Text>

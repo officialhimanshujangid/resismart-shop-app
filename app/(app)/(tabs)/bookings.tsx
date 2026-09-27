@@ -15,6 +15,8 @@ import { bookingApi, slotConflictsOf } from '../../../src/features/bookings/book
 import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { formatPaise } from '../../../src/lib/money';
+import { isBillOfSupply } from '../../../src/features/billing/types';
+import { useIsGstRegistered } from '../../../src/features/billing/useGstRegistration';
 import { ErrorBlock } from '../../../src/features/more/ui';
 // `as Href` on the push below: the destination is built with a query string, so
 // it is not one of the literal routes the generated union describes — the same
@@ -100,6 +102,12 @@ export default function BookingsScreen() {
   );
   const list = useBookingsList(filters);
   const { act, pendingId, isPending } = useBookingAction();
+  /**
+   * An unregistered shop's bill for a job is issued untaxed — a bill of supply,
+   * so the button and the confirmation say that rather than "tax invoice"
+   * (`isBillOfSupply` in `features/billing/types.ts`).
+   */
+  const billOfSupply = isBillOfSupply('TAX_INVOICE', useIsGstRegistered());
 
   /**
    * Pages accumulated into one list — the `(tabs)/orders.tsx` pattern, which
@@ -203,17 +211,20 @@ export default function BookingsScreen() {
       return;
     }
     Alert.alert(
-      t('bookings.taxInvoice.confirmTitle'),
-      t('bookings.taxInvoice.confirmBody', {
+      billOfSupply ? t('bookings.taxInvoice.confirmTitleBillOfSupply') : t('bookings.taxInvoice.confirmTitle'),
+      t(billOfSupply ? 'bookings.taxInvoice.confirmBodyBillOfSupply' : 'bookings.taxInvoice.confirmBody', {
         amount: formatPaise(booking.pricing.totalPaise),
         service: booking.serviceSnapshot.name,
       }),
       [
         { text: t('common.notNow'), style: 'cancel' },
-        { text: t('bookings.taxInvoice.confirmAction'), onPress: () => { void raiseTaxInvoice(booking); } },
+        {
+          text: billOfSupply ? t('bookings.taxInvoice.confirmActionBillOfSupply') : t('bookings.taxInvoice.confirmAction'),
+          onPress: () => { void raiseTaxInvoice(booking); },
+        },
       ],
     );
-  }, [openDocument, raiseTaxInvoice, t]);
+  }, [openDocument, raiseTaxInvoice, t, billOfSupply]);
 
   const runQuick = useCallback(
     (booking: PartnerBookingView, verb: BookingVerb) => {
@@ -347,6 +358,7 @@ export default function BookingsScreen() {
             onOpenForm={(verb) => openForm(item, verb)}
             onTaxInvoice={() => { void openTaxInvoice(item); }}
             taxInvoiceBusy={invoiceBusyId === item.id}
+            billOfSupply={billOfSupply}
           />
         )}
         ListEmptyComponent={

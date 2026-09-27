@@ -111,8 +111,9 @@ function onLockedTap(entry: ModuleMenuEntry) {
    * call.
    *
    * `settings/plan.tsx` now answers it — current plan, status, renewal date,
-   * every module's ON/OFF/LOCKED state, usage against the ceilings, and a link
-   * to the web panel where the upgrade is actually bought. A LOCKED row is only
+   * every module's ON/OFF/LOCKED state and usage against the ceilings — read
+   * only, with no way out to a purchase while `IN_APP_PLAN_PURCHASES` is off
+   * (Google Play's Payments policy). A LOCKED row is only
    * ever drawn for somebody holding SETTINGS at FULL (`moduleMenuEntries`), so
    * every partner who can reach this line can reach that screen.
    */

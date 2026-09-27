@@ -13,8 +13,9 @@ import { formatPaise } from '../../../src/lib/money';
 import { documentsApi, documentStatusGroup } from '../../../src/features/billing/documents.api';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
 import {
-  DOCUMENT_TYPE_LABEL_KEY, DocumentDirection, PURCHASE_DOCUMENT_TYPES, PartnerDocumentRecord, SALES_DOCUMENT_TYPES,
+  DocumentDirection, PURCHASE_DOCUMENT_TYPES, PartnerDocumentRecord, SALES_DOCUMENT_TYPES, documentTypeLabelKey,
 } from '../../../src/features/billing/types';
+import { useIsGstRegistered } from '../../../src/features/billing/useGstRegistration';
 import { DocumentStatusChip } from '../../../src/features/billing/components/StatusChip';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import { toHref } from '../../../src/features/billing/routeHref';
@@ -59,6 +60,7 @@ export default function BillingScreen() {
   const { can } = usePartnerEntitlements();
   const { capacity } = usePlanUsage();
   const { pendingCount, online, syncing, syncPending } = useOfflineDrafts();
+  const isGstRegistered = useIsGstRegistered();
 
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [search, setSearch] = useState('');
@@ -201,7 +203,7 @@ export default function BillingScreen() {
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={query.isFetching} onRefresh={onRefresh} />}
           renderItem={({ item }) => (
-            <DocumentRow item={item} c={c} onPress={() => router.push(toHref(`/(app)/billing/${item._id}`))} />
+            <DocumentRow item={item} c={c} isGstRegistered={isGstRegistered} onPress={() => router.push(toHref(`/(app)/billing/${item._id}`))} />
           )}
         />
       )}
@@ -210,10 +212,12 @@ export default function BillingScreen() {
 }
 
 function DocumentRow({
-  item, c, onPress,
+  item, c, isGstRegistered, onPress,
 }: {
   item: PartnerDocumentRecord;
   c: ColorScheme;
+  /** Business Settings' answer — renames an untaxed TAX_INVOICE to a bill of supply. */
+  isGstRegistered: boolean | undefined;
   onPress: () => void;
 }) {
   const { t } = useTranslation();
@@ -222,7 +226,7 @@ function DocumentRow({
       <Surface style={[styles.row, { backgroundColor: c.surface }]} elevation={1}>
         <View style={styles.rowTop}>
           <Text style={[styles.rowNumber, { color: c.textPrimary }]}>
-            {item.number ?? t('billing.list.draftNumber', { type: t(DOCUMENT_TYPE_LABEL_KEY[item.type]) })}
+            {item.number ?? t('billing.list.draftNumber', { type: t(documentTypeLabelKey(item.type, isGstRegistered, item.totals.taxPaise)) })}
           </Text>
           <Text style={[styles.rowAmount, { color: c.textPrimary }]}>{formatPaise(item.totals.grandPaise)}</Text>
         </View>

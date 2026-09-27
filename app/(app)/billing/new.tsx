@@ -25,7 +25,7 @@ import { previewDocumentTax } from '../../../src/features/billing/taxPreview';
 import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
 import { LineEditorSheet } from '../../../src/features/billing/components/LineEditorSheet';
 import {
-  BillingScreenDocumentType, DOCUMENT_TYPE_LABEL_KEY, DocumentDirection, DraftLineInput,
+  BillingScreenDocumentType, DOCUMENT_TYPE_LABEL_KEY, DocumentDirection, DraftLineInput, documentTypeLabelKey,
   GST_STATES, PartnerPartyRecord, SALES_DOCUMENT_TYPES, PURCHASE_DOCUMENT_TYPES, behaviourOf,
   TRANSPORT_REASONS, TRANSPORT_REASON_LABEL_KEY, TransportReason, statesTransportReason, statesDeliveryDate,
 } from '../../../src/features/billing/types';
@@ -601,7 +601,11 @@ export default function NewInvoiceScreen() {
               onValueChange={(v) => setDocType(v as BillingScreenDocumentType)}
               density="small"
               style={{ minWidth: '100%' }}
-              buttons={typesForDirection.map((type) => ({ value: type, label: t(DOCUMENT_TYPE_LABEL_KEY[type]) }))}
+              buttons={typesForDirection.map((type) => ({
+                value: type,
+                // An unregistered shop's TAX_INVOICE is issued untaxed — a bill of supply.
+                label: t(documentTypeLabelKey(type, businessQuery.data?.isGstRegistered)),
+              }))}
             />
           </ScrollView>
 

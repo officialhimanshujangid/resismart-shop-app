@@ -50,7 +50,9 @@
       "idempotencyInProgress": "Still sending — this has not been lost. Wait a moment, then pull down to refresh and check before sending it again.",
       "idempotencyKeyReused": "The details changed after this was sent. Nothing was sent twice — check the list, then start it again.",
       "timeout": "The server is taking too long to answer. Please try again.",
-      "noConnection": "No connection. Check your network and try again."
+      "noConnection": "No connection. Check your network and try again.",
+      "notInPlan": "Not included in your current plan.",
+      "planLimit": "You've reached your plan's limit."
     },
     "daysLong": {
       "0": "Sunday",
@@ -77,7 +79,7 @@
       "businessDetails": "Business details",
       "businessDetailsSub": "Legal name, GSTIN and the registered address for your bills",
       "invoice": "Invoice settings",
-      "invoiceLocked": "Not on your plan — see what a plan with billing includes",
+      "invoiceLocked": "Not included in your current plan",
       "invoiceSub": "Theme, numbering, bank details, thermal printing",
       "planSection": "Plan & billing",
       "plan": "Your plan",
@@ -106,7 +108,7 @@
       "notWiredTitle": "Not wired up yet",
       "notWiredBody": "WhatsApp is not connected on this install. This switch will do nothing until it is.",
       "notOnPlanTitle": "Not on your plan",
-      "notOnPlanBody": "Upgrade your plan to receive alerts on WhatsApp.",
+      "notOnPlanBody": "WhatsApp alerts are not included in your current plan.",
       "needPhone": "Add a phone number to your account before turning this on.",
       "sendMe": "Send me alerts on WhatsApp",
       "to": "To {{phone}}",
@@ -216,7 +218,7 @@
       "couldNotLoad": "We could not load your modules.",
       "undo": "Undo",
       "saveChanges": "Save changes",
-      "lockedNote": "Your current plan does not include this. Ask your ResiSmart contact to upgrade your plan — it switches on for everyone here straight away.",
+      "lockedNote": "Not included in your current plan.",
       "footNote": "Switching a module off does not change anybody's role. The permissions for it simply stop being offered until it is back on, so a month away from Orders does not quietly reset who may handle them."
     },
     "invoice": {
@@ -315,7 +317,7 @@
         "unknown": "Unknown"
       },
       "browserFailedTitle": "Could not open your browser",
-      "browserFailedBody": "Go to {{url}} on a computer or phone browser to change your plan.",
+      "browserFailedBody": "Could not open the plan page. Please try again.",
       "invoiceFallbackLabel": "ResiSmart invoice {{date}}",
       "openInvoiceFailedTitle": "Could not open that invoice",
       "openInvoiceFailedBody": "Your browser refused to open the link.",
@@ -344,7 +346,7 @@
       "upcomingTerms_other": "{{count}} new terms are already scheduled — next one starts {{date}}.",
       "staffNotice": "Only the business owner can see what the plan costs and when it renews. Everything below is what your plan lets this business do.",
       "changePlan": "Change your plan",
-      "changePlanSub": "Opens the ResiSmart web panel, where plans are bought and changed",
+      "changePlanSub": "See the plans available to this business",
       "includesHeading": "What your plan includes",
       "moduleOnDetail": "Included and switched on",
       "moduleOffDetail": "Included — you have switched it off in Settings → Modules",
@@ -361,7 +363,16 @@
       "invoiceShare": "Share",
       "refresh": "Refresh",
       "refreshSub": "Re-check your plan, your modules and your usage",
-      "unknownName": "Unknown plan"
+      "unknownName": "Unknown plan",
+      "changesNotInApp": "Plan changes aren't available in the app. Before your plan ends, we send renewal details to your registered WhatsApp and email.",
+      "trialEndsOnLeft_one": "Your free trial ends on {{date}}, {{count}} day left. We'll send plan details to your registered WhatsApp and email.",
+      "trialEndsOnLeft_other": "Your free trial ends on {{date}}, {{count}} days left. We'll send plan details to your registered WhatsApp and email.",
+      "trialDetailsNote": "We'll send plan details to your registered WhatsApp and email.",
+      "planEndsOnLeft_one": "Your plan ends on {{date}}, {{count}} day left. Everything keeps working until then.",
+      "planEndsOnLeft_other": "Your plan ends on {{date}}, {{count}} days left. Everything keeps working until then.",
+      "graceEnded": "Your plan ended on {{date}}. Your features stay on until {{until}}.",
+      "graceUntil": "Your features stay on until {{until}}.",
+      "invoicePaymentPending": "Payment pending"
     }
   },
   "modules": {
@@ -597,6 +608,7 @@
     },
     "documentType": {
       "TAX_INVOICE": "Tax invoice",
+      "BILL_OF_SUPPLY": "Bill of supply",
       "QUOTATION": "Quotation",
       "PROFORMA": "Proforma invoice",
       "DELIVERY_CHALLAN": "Delivery challan",
@@ -956,7 +968,7 @@
       "emailInvalid": "That does not look like an email address.",
       "amountInvalid": "Enter a valid amount, e.g. 1500.00",
       "limitTitle": "You have reached your plan's limit of {{limit}} {{noun}}.",
-      "limitBody": "Upgrade your plan, or hide a party you no longer trade with — you can put them back from the Parties list at any time.",
+      "limitBody": "To add another, hide a party you no longer trade with — you can put them back from the Parties list at any time.",
       "name": "Name",
       "phone": "Phone",
       "email": "Email",
@@ -1135,7 +1147,7 @@
       "trackStock": "Track stock for this product",
       "openingStock": "Opening stock",
       "lowStockAt": "Low-stock alert at",
-      "atLimit": "You are at your plan's product limit — remove or deactivate one first, or ask to upgrade.",
+      "atLimit": "You've reached your plan's limit for products. Remove or deactivate one to add another.",
       "saveProduct": "Save product",
       "saveChanges": "Save changes",
       "planLimitTitle": "Plan limit reached",
@@ -1190,7 +1202,7 @@
     },
     "meter": {
       "comingSoon": "Product limits — coming soon",
-      "notIncluded": "Your plan does not include a catalog. Upgrade from More → Settings to add products.",
+      "notIncluded": "The catalog is not included in your current plan.",
       "unlimited": "{{used}} products · unlimited on your plan",
       "ofLimit": "{{used}} of {{limit}} {{noun}}",
       "productsNoun": "products",
@@ -1543,7 +1555,7 @@
     },
     "meter": {
       "comingSoon": "Service limits — coming soon",
-      "notIncluded": "Your plan does not include a price list. Upgrade from More → Settings to add services.",
+      "notIncluded": "The price list is not included in your current plan.",
       "unlimited": "{{used}} services · unlimited on your plan",
       "ofLimit": "{{used}} of {{limit}} {{noun}}",
       "servicesNoun": "services",
@@ -1639,7 +1651,7 @@
     "create": {
       "submit": "Add it",
       "limitTitle": "Plan limit reached",
-      "limitBody": "You are at your plan’s service limit — remove one first, or ask to upgrade.",
+      "limitBody": "You've reached your plan's limit for services. Remove one to add another.",
       "addFailed": "Could not add that service"
     }
   },
@@ -1689,12 +1701,16 @@
       "timeLeft": "{{left}} left of the booked {{planned}}",
       "flatSuffix": " · {{flat}}",
       "societySuffix": " · {{society}}",
-      "taxInvoice": "Tax invoice"
+      "taxInvoice": "Tax invoice",
+      "billOfSupply": "Bill of supply"
     },
     "taxInvoice": {
       "confirmTitle": "Issue the tax invoice?",
       "confirmBody": "A numbered invoice for {{service}} at {{amount}}, GST included (none if you are not GST registered). It cannot be edited once issued.",
       "confirmAction": "Issue invoice",
+      "confirmTitleBillOfSupply": "Issue the bill of supply?",
+      "confirmBodyBillOfSupply": "A numbered bill of supply for {{service}} at {{amount}}, with no GST — you are not GST registered. It cannot be edited once issued.",
+      "confirmActionBillOfSupply": "Issue bill of supply",
       "failedTitle": "Could not open the invoice"
     },
     "action": {
@@ -1755,7 +1771,7 @@
     "sellMoreSection": "Sell more",
     "businessSection": "Business",
     "accountSection": "Account",
-    "lockedSubtitle": "Not on your plan — {{blurb}}",
+    "lockedSubtitle": "Not included in your current plan — {{blurb}}",
     "notBuiltSubtitle": "{{blurb}} (screens for this are being built separately)",
     "awaitingRoleTitle": "You are on the staff list, but nobody has given you a role yet.",
     "awaitingRoleBody": "Ask a business admin to assign you one under Staff.",
@@ -1954,22 +1970,25 @@
     },
     "buy": {
       "priceTitle": "{{label}} — {{price}}",
-      "paidBody": "This app cannot take the payment for a boost yet. Buy it on the ResiSmart web dashboard under Promotion, and it will show up here the moment it is paid for.",
+      "paidBody": "This app cannot take the payment for a boost yet.",
       "applied": "Boost applied",
-      "repricedBody": "The price of this package changed while the screen was open, and this app cannot take a payment. Order {{orderId}} is waiting — finish it on the ResiSmart web dashboard.",
-      "failed": "Could not start checkout"
+      "repricedBody": "The price of this package changed while the screen was open, and this app cannot take a payment. Order {{orderId}} has not been paid.",
+      "failed": "Could not start checkout",
+      "notAvailableTitle": "Offer not available",
+      "notAvailableBody": "This boost offer is no longer available in the app."
     },
     "screen": {
       "loadFailed": "Could not load promotion.",
       "packagesLabel": "Packages",
       "historyLabel": "History",
-      "historyEmpty": "No boosts bought yet",
+      "historyEmpty": "No boosts yet",
       "historyLine": "{{date}} · {{status}}",
-      "empty": "No packages on sale right now"
+      "empty": "No packages on sale right now",
+      "noOffers": "No boost offers are available in the app right now."
     },
     "locked": {
       "title": "Not on your plan",
-      "body": "Upgrade your plan to buy a boost."
+      "body": "Not included in your current plan."
     },
     "current": {
       "label": "Running now",
@@ -1992,7 +2011,8 @@
       "metaTop_one": "{{count}} day · {{km}} km · Top placement",
       "metaTop_other": "{{count}} days · {{km}} km · Top placement",
       "free": "Free",
-      "buy": "Buy"
+      "buy": "Buy",
+      "apply": "Apply"
     },
     "reach": {
       "working": "Working out who this reaches…",

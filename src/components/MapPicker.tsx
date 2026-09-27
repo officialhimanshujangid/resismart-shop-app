@@ -42,8 +42,10 @@ import { ColorScheme, radii } from '../constants/colors';
  * ── Google, and the key a store build needs ────────────────────────────────
  *
  * `PROVIDER_GOOGLE` on Android only. Expo Go carries Expo's own Maps key, so
- * nothing is needed to develop; a standalone APK carries none and renders grey
- * tiles until `android.config.googleMaps.apiKey` is set in `app.json`. On iOS
+ * nothing is needed to develop; a standalone APK carries none, and without
+ * `android.config.googleMaps.apiKey` in `app.json` the Maps SDK throws
+ * "API key not found" and kills the app the moment this screen mounts. With a
+ * key that lacks "Maps SDK for Android" access it renders blank instead. On iOS
  * this deliberately falls through to Apple Maps, which needs no key at all —
  * asking for Google there would add a second credential to obtain and a second
  * way for a release build to come out blank, for a map that looks the same.

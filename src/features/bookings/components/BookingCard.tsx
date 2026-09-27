@@ -147,6 +147,11 @@ interface Props {
   onTaxInvoice?: () => void;
   /** True while that open/raise is in flight for THIS card. */
   taxInvoiceBusy?: boolean;
+  /**
+   * The shop is not GST registered, so the bill it raises is a bill of supply
+   * (`documentTypeLabelKey` in `features/billing/types.ts`) — the button says so.
+   */
+  billOfSupply?: boolean;
 }
 
 /** The statuses a job can be billed in — `BILLABLE_BOOKING_STATUSES` on the server. */
@@ -165,7 +170,7 @@ const BILLABLE_STATUSES = new Set<string>(['COMPLETED', 'INVOICED', 'PAID']);
  * bookings" question that could disagree with the table.
  */
 export function BookingCard({
-  booking, pending, onQuickAction, onOpenForm, compact, isDark, onTaxInvoice, taxInvoiceBusy,
+  booking, pending, onQuickAction, onOpenForm, compact, isDark, onTaxInvoice, taxInvoiceBusy, billOfSupply,
 }: Props) {
   const { t } = useTranslation();
   const c = themeColors(isDark);
@@ -264,7 +269,7 @@ export function BookingCard({
             style={styles.actionBtn}
             labelStyle={styles.actionLabel}
           >
-            {t('bookings.card.taxInvoice')}
+            {billOfSupply ? t('bookings.card.billOfSupply') : t('bookings.card.taxInvoice')}
           </Button>
         </View>
       )}

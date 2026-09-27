@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette, ColorScheme } from '../../../src/constants/colors';
-import { WEB_BILLING_URL } from '../../../src/constants/app';
+import { IN_APP_PLAN_PURCHASES, WEB_BILLING_URL } from '../../../src/constants/app';
 import { usePartnerEntitlements, usePlanUsage, PARTNER_MODULE_INFO } from '../../../src/hooks';
 import { PARTNER_MODULES, PartnerModule } from '../../../src/types/api-contract.generated';
 import { platformBillingApi, TenantInvoice } from '../../../src/api/billing.api';
@@ -45,6 +45,14 @@ type TFunc = (key: string, opts?: Record<string, unknown>) => string;
  * subscription is the only destructive action in this surface, and it must not
  * be two taps from a phone with no preview of what it costs.
  *
+ * ── And, while `IN_APP_PLAN_PURCHASES` is off, no way out to one either ────
+ *
+ * Google Play's Payments policy forbids pointing a partner at the web panel to
+ * pay, not only taking the payment here. So with the flag off the "Change your
+ * plan" row, the price lines and the pay-page link on an unpaid invoice are not
+ * drawn; a neutral box says renewal details arrive on WhatsApp and email, and
+ * the trial and grace banners say when, not where to pay.
+ *
  * ── Who may open it ───────────────────────────────────────────────────────
  *
  * `settings/_layout.tsx` gates the whole folder at SETTINGS READ, which is the
@@ -64,6 +72,16 @@ type TFunc = (key: string, opts?: Record<string, unknown>) => string;
 
 /** Which statuses are a problem the partner has to act on. */
 const ALARMING = new Set(['past_due', 'pending_payment', 'expired', 'cancelled']);
+
+/**
+ * How close the end of a term must be before it is announced. Matches the
+ * window in which renewal details go out on WhatsApp and email, so the banner
+ * and the message it promises arrive together.
+ */
+const PLAN_ENDING_SOON_DAYS = 7;
+
+/** An invoice that no longer wants money — its document is a receipt, not a bill. */
+const SETTLED_INVOICE = new Set(['PAID', 'REFUNDED']);
 
 /**
  * `2026-09-06T…` → `6 Sep 2026`, or `6 सित 2026`.
@@ -144,9 +162,14 @@ export default function PlanScreen() {
    * invoice is an HTML page and is opened in the browser instead of being handed
    * to the share sheet announced as a PDF; a PENDING invoice has no file at all,
    * and its row simply carries no action.
+   *
+   * With `IN_APP_PLAN_PURCHASES` off, an unsettled invoice is refused here as
+   * well as at the row: Razorpay's hosted page for one is a PAY page, and
+   * opening it would be the exact "pay elsewhere" link the flag exists to remove.
    */
   const shareInvoice = useCallback(
     async (invoice: TenantInvoice) => {
+      if (!IN_APP_PLAN_PURCHASES && !SETTLED_INVOICE.has(invoice.status ?? '')) return;
       const label = invoice.customInvoiceNumber
         || t('settings.plan.invoiceFallbackLabel', { date: formatDay(invoice.createdAt, t) });
       if (invoice.razorpayInvoiceUrl) {
@@ -204,6 +227,20 @@ export default function PlanScreen() {
   const endDate = sub?.planStatus?.endDate ?? sub?.subscription?.endDate ?? null;
   const graceEndsAt = sub?.planStatus?.graceEndsAt ?? null;
 
+  /**
+   * Days left on a paid term that is about to end with nothing set to renew
+   * it, or `null` when there is nothing to announce. Not for a trial (its own
+   * banner), a lapsed plan (the grace banner), the free tier (no end to speak
+   * of) or an active auto-pay mandate (it will renew, so "ends on" is false).
+   */
+  const endingIn = daysUntil(endDate);
+  const planEndingDays =
+    sub && !plan.isTrial && !plan.isFreeTier && !graceEndsAt && !ALARMING.has(status)
+    && !sub.subscription?.autoPayActive
+    && endingIn !== null && endingIn >= 0 && endingIn <= PLAN_ENDING_SOON_DAYS
+      ? endingIn
+      : null;
+
   const subError = subscriptionQuery.isError
     ? apiErrorMessage(subscriptionQuery.error, t('settings.plan.subLoadFailed'))
     : subscriptionQuery.isPending && subscriptionQuery.isPaused
@@ -241,11 +278,31 @@ export default function PlanScreen() {
                   ? t('settings.plan.trialEnded')
                   : trialDays === 0
                     ? t('settings.plan.trialEndsToday')
-                    : t('settings.plan.trialEndsIn', { count: trialDays })}
+                    : IN_APP_PLAN_PURCHASES
+                      ? t('settings.plan.trialEndsIn', { count: trialDays })
+                      : t('settings.plan.trialEndsOnLeft', { count: trialDays, date: formatDay(plan.trialEndsAt, t) })}
             </Text>
-            <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>
-              {plan.trialEndsAt ? t('settings.plan.trialEndsOn', { date: formatDay(plan.trialEndsAt, t) }) : ''}
-              {t('settings.plan.trialChoose')}
+            {IN_APP_PLAN_PURCHASES ? (
+              <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>
+                {plan.trialEndsAt ? t('settings.plan.trialEndsOn', { date: formatDay(plan.trialEndsAt, t) }) : ''}
+                {t('settings.plan.trialChoose')}
+              </Text>
+            ) : (
+              // `trialEndsOnLeft` already carries this promise; every other
+              // branch gets it on its own line.
+              (trialDays === null || trialDays <= 0) && (
+                <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>
+                  {t('settings.plan.trialDetailsNote')}
+                </Text>
+              )
+            )}
+          </View>
+        )}
+
+        {planEndingDays !== null && (
+          <View style={[styles.banner, { backgroundColor: c.surfaceVariant }]}>
+            <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>
+              {t('settings.plan.planEndsOnLeft', { count: planEndingDays, date: formatDay(endDate, t) })}
             </Text>
           </View>
         )}
@@ -253,7 +310,13 @@ export default function PlanScreen() {
         {graceEndsAt && (
           <View style={[styles.banner, { backgroundColor: palette.coral.soft }]}>
             <Text style={{ color: palette.coral[600], fontWeight: '600', fontSize: 13 }}>
-              {t('settings.plan.graceBanner', { date: formatDay(graceEndsAt, t) })}
+              {/* The date it ended, and how long the features stay on — no
+                  "payment is overdue", which reads as "go and pay somewhere". */}
+              {IN_APP_PLAN_PURCHASES
+                ? t('settings.plan.graceBanner', { date: formatDay(graceEndsAt, t) })
+                : endDate
+                  ? t('settings.plan.graceEnded', { date: formatDay(endDate, t), until: formatDay(graceEndsAt, t) })
+                  : t('settings.plan.graceUntil', { until: formatDay(graceEndsAt, t) })}
             </Text>
           </View>
         )}
@@ -277,13 +340,16 @@ export default function PlanScreen() {
               value={formatDay(endDate, t)}
               tone={ALARMING.has(status) ? c.error : undefined}
             />
-            {nextAmount && <KeyValue c={c} label={t('settings.plan.nextPayment')} value={nextAmount} />}
+            {/* The amount and the price notice are a renewal quote, and with
+                `IN_APP_PLAN_PURCHASES` off that quote goes out on WhatsApp and
+                email rather than being printed beside a plan it cannot buy. */}
+            {IN_APP_PLAN_PURCHASES && nextAmount && <KeyValue c={c} label={t('settings.plan.nextPayment')} value={nextAmount} />}
             {sub.subscription?.autoPayActive && (
               <KeyValue c={c} label={t('settings.plan.autoPay')} value={t('settings.plan.autoPayOn')} />
             )}
             {/* The whole point of `nextPriceNotice`: they are told the new rate
                 and the date, instead of finding out on an invoice. */}
-            {sub.nextPriceNotice && (
+            {IN_APP_PLAN_PURCHASES && sub.nextPriceNotice && (
               <Text style={{ color: c.warning, fontSize: 12, marginTop: 2 }}>
                 {t('settings.plan.priceNotice', {
                   date: formatDay(sub.nextPriceNotice.effectiveFrom, t),
@@ -312,13 +378,21 @@ export default function PlanScreen() {
         )}
       </Card>
 
-      <Row
-        c={c}
-        icon="open-in-new"
-        title={t('settings.plan.changePlan')}
-        subtitle={t('settings.plan.changePlanSub')}
-        onPress={openWebBilling}
-      />
+      {IN_APP_PLAN_PURCHASES ? (
+        <Row
+          c={c}
+          icon="open-in-new"
+          title={t('settings.plan.changePlan')}
+          subtitle={t('settings.plan.changePlanSub')}
+          onPress={openWebBilling}
+        />
+      ) : (
+        // Shown to everybody, trial or not, admin or not: the one answer to
+        // "how do I change this", with no link and no place to go and pay.
+        <Card c={c} style={{ backgroundColor: c.surfaceVariant }}>
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('settings.plan.changesNotInApp')}</Text>
+        </Card>
+      )}
 
       {/* ── what the plan includes ───────────────────────────────────── */}
       <SectionLabel c={c}>{t('settings.plan.includesHeading')}</SectionLabel>
@@ -395,8 +469,12 @@ export default function PlanScreen() {
           ) : (
             <Card c={c} style={styles.listCard}>
               {invoices.map((invoice, i) => {
-                const hasFile = Boolean(invoice.customPdfUrl || invoice.razorpayInvoiceUrl);
                 const paid = invoice.status === 'PAID';
+                // With the flag off an unsettled invoice has no action at all —
+                // its Razorpay page is where it would be PAID — and says
+                // "Payment pending" instead of offering to open it.
+                const awaitingPayment = !IN_APP_PLAN_PURCHASES && !SETTLED_INVOICE.has(invoice.status ?? '');
+                const hasFile = !awaitingPayment && Boolean(invoice.customPdfUrl || invoice.razorpayInvoiceUrl);
                 return (
                   <View key={invoice._id}>
                     <Row
@@ -414,6 +492,10 @@ export default function PlanScreen() {
                         ) : hasFile ? (
                           <Text style={{ color: c.primary, fontSize: 12, fontWeight: '600' }}>
                             {invoice.razorpayInvoiceUrl ? t('settings.plan.invoiceOpen') : t('settings.plan.invoiceShare')}
+                          </Text>
+                        ) : awaitingPayment ? (
+                          <Text style={{ color: c.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                            {t('settings.plan.invoicePaymentPending')}
                           </Text>
                         ) : undefined
                       }

@@ -6,6 +6,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, palette } from '../../../src/constants/colors';
+import { IN_APP_PLAN_PURCHASES } from '../../../src/constants/app';
 import { formatI18nDate } from '../../../src/i18n';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
@@ -44,6 +45,11 @@ import { Card, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../sr
  * afterwards left one of each behind per tap, for a payment this build cannot
  * finish. `expo-linking` and Razorpay's hosted page were considered as a way to
  * actually finish it and rejected — see the note on `buy`.
+ *
+ * With `IN_APP_PLAN_PURCHASES` off (Google Play's Payments policy) a PAID
+ * package is not drawn at all, and nothing on this screen names a place to buy
+ * one. What is left is what a Play build may do: the boost running now, the
+ * history, and FREE packages, which apply with no payment anywhere.
  */
 export default function PromotionScreen() {
   const { t } = useTranslation();
@@ -76,6 +82,12 @@ export default function PromotionScreen() {
    * Both are backend changes, so neither is built here on a guess.
    */
   const buy = async (pkg: BoostPackage) => {
+    if (pkg.pricePaise > 0 && !IN_APP_PLAN_PURCHASES) {
+      // Unreachable from a drawn card (paid packages are filtered out), kept
+      // so no path can ever show the old "buy it on the web" sentence.
+      Alert.alert(t('promotion.buy.notAvailableTitle'), t('promotion.buy.notAvailableBody'));
+      return;
+    }
     if (pkg.pricePaise > 0) {
       // `pkg.label` is the owner's own package name as the server sends it and
       // is interpolated untouched — see `UsageMeter.tsx` for the trade this app
@@ -99,6 +111,13 @@ export default function PromotionScreen() {
       // Only reachable if the owner repriced the package between this screen
       // loading and the tap. The order is real and is waiting to be paid, so
       // the message says so rather than pretending nothing happened.
+      if (!IN_APP_PLAN_PURCHASES) {
+        // A free offer that stopped being free. The order the server opened is
+        // simply never paid; the list is refreshed so the card goes away.
+        void queryClient.invalidateQueries({ queryKey: qk.promotion() });
+        Alert.alert(t('promotion.buy.notAvailableTitle'), t('promotion.buy.notAvailableBody'));
+        return;
+      }
       Alert.alert(
         t('promotion.buy.priceTitle', { label: res.packageLabel, price: formatPaise(res.amountPaise) }),
         t('promotion.buy.repricedBody', { orderId: res.orderId }),
@@ -158,6 +177,15 @@ function PromotionBody({
 }) {
   const { t } = useTranslation();
   /**
+   * The packages this build may offer. With `IN_APP_PLAN_PURCHASES` off that
+   * is the FREE ones only — a paid package is not greyed out or priced, it is
+   * absent, because a price with no way to pay it is itself a pointer elsewhere.
+   */
+  const offered = useMemo(
+    () => (IN_APP_PLAN_PURCHASES ? pkgData.packages : pkgData.packages.filter((p) => p.pricePaise === 0)),
+    [pkgData.packages],
+  );
+  /**
    * One reach fetch per DISTINCT radius among the packages, not one per card —
    * two packages that sell the same radius must read the same number, and
    * asking twice is how they would eventually disagree. Same rule the web
@@ -169,8 +197,8 @@ function PromotionBody({
    * to answer.
    */
   const packageRadii = useMemo(
-    () => Array.from(new Set(pkgData.packages.map((p) => p.radiusKm))),
-    [pkgData.packages],
+    () => Array.from(new Set(offered.map((p) => p.radiusKm))),
+    [offered],
   );
   const reachQueries = useQueries({
     queries: packageRadii.map((km) => ({
@@ -203,11 +231,19 @@ function PromotionBody({
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       {!pkgData.boostAvailable && (
         <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-          <Text style={{ color: palette.coral[600], fontWeight: '600' }}>{t('promotion.locked.title')}</Text>
-          {/* `pkgData.message` is the server's own refusal — it names the plan
-              and the ceiling — and is shown as it arrives. Only the fallback is
-              ours to translate. */}
-          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{pkgData.message || t('promotion.locked.body')}</Text>
+          {IN_APP_PLAN_PURCHASES ? (
+            <>
+              <Text style={{ color: palette.coral[600], fontWeight: '600' }}>{t('promotion.locked.title')}</Text>
+              {/* `pkgData.message` is the server's own refusal — it names the plan
+                  and the ceiling — and is shown as it arrives. Only the fallback is
+                  ours to translate. */}
+              <Text style={{ color: c.textSecondary, fontSize: 13 }}>{pkgData.message || t('promotion.locked.body')}</Text>
+            </>
+          ) : (
+            // Never `pkgData.message` here: the server's sentence says
+            // "Upgrade to buy a boost", which this build may not say.
+            <Text style={{ color: palette.coral[600], fontWeight: '600' }}>{t('promotion.locked.body')}</Text>
+          )}
         </Card>
       )}
 
@@ -243,10 +279,14 @@ function PromotionBody({
       )}
       {!pkgData.partnersEnabled ? (
         <EmptyBlock c={c} icon="rocket-launch-outline" title={t('promotion.off.title')} body={t('promotion.off.body')} />
-      ) : pkgData.packages.length === 0 ? (
-        <EmptyBlock c={c} icon="rocket-launch-outline" title={t('promotion.screen.empty')} />
+      ) : offered.length === 0 ? (
+        <EmptyBlock
+          c={c}
+          icon="rocket-launch-outline"
+          title={IN_APP_PLAN_PURCHASES ? t('promotion.screen.empty') : t('promotion.screen.noOffers')}
+        />
       ) : (
-        pkgData.packages.map((pkg) => (
+        offered.map((pkg) => (
           <Card key={pkg.id} c={c} style={styles.pkgCard}>
             <View style={styles.pkgTop}>
               <View style={{ flex: 1 }}>
@@ -261,7 +301,7 @@ function PromotionBody({
               </View>
               {canSpend && (
                 <AppButton
-                  label={t('promotion.pkg.buy')}
+                  label={IN_APP_PLAN_PURCHASES ? t('promotion.pkg.buy') : t('promotion.pkg.apply')}
                   onPress={() => onBuy(pkg)}
                   loading={buying === pkg.id}
                   disabled={buying !== null || !pkgData.boostAvailable}

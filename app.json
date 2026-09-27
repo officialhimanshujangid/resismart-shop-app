@@ -25,14 +25,21 @@
       },
       "package": "com.resismart.shop",
       "googleServicesFile": "./google-services.json",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAQOP2i4_PezixhzKQndjHPFglUkB8bmH0"
+        }
+      },
       "permissions": [
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA"
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -94,8 +101,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "9a42c109-d8d8-4f37-983c-4a23c51b9724"
+        "projectId": "ab3e0c62-dc07-452b-b235-326221b1520b"
       }
-    }
+    },
+    "owner": "easy-connect-private-limited"
   }
 }
