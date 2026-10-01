@@ -27,6 +27,9 @@ import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { PAYMENT_MODES, PAYMENT_MODE_LABEL_KEY, PaymentMode } from '../../../src/features/payments/types';
 import { Loading } from '../../../src/features/more/ui';
 import { formatI18nDate } from '../../../src/i18n';
+import { canManageDocType } from '../../../src/features/p1/access';
+import { AccountPicker } from '../../../src/features/money/components/AccountPicker';
+import { PurchaseDocActions } from '../../../src/features/purchases/components/PurchaseDocActions';
 
 /**
  * The channels `sendDocumentSchema` accepts server-side — `documentsApi.send`
@@ -77,7 +80,6 @@ export default function DocumentDetailScreen() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const { can } = usePartnerEntitlements();
-  const canManage = can('INVOICING_MANAGE', 'FULL');
 
   const query = useQuery({
     queryKey: qk.billing.document(String(id)),
@@ -99,6 +101,8 @@ export default function DocumentDetailScreen() {
 
   // ---- record payment (C1) ----
   const [payOpen, setPayOpen] = useState(false);
+  /** P1 §8: '' = the server's default account for the mode. */
+  const [payAccountId, setPayAccountId] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payMode, setPayMode] = useState<PaymentMode>('CASH');
   const [payReference, setPayReference] = useState('');
@@ -109,10 +113,18 @@ export default function DocumentDetailScreen() {
   }, [queryClient]);
 
   const doc = query.data;
+  /**
+   * P1 (§4.4): the manage permission follows the document's SIDE — purchase
+   * documents are PURCHASES_MANAGE, sales INVOICING_MANAGE (derived defaults
+   * keep every existing role where it was). Cancelling an issued document also
+   * needs DOCUMENTS_VOID (§2) — hidden without it, never offered to be refused.
+   */
+  const canManage = doc ? canManageDocType(can, doc.type) : can('INVOICING_MANAGE', 'FULL');
+  const canVoid = can('DOCUMENTS_VOID', 'FULL');
   // A TAX_INVOICE from an unregistered shop with no tax on it is a bill of
   // supply — on paper and therefore on this screen (`documentTypeLabelKey`).
   const isGstRegistered = useIsGstRegistered();
-  const typeLabel = doc ? t(documentTypeLabelKey(doc.type, isGstRegistered, doc.totals.taxPaise)) : '';
+  const typeLabel = doc ? t(documentTypeLabelKey(doc.type, isGstRegistered, doc.totals.taxPaise, doc.printAs)) : '';
   /**
    * What this document is CALLED on screen — its number once issued, and a
    * translated "<type> draft" placeholder while it has none.
@@ -260,13 +272,23 @@ export default function DocumentDetailScreen() {
    * as the web dialog does), so this navigates straight to it rather than
    * back to this screen — there is nothing further to do on the source.
    */
+  /** One key per convert intent (this document → this type), reused on a retry. */
+  const convertIntent = useRef<{ target: string; key: string } | null>(null);
   const handleConvert = useCallback(
     async (to: PartnerDocumentType) => {
       if (!doc) return;
       setConvertMenuOpen(false);
       setBusy('convert');
+      const target = `${doc._id}:${to}`;
+      if (convertIntent.current?.target !== target) {
+        convertIntent.current = { target, key: newIdempotencyKey('conv') };
+      }
       try {
-        const { created } = await documentsApi.convert(doc._id, { to, documentDate: new Date().toISOString() });
+        // A 200 `replayed` (already converted, same target) is a success too.
+        const { created } = await documentsApi.convert(
+          doc._id, { to, documentDate: new Date().toISOString() }, convertIntent.current.key,
+        );
+        convertIntent.current = null;
         invalidate();
         router.replace(toHref(`/(app)/billing/${created._id}`));
       } catch (e: unknown) {
@@ -323,7 +345,7 @@ export default function DocumentDetailScreen() {
   const payIntent = useRef<{ key: string; receivedAt: string } | null>(null);
   useEffect(() => {
     payIntent.current = null;
-  }, [doc?._id, payAmount, payMode, payReference, payOpen]);
+  }, [doc?._id, payAmount, payMode, payReference, payOpen, payAccountId]);
 
   const handleRecordPayment = useCallback(async () => {
     if (!doc || !doc.partyId) return;
@@ -353,6 +375,7 @@ export default function DocumentDetailScreen() {
           allocations: [{ documentId: doc._id, amountPaise }],
           reference: payReference.trim() || undefined,
           receivedAt: payIntent.current.receivedAt,
+          ...(payAccountId ? { accountId: payAccountId } : {}),
         },
         payIntent.current.key,
       );
@@ -368,7 +391,7 @@ export default function DocumentDetailScreen() {
     } finally {
       setBusy(null);
     }
-  }, [doc, payAmount, payMode, payReference, queryClient, invalidate, t]);
+  }, [doc, payAmount, payMode, payReference, payAccountId, queryClient, invalidate, t]);
 
   /*
     `Loading` rather than a bare `ActivityIndicator`, for the reason
@@ -404,7 +427,7 @@ export default function DocumentDetailScreen() {
 
   const isDraft = doc.status === 'DRAFT';
   const canShareOrPrint = !isDraft;
-  const canCancel = canManage && doc.status === 'ISSUED';
+  const canCancel = canManage && canVoid && doc.status === 'ISSUED';
   // C7 — mirrors web `canSend`: issued (or later) and not cancelled. Sending a
   // DRAFT makes no sense (it has no number yet); sending a CANCELLED document
   // is nothing the party should receive.
@@ -487,6 +510,19 @@ export default function DocumentDetailScreen() {
           {!!doc.deliveryDate && (
             <Text style={[styles.docDate, { color: c.textSecondary }]}>
               {t('billing.detail.deliveryBy', { date: formatI18nDate(doc.deliveryDate, t) })}
+            </Text>
+          )}
+          {!!doc.supplierInvoiceNo && (
+            <Text style={[styles.docDate, { color: c.textSecondary }]}>
+              {t('purchases.list.supplierBillFull', {
+                number: doc.supplierInvoiceNo,
+                date: doc.supplierInvoiceDate ? formatI18nDate(doc.supplierInvoiceDate, t) : '—',
+              })}
+            </Text>
+          )}
+          {doc.type === 'PURCHASE_ORDER' && !!doc.fulfilment && (
+            <Text style={[styles.docDate, { color: c.textSecondary }]}>
+              {t(`purchases.fulfilment.${doc.fulfilment}`)}{doc.fulfilmentNote ? ` · ${doc.fulfilmentNote}` : ''}
             </Text>
           )}
           {!!doc.transportReason && (
@@ -774,6 +810,7 @@ export default function DocumentDetailScreen() {
             )}
           </View>
         )}
+        <PurchaseDocActions c={c} doc={doc} canManage={canManage} busy={!!busy} />
         {canSend && (
           <Button
             mode="outlined"
@@ -845,6 +882,7 @@ export default function DocumentDetailScreen() {
               density="small"
               buttons={PAYMENT_MODES.map((m) => ({ value: m, label: t(PAYMENT_MODE_LABEL_KEY[m]) }))}
             />
+            <AccountPicker c={c} value={payAccountId} onChange={setPayAccountId} />
             <TextInput
               mode="outlined"
               label={t('billing.detail.payReference')}

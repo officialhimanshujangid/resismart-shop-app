@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, View, useColorScheme } from 'react-native';
+import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 import { Button, Snackbar, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -7,9 +7,8 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
-import { useAuth } from '../../../src/context/AuthContext';
 import { qk } from '../../../src/lib/queryKeys';
-import { apiErrorMessage } from '../../../src/api/axios';
+import { apiErrorCode, apiErrorMessage } from '../../../src/api/axios';
 import { reviewsApi, ReviewListPage } from '../../../src/features/reviews/api';
 import { formatI18nDate } from '../../../src/i18n';
 import { ReplyBox } from '../../../src/features/reviews/components/ReplyBox';
@@ -21,22 +20,20 @@ const PAGE_SIZE = 20;
  * Reviews — what residents said, and the one place the partner can answer
  * from their phone. C7, mirroring web `partner/reviews/page.tsx`.
  *
- * Reads the PUBLIC list (`GET /partners/:partnerId/reviews`) with the
- * signed-in partner's own tenant id — see `features/reviews/api.ts`'s header
- * for why there is no partner-scoped list to call instead. Author names
- * arrive masked ("Priya N.") for the same reason they do on web: this is
- * exactly what a resident browsing the profile page sees.
+ * Reads `GET /reviews/mine` — this business's reviews including the ones a
+ * moderator HELD, which carry a badge saying residents cannot see them.
+ * Author names arrive masked ("Priya N."). The reply box is drawn only for
+ * somebody who manages bookings or orders — the rule the server applies.
  */
 export default function ReviewsScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
-  const { profile } = useAuth();
   const queryClient = useQueryClient();
 
-  const mayReply = can('CUSTOMERS', 'FULL');
-  const partnerId = profile?.tenantType === 'PARTNER' ? profile.tenantId : undefined;
+  // The server's rule for `POST /reviews/:id/reply`: bookings or orders at FULL.
+  const mayReply = can('BOOKINGS_MANAGE', 'FULL') || can('ORDERS_MANAGE', 'FULL');
 
   const [page, setPage] = useState(1);
   const [replyingId, setReplyingId] = useState<string | null>(null);
@@ -44,8 +41,7 @@ export default function ReviewsScreen() {
 
   const query = useQuery({
     queryKey: qk.reviews(page),
-    queryFn: () => reviewsApi.list(partnerId as string, page, PAGE_SIZE),
-    enabled: Boolean(partnerId),
+    queryFn: () => reviewsApi.list(page, PAGE_SIZE),
   });
 
   const reviews = query.data?.data ?? [];
@@ -78,21 +74,19 @@ export default function ReviewsScreen() {
         );
         setToast(t('reviews.replyPosted'));
       } catch (e: unknown) {
-        setToast(apiErrorMessage(e, t('reviews.replyFailed')));
+        // A refusal about WHO may reply is said in full, not in a 4-second toast.
+        const code = apiErrorCode(e);
+        if (code === 'REVIEW_REPLY_NOT_ALLOWED' || code === 'ACCESS_NOT_ASSIGNED') {
+          Alert.alert(t('reviews.replyFailed'), apiErrorMessage(e));
+        } else {
+          setToast(apiErrorMessage(e, t('reviews.replyFailed')));
+        }
       } finally {
         setReplyingId(null);
       }
     },
     [queryClient, page, t],
   );
-
-  if (!partnerId) {
-    return (
-      <Screen c={c} title={t('reviews.title')}>
-        <ErrorBlock c={c} message={t('reviews.noBusinessContext')} />
-      </Screen>
-    );
-  }
 
   if (query.isPending) return <Screen c={c} title={t('reviews.title')}><Loading c={c} label={t('reviews.loading')} /></Screen>;
   if (query.isError) {
@@ -108,7 +102,7 @@ export default function ReviewsScreen() {
       {reviews.length > 0 && (
         <Card c={c} style={styles.statsCard}>
           <StatBlock c={c} label={t('reviews.statPage')} value={pageAverage?.toFixed(1) ?? '—'} icon="star" />
-          <StatBlock c={c} label={t('reviews.statPublished')} value={String(total)} />
+          <StatBlock c={c} label={t('reviews.statTotal')} value={String(total)} />
           <StatBlock c={c} label={t('reviews.statAwaiting')} value={String(unanswered)} />
         </Card>
       )}
@@ -134,6 +128,12 @@ export default function ReviewsScreen() {
                 <Text style={{ fontSize: 13, fontWeight: '600', color: c.textPrimary }}>{r.rating}</Text>
               </View>
             </View>
+            {r.moderationStatus === 'HELD' && (
+              <View style={[styles.heldBadge, { backgroundColor: c.surfaceVariant }]}>
+                <MaterialCommunityIcons name="eye-off-outline" size={14} color={c.warning} />
+                <Text style={{ fontSize: 12, color: c.textPrimary, flexShrink: 1 }}>{t('reviews.held')}</Text>
+              </View>
+            )}
             <Text style={{ fontSize: 11, color: c.textDisabled, marginTop: 2 }}>
               {formatI18nDate(r.createdAt, t)}
               {r.bookingId ? t('reviews.afterBooking') : r.orderId ? t('reviews.afterOrder') : ''}
@@ -185,5 +185,6 @@ const styles = StyleSheet.create({
   reviewCard: { gap: 0 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  heldBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginTop: 6 },
   pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 4 },
 });

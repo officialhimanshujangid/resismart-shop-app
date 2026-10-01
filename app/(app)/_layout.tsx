@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,8 @@ import {
 } from '../../src/hooks';
 import { draftStore } from '../../src/features/billing/draftStore';
 import { themeColors } from '../../src/constants/colors';
+import { BusinessArchivedScreen } from '../../src/features/owners/components/BusinessArchivedScreen';
+import { categoryModulesOf, type P2Module } from '../../src/features/p2/modules';
 
 /**
  * The signed-in shell.
@@ -64,8 +66,13 @@ export default function AppLayout() {
    * already reads (react-query dedupes the request), and they are what stop a
    * tap pushing at a route `(tabs)/_layout.tsx` has removed from the navigator.
    */
-  const { hasModule, ready } = usePartnerEntitlements({ enabled: isAuthenticated });
-  useNotificationTaps({ enabled: isAuthenticated, hasModule, ready });
+  const { hasModule, ready, entitlements } = usePartnerEntitlements({ enabled: isAuthenticated });
+  // P2: the business-type modules, read off the same answer (absent = none).
+  const hasCategoryModule = useCallback(
+    (m: P2Module) => categoryModulesOf(entitlements).includes(m),
+    [entitlements],
+  );
+  useNotificationTaps({ enabled: isAuthenticated, hasModule, ready, hasCategoryModule });
 
   /**
    * Start the offline-draft engine for the whole signed-in session.
@@ -83,6 +90,16 @@ export default function AppLayout() {
     draftStore.setQueryClient(queryClient);
     draftStore.ensureInitialized();
   }, [queryClient]);
+
+  /**
+   * An ARCHIVED business (CONTRACT-partner-P0 §3) has no modules, no bookings
+   * and no orders — every screen below would only fail. One clear screen with a
+   * way out (another business, or sign out) replaces the shop for as long as it
+   * stays archived.
+   */
+  if (ready && entitlements.business?.status === 'ARCHIVED') {
+    return <BusinessArchivedScreen />;
+  }
 
   return (
     <Stack

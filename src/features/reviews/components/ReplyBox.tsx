@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { themeColors, radii } from '../../../constants/colors';
 import { formatI18nDate } from '../../../i18n';
 import { ReviewPublicView, replyStillEditable } from '../types';
+import { REPLY_MAX_LENGTH } from '../api';
 
 interface Props {
   review: ReviewPublicView;
@@ -106,6 +107,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
         value={text}
         onChangeText={setText}
         placeholder={t('reviews.reply.placeholder')}
+        maxLength={REPLY_MAX_LENGTH}
         multiline
         numberOfLines={2}
         outlineStyle={{ borderRadius: radii.field }}

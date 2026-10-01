@@ -170,6 +170,12 @@ export interface PartnerBookingView {
   completedAt?: string;
   /** Whether the completion code has been SENT. Never the code — the server refuses to return it. */
   completionOtpSentAt?: string;
+  /**
+   * The completion code's state, present once a code was sent — never the code.
+   * `canResend` is the whole rule for drawing "Send a new code"
+   * (`POST /:id/resend-code`, `booking.service.ts`).
+   */
+  completionCode?: CompletionCodeState;
   /** What THIS viewer may do to THIS booking right now. Draw only these buttons. */
   allowedVerbs: BookingVerb[];
   customer: PartnerBookingCustomerView;
@@ -248,12 +254,24 @@ export interface PartnerBookingListFilters {
   limit?: number;
 }
 
-// ------------------------------------------------------- backend/src/models/partner-staff.model.ts
-/** The slice of `GET /partners/me/staff` the assign sheet needs. */
+/** `completionCode` on the partner booking view (`booking.service.ts`). */
+export interface CompletionCodeState {
+  attemptsLeft: number;
+  resendsLeft: number;
+  canResend: boolean;
+}
+
+// ------------------------------------------ backend/src/controllers/partner-staff.controller.ts
+/**
+ * One row of `GET /partners/me/staff/assignable` — the job picker. Gated on
+ * `BOOKINGS_MANAGE: FULL` (what `assign` needs), NOT on `STAFF: READ`, so a
+ * manager can see who to give the job to. Active staff only; no phone, email
+ * or role. `id` is the staff row id `POST /:id/assign` takes as `staffId`.
+ */
 export interface AssignableStaff {
-  _id: string;
-  designation: string;
-  canTakeBookings: boolean;
-  isActive: boolean;
-  userId: { _id: string; name: string; email?: string; phone?: string } | string;
+  id: string;
+  name: string;
+  designation?: string;
+  skills: string[];
+  takesBookings: boolean;
 }

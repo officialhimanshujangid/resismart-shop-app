@@ -1,7 +1,7 @@
 import { apiClient, ApiEnvelope, unwrap, withIdempotency } from '../../api/axios';
 import {
-  DocumentLineInput, DocumentPartySnapshot, PartnerDocumentRecord, PartnerDocumentStatus, PartnerDocumentType,
-  TransportReason,
+  DocumentLineInput, DocumentPartySnapshot, DocumentRx, IssueWarning, PartnerDocumentRecord, PartnerDocumentStatus,
+  PartnerDocumentType, TransportReason,
 } from './types';
 
 /**
@@ -25,6 +25,14 @@ export interface DocumentListFilters {
   status?: string;
   partyId?: string;
   q?: string;
+  /**
+   * Documents raised FROM something: `ORDER`/`BOOKING` + that id, or
+   * `CONVERSION` + the source document's id. `sourceId` without
+   * `sourceType` is refused (400). Served by the `{partnerId, sourceType,
+   * sourceId}` index — no scan of recent documents.
+   */
+  sourceType?: 'BOOKING' | 'ORDER' | 'MANUAL' | 'CONVERSION';
+  sourceId?: string;
   page?: number;
   limit?: number;
 }
@@ -55,6 +63,14 @@ export interface CreateDocumentPayload {
   deliveryDate?: string;
   sourceType?: 'BOOKING' | 'ORDER' | 'MANUAL';
   sourceId?: string;
+  /** P1 (§4.4) — purchase documents only; the server refuses them on SALES. */
+  supplierInvoiceNo?: string;
+  supplierInvoiceDate?: string;
+  itcEligible?: boolean;
+  /** Re-post after a 409 PURCHASE_BILL_DUPLICATE_SUPPLIER_NO to keep both bills. */
+  confirmDuplicateSupplierNo?: boolean;
+  /** P2 PHARMACY: the prescription for a Schedule H/H1 sale (TAX_INVOICE / DELIVERY_CHALLAN). */
+  rx?: DocumentRx;
 }
 
 export interface ConvertDocumentPayload {
@@ -120,14 +136,22 @@ export const documentsApi = {
    * identified by the draft it issues, so both call sites derive a key that is
    * stable across every attempt at that one draft rather than minting per try.
    */
-  issue: (id: string, idempotencyKey: string) =>
+  issue: (id: string, idempotencyKey: string, opts?: { overrideCreditLimit?: boolean }) =>
     apiClient
-      .post<ApiEnvelope<PartnerDocumentRecord> & { message: string }>(
+      .post<ApiEnvelope<PartnerDocumentRecord> & { message: string; warnings?: IssueWarning[] }>(
         `/partners/me/documents/${id}/issue`,
-        {},
+        // P1 §4.4: `overrideCreditLimit` only after a BLOCK refusal the role may
+        // override. The body is part of the idempotency fingerprint, so the
+        // caller sends it under a DIFFERENT key (see `draftStore.syncDraft`).
+        opts?.overrideCreditLimit ? { overrideCreditLimit: true } : {},
         withIdempotency(idempotencyKey),
       )
-      .then((r) => ({ document: unwrap(r.data), message: r.data.message })),
+      .then((r) => ({
+        document: unwrap(r.data),
+        message: r.data.message,
+        // Additive (§4.4): an old server sends none.
+        warnings: Array.isArray(r.data.warnings) ? r.data.warnings : [],
+      })),
 
   cancel: (id: string, reason?: string) =>
     apiClient
@@ -141,12 +165,18 @@ export const documentsApi = {
    * Turn this document into its target type — C4. One server transaction
    * writes both documents; there is no client-side "half converted" state.
    * Mirrors `ConvertDialog.tsx` on web.
+   *
+   * Carries an `Idempotency-Key` (one per intent, reused on retry) so a retry
+   * replays the original answer instead of converting twice. A retry that finds
+   * the same conversion already done answers 200 `replayed: true` with the
+   * same `{source, created}` — a success, read exactly like the 201.
    */
-  convert: (id: string, payload: ConvertDocumentPayload) =>
+  convert: (id: string, payload: ConvertDocumentPayload, idempotencyKey: string) =>
     apiClient
-      .post<ApiEnvelope<{ source: PartnerDocumentRecord; created: PartnerDocumentRecord }>>(
+      .post<ApiEnvelope<{ source: PartnerDocumentRecord; created: PartnerDocumentRecord }> & { replayed?: boolean }>(
         `/partners/me/documents/${id}/convert`,
         payload,
+        withIdempotency(idempotencyKey),
       )
       .then((r) => unwrap(r.data)),
 

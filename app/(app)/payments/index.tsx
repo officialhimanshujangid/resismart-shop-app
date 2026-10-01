@@ -167,7 +167,8 @@ export default function PaymentsScreen() {
               item={item}
               c={c}
               direction={direction}
-              canManage={canManage}
+              // P1 §2: cancelling a payment needs DOCUMENTS_VOID too — hidden without it.
+              canManage={canManage && can('DOCUMENTS_VOID', 'FULL')}
               cancelling={cancellingId === item._id}
               onCancel={() => cancelPayment(item)}
             />

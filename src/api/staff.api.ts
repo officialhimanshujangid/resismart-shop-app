@@ -1,4 +1,5 @@
 import { apiClient, ApiEnvelope, unwrap } from './axios';
+import type { PartnerRoleLimits } from '../features/p1/access';
 import { PartnerAccessModule } from '../types/api-contract.generated';
 
 /**
@@ -64,6 +65,14 @@ export interface PartnerAccessRole {
   permissions: PartnerModuleGrant[];
   isSystem: boolean;
   isActive: boolean;
+  /**
+   * May THE VIEWER hand this role out (the ceiling)? `false` means it grants
+   * more than they hold — grey it out rather than meet a 403 on save. Always
+   * `true` for the owner.
+   */
+  assignable?: boolean;
+  /** P1 role limits (§1.7) — absent key = unlimited. Set only by the owner. */
+  limits?: PartnerRoleLimits;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,9 +94,12 @@ export interface CreateRolePayload {
   name: string;
   description?: string;
   permissions?: PartnerModuleGrant[];
+  /** Owner only (403 PARTNER_ROLE_LIMITS_OWNER_ONLY otherwise). */
+  limits?: PartnerRoleLimits;
 }
 
-export type UpdateRolePayload = Partial<CreateRolePayload> & { isActive?: boolean };
+/** On update `limits` REPLACES; `null` clears them. */
+export type UpdateRolePayload = Partial<Omit<CreateRolePayload, 'limits'>> & { isActive?: boolean; limits?: PartnerRoleLimits | null };
 
 export const staffApi = {
   list: () => apiClient.get<ApiEnvelope<PartnerStaffRow[]>>('/partners/me/staff').then((r) => unwrap(r.data)),

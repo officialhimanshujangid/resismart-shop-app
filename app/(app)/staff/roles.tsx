@@ -10,9 +10,12 @@ import {
   rolesApi, PartnerAccessRole, PartnerModuleGrant, PermissionLevel, PartnerRoleCatalogEntry,
 } from '../../../src/api/staff.api';
 import { apiErrorMessage } from '../../../src/api/axios';
+import { usePartnerEntitlements } from '../../../src/hooks';
+import { grantableLevels, Level } from '../../../src/lib/staffAccess';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { Card, EmptyBlock, ErrorBlock, Loading, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { limitsFormFrom, limitsFromForm, RoleLimitsCard, RoleLimitsForm } from '../../../src/features/p1/RoleLimitsCard';
 
 /**
  * WHAT A PERMISSION LEVEL IS CALLED ON SCREEN — a catalogue key per level, not
@@ -41,22 +44,41 @@ export default function RolesScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
+  const { can, entitlements } = usePartnerEntitlements();
+  /** What THIS person holds for a module — the ceiling for any role they write. */
+  const ownLevel = (module: PartnerRoleCatalogEntry['key']): Level =>
+    (can(module, 'FULL') ? 'FULL' : can(module, 'READ') ? 'READ' : 'NONE');
 
   const query = useQuery({ queryKey: qk.staffRoles(), queryFn: rolesApi.list });
 
   // `undefined` = editor closed. `null` = creating a new role. A role = editing that role.
   const [editingRole, setEditingRole] = useState<PartnerAccessRole | null | undefined>(undefined);
   const [draft, setDraft] = useState(draftFrom(null));
+  // P1 (screen S24): the role's limits — the OWNER alone may set or clear them.
+  const [limits, setLimits] = useState<RoleLimitsForm>(limitsFormFrom());
+  const [limitsError, setLimitsError] = useState<keyof RoleLimitsForm | undefined>(undefined);
+  const isOwner = entitlements.isAdmin;
+  /** `undefined` = leave limits alone (not the owner, or unchanged); else the value to send. */
+  const limitsToSend = (): { ok: boolean; value?: ReturnType<typeof limitsFromForm>['limits'] } => {
+    if (!isOwner) return { ok: true };
+    const res = limitsFromForm(limits);
+    if (res.error) { setLimitsError(res.error); return { ok: false }; }
+    setLimitsError(undefined);
+    return { ok: true, value: res.limits };
+  };
 
   const openEditor = (role: PartnerAccessRole | null) => {
     setEditingRole(role);
     setDraft(draftFrom(role));
+    setLimits(limitsFormFrom(role?.limits));
+    setLimitsError(undefined);
   };
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: qk.staffRoles() });
 
   const createMutation = useMutation({
-    mutationFn: () => rolesApi.create({
+    mutationFn: (lim: ReturnType<typeof limitsFromForm>['limits'] | undefined) => rolesApi.create({
+      ...(lim ? { limits: lim } : {}),
       name: draft.name.trim(),
       description: draft.description.trim() || undefined,
       permissions: [...draft.grants.entries()]
@@ -68,7 +90,8 @@ export default function RolesScreen() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: () => rolesApi.update(editingRole!._id, {
+    mutationFn: (lim: ReturnType<typeof limitsFromForm>['limits'] | undefined) => rolesApi.update(editingRole!._id, {
+      ...(lim !== undefined ? { limits: lim } : {}),
       name: draft.name.trim(),
       description: draft.description.trim() || undefined,
       permissions: [...draft.grants.entries()].map(([module, level]) => ({ module, level } as PartnerModuleGrant)),
@@ -90,10 +113,16 @@ export default function RolesScreen() {
     ]);
   };
 
+  /**
+   * Cycles only through levels this person holds themselves — the server
+   * refuses a role above its writer's access (`PARTNER_ROLE_BEYOND_YOUR_ACCESS`).
+   */
   const cycleLevel = (entry: PartnerRoleCatalogEntry) => {
+    const levels = grantableLevels(entry.levels, entitlements.isAdmin, ownLevel(entry.key));
+    if (levels.length < 2) return;
     const current = draft.grants.get(entry.key) ?? 'NONE';
-    const idx = entry.levels.indexOf(current);
-    const next = entry.levels[(idx + 1) % entry.levels.length];
+    const idx = levels.indexOf(current);
+    const next = levels[(idx + 1) % levels.length];
     const grants = new Map(draft.grants);
     grants.set(entry.key, next);
     setDraft({ ...draft, grants });
@@ -114,6 +143,8 @@ export default function RolesScreen() {
 
   if (editingRole !== undefined) {
     const isSystem = editingRole?.isSystem === true;
+    /** A role above this person's own access: shown, never changed, from here. */
+    const beyondMe = editingRole?.assignable === false;
     return (
       <Screen
         c={c}
@@ -127,6 +158,11 @@ export default function RolesScreen() {
         {isSystem && (
           <Text style={{ color: c.textSecondary, fontSize: 12 }}>
             {t('staff.roles.seededNote')}
+          </Text>
+        )}
+        {beyondMe && (
+          <Text style={{ color: c.error, fontSize: 13 }}>
+            {t('staff.roles.beyondYou')}
           </Text>
         )}
 
@@ -144,7 +180,7 @@ export default function RolesScreen() {
                      `capacity.noun`. They follow when the backend catalogue does. */
                   title={entry.label}
                   subtitle={entry.description}
-                  onPress={() => cycleLevel(entry)}
+                  onPress={beyondMe ? undefined : () => cycleLevel(entry)}
                   right={
                     <Chip
                       compact
@@ -162,8 +198,19 @@ export default function RolesScreen() {
         </Card>
         <Text style={{ color: c.textDisabled, fontSize: 11 }}>{t('staff.roles.cycleHint')}</Text>
 
-        <AppButton label={t(editingRole ? 'staff.roles.saveChanges' : 'staff.roles.createRole')} onPress={() => (editingRole ? updateMutation.mutate() : createMutation.mutate())} loading={saving} disabled={saving || !draft.name.trim()} style={{ marginTop: 8 }} />
-        {editingRole && !isSystem && (
+        {isOwner && (
+          <RoleLimitsCard c={c} value={limits} onChange={setLimits} error={limitsError} disabled={beyondMe} />
+        )}
+
+        {!beyondMe && (
+          <AppButton label={t(editingRole ? 'staff.roles.saveChanges' : 'staff.roles.createRole')} onPress={() => {
+            const l = limitsToSend();
+            if (!l.ok) return;
+            if (editingRole) updateMutation.mutate(l.value);
+            else createMutation.mutate(l.value);
+          }} loading={saving} disabled={saving || !draft.name.trim()} style={{ marginTop: 8 }} />
+        )}
+        {editingRole && !isSystem && !beyondMe && (
           <AppButton label={t('staff.roles.deleteRole')} mode="outlined" onPress={() => confirmDelete(editingRole)} style={{ marginTop: 4 }} labelStyle={{ color: c.error }} />
         )}
       </Screen>
@@ -193,6 +240,7 @@ export default function RolesScreen() {
                 })
                 + (role.isSystem ? t('staff.roles.seededSuffix') : '')
                 + (!role.isActive ? t('staff.roles.inactiveSuffix') : '')
+                + (role.assignable === false ? t('staff.roles.beyondYouSuffix') : '')
               }
               onPress={() => openEditor(role)}
             />

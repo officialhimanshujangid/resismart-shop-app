@@ -6,13 +6,13 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
-import { apiErrorMessage } from '../../../src/api/axios';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { partnerApi } from '../../../src/api/partner.api';
 import { PartnerServiceMode } from '../../../src/types/api-contract.generated';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { alertApiError } from '../../../src/features/owners/alertApiError';
 
 /**
  * Where the business works — and it had no control anywhere in this app.
@@ -94,7 +94,8 @@ export default function WhereYouWorkScreen() {
       refresh();
       Alert.alert(t('settings.whereYouWork.savedTitle'), t('settings.whereYouWork.savedBody'));
     },
-    onError: (e) => Alert.alert(t('settings.whereYouWork.couldNotSave'), apiErrorMessage(e)),
+    // Same route as the address screen — see `alertApiError`.
+    onError: (e) => alertApiError(t('settings.whereYouWork.couldNotSave'), e),
   });
 
   const onSave = () => {

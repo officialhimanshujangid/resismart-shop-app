@@ -72,6 +72,10 @@ export interface PartnerInvoiceSettings {
    */
   autoInvoiceOnDelivery?: boolean;
   autoReceiptOnCodDelivery?: boolean;
+  /** P1 §1.5: print an all-exempt invoice as a bill of supply. Absent = false. */
+  billOfSupplyForExempt?: boolean;
+  /** P1 §1.5: how far (0–20 %) a GRN may exceed the pending PO quantity. Absent = 0. */
+  overReceiptPercent?: number;
 }
 
 export type UpdateInvoiceSettingsPayload = Partial<{
@@ -94,6 +98,8 @@ export type UpdateInvoiceSettingsPayload = Partial<{
   /** Both accepted and applied server-side — see the note on `PartnerInvoiceSettings`. */
   autoInvoiceOnDelivery: boolean;
   autoReceiptOnCodDelivery: boolean;
+  billOfSupplyForExempt: boolean;
+  overReceiptPercent: number;
 }>;
 
 export interface BusinessExtraField {
@@ -118,6 +124,8 @@ export interface PartnerBusinessSettings {
   businessType: string[];
   industryType?: string;
   extraFields: BusinessExtraField[];
+  /** P1 §1.5 — composition partners only; one of 0.5, 1, 2, 5, 6. */
+  compositionRatePercent?: number;
 }
 
 export type UpdateBusinessSettingsPayload = Partial<{
@@ -134,6 +142,8 @@ export type UpdateBusinessSettingsPayload = Partial<{
   businessType: string[];
   industryType: string;
   extraFields: BusinessExtraField[];
+  /** null clears it. */
+  compositionRatePercent: number | null;
 }>;
 
 export interface PartnerWhatsAppEvent {

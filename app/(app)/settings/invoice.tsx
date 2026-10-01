@@ -75,6 +75,9 @@ export default function InvoiceSettingsScreen() {
   const [autoInvoiceOnDelivery, setAutoInvoiceOnDelivery] = useState(true);
   const [autoReceiptOnCodDelivery, setAutoReceiptOnCodDelivery] = useState(true);
   const [thermalWidth, setThermalWidth] = useState<'58' | '80'>('80');
+  // P1 §1.5 (screen S19): exempt bills print as bills of supply; GRN over-receipt tolerance.
+  const [billOfSupplyForExempt, setBillOfSupplyForExempt] = useState(false);
+  const [overReceiptPercent, setOverReceiptPercent] = useState('0');
   const [thermalCopies, setThermalCopies] = useState('1');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -99,6 +102,8 @@ export default function InvoiceSettingsScreen() {
     setAutoReceiptOnCodDelivery(s.autoReceiptOnCodDelivery !== false);
     setThermalWidth(String(s.thermal.width) as '58' | '80');
     setThermalCopies(String(s.thermal.copies));
+    setBillOfSupplyForExempt(s.billOfSupplyForExempt === true);
+    setOverReceiptPercent(String(s.overReceiptPercent ?? 0));
   }, [query.data]);
 
   const save = useMutation({
@@ -116,6 +121,8 @@ export default function InvoiceSettingsScreen() {
       showHsn, showDiscount, showTaxBreakup, showUpiQr, showSignature,
       autoInvoiceOnDelivery, autoReceiptOnCodDelivery,
       thermal: { width: Number(thermalWidth) as 58 | 80, copies: Math.min(5, Math.max(1, Number(thermalCopies) || 1)) },
+      billOfSupplyForExempt,
+      overReceiptPercent: Math.min(20, Math.max(0, Math.round(Number(overReceiptPercent) || 0))),
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.billing.settings() });
@@ -197,6 +204,13 @@ export default function InvoiceSettingsScreen() {
         <Text style={{ color: c.textSecondary, fontSize: 11.5, lineHeight: 16 }}>
           {t('settings.invoice.deliveryNote')}
         </Text>
+      </Card>
+
+      <Card c={c}>
+        <SectionLabel c={c}>{t('settings.invoice.p1Section')}</SectionLabel>
+        <ToggleRow c={c} label={t('settings.invoice.billOfSupplyForExempt')} value={billOfSupplyForExempt} onChange={setBillOfSupplyForExempt} disabled={!canEdit} />
+        <Text style={{ color: c.textSecondary, fontSize: 11.5, lineHeight: 16 }}>{t('settings.invoice.billOfSupplyForExemptNote')}</Text>
+        <AppInput label={t('settings.invoice.overReceiptPercent')} value={overReceiptPercent} onChangeText={(v) => setOverReceiptPercent(v.replace(/[^0-9]/g, '').slice(0, 2))} keyboardType="numeric" disabled={!canEdit} />
       </Card>
 
       <Card c={c}>

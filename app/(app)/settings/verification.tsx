@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
-import { apiErrorMessage } from '../../../src/api/axios';
+import { apiErrorCode, apiErrorMessage } from '../../../src/api/axios';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { partnerApi, uploadKycFile, blockerFix, splitBlockers, PartnerKycDoc } from '../../../src/api/partner.api';
 // The enum comes from the generated contract, not from a list typed out here —
@@ -107,11 +107,21 @@ export default function VerificationScreen() {
       setDocs((d) => [...d, res.doc]);
       queryClient.setQueryData(qk.onboarding.status(), res.onboarding);
     } catch (e) {
+      /**
+       * Coded refusals are said in our words by `apiErrorMessage`:
+       * 409 `KYC_DOCS_LOCKED_VERIFIED` (verified meanwhile — documents are
+       * locked), 400 `KYC_DOC_NOT_YOURS`, 500 `UPLOAD_FAILED`. On the first,
+       * the screen was stale: re-read it so the add button goes away.
+       */
+      if (apiErrorCode(e) === 'KYC_DOCS_LOCKED_VERIFIED') {
+        void statusQuery.refetch();
+        void meQuery.refetch();
+      }
       Alert.alert(t('settings.verification.uploadFailed'), apiErrorMessage(e));
     } finally {
       setUploading(false);
     }
-  }, [docType, queryClient, t]);
+  }, [docType, queryClient, t, statusQuery, meQuery]);
 
   const removeDoc = useCallback((doc: PartnerKycDoc) => {
     Alert.alert(

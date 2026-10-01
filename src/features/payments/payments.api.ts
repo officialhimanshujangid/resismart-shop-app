@@ -37,6 +37,8 @@ export interface CreatePaymentPayload {
   upiTxnRef?: string;
   /** ISO string. Defaults to "now" server-side when absent. */
   receivedAt?: string;
+  /** P1 §8: the cash/bank account it lands in. Absent = the server's default for the mode. */
+  accountId?: string;
 }
 
 export const paymentsApi = {

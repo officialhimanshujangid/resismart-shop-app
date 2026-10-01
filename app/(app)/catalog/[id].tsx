@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View, useColorScheme, Pressable } from 'react-native';
 import { Text, Switch, ActivityIndicator } from 'react-native-paper';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
@@ -18,6 +18,12 @@ import {
 } from '../../../src/features/catalog';
 import type { StockAdjustTarget } from '../../../src/features/catalog';
 import { formatI18nDate } from '../../../src/i18n';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { qk } from '../../../src/lib/queryKeys';
+import { newIdempotencyKey } from '../../../src/lib/idempotency';
+import { stockApi } from '../../../src/features/stock/api';
+import { OpeningStockDialog } from '../../../src/features/stock/components/OpeningStockDialog';
+import { useCategoryModules } from '../../../src/features/p2/useCategoryModules';
 
 export default function ProductDetailScreen() {
   const { t } = useTranslation();
@@ -26,6 +32,22 @@ export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { can } = usePartnerEntitlements();
   const canManage = can('CATALOG_MANAGE', 'FULL');
+  // P1 (§5.2): stock changes are STOCK_MANAGE (derived from CATALOG_MANAGE);
+  // cost prices are COSTS (screens S9, S10, S26).
+  const canStock = can('STOCK_MANAGE', 'FULL');
+  const canCosts = can('COSTS', 'READ');
+  /** P2: the Pharmacy module is on and this person may see it. */
+  const pharmacyOn = useCategoryModules().has('PHARMACY') && can('PHARMACY_VIEW', 'READ');
+  const queryClient = useQueryClient();
+  const [openingOpen, setOpeningOpen] = useState(false);
+  const opening = useMutation({
+    mutationFn: (body: { qty: number; unitCostPaise: number }) => stockApi.openingStock(id, body, newIdempotencyKey('opening')),
+    onSuccess: () => {
+      setOpeningOpen(false);
+      void queryClient.invalidateQueries({ queryKey: qk.catalog.all() });
+    },
+    onError: (e: unknown) => Alert.alert(t('catalog.detail.adjustFailed'), apiErrorMessage(e)),
+  });
 
   const productQuery = useProduct(id);
   const categoriesQuery = useProductCategories();
@@ -190,13 +212,22 @@ export default function ProductDetailScreen() {
       )}
 
       <View style={[styles.stockCard, { backgroundColor: c.surface, borderColor: c.divider }]}>
-        <View>
+        <View style={styles.stockText}>
           <Text style={[styles.stockLabel, { color: c.textSecondary }]}>{t('catalog.detail.onHand')}</Text>
           <Text style={[styles.stockValue, { color: c.textPrimary }]}>
             {product.trackStock ? product.stockQty : t('catalog.detail.notTracked')}
           </Text>
+          {/* Every stock change is on the ledger (contract §5) — who, when, why. */}
+          <Pressable
+            onPress={() => router.push({ pathname: '/catalog/history/[id]', params: { id: product._id, name: product.name } })}
+            accessibilityRole="link"
+            hitSlop={8}
+            style={styles.historyLink}
+          >
+            <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('stockHistory.openLink')}</Text>
+          </Pressable>
         </View>
-        {canManage && product.trackStock && (
+        {canStock && product.trackStock && (
           <Pressable
             onPress={() => setStockTarget({ productId: product._id, productName: product.name, currentQty: product.stockQty })}
             style={[styles.adjustBtn, { borderColor: c.primary }]}
@@ -205,6 +236,34 @@ export default function ProductDetailScreen() {
           </Pressable>
         )}
       </View>
+
+      {/* P2 PHARMACY: medicine details (schedule, batch tracking) and batches. */}
+      {pharmacyOn && (
+        <Pressable
+          onPress={() => router.push(`/pharmacy/product/${product._id}` as Href)}
+          accessibilityRole="button"
+          style={[styles.adjustBtn, { borderColor: c.primary, alignSelf: 'flex-start', marginBottom: 10, minHeight: 44, justifyContent: 'center' }]}
+          testID="product-pharmacy-link"
+        >
+          <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('p2.billing.medicineDetails')}</Text>
+        </Pressable>
+      )}
+
+      {/* P1 cost line — the fields arrive only for a COSTS holder. */}
+      {typeof product.avgCostPaise === 'number' && (
+        <Text style={[styles.mrpNote, { color: c.textSecondary, textAlign: 'left', marginBottom: 8 }]} testID="product-cost">
+          {t('catalog.detail.costLine', {
+            avg: formatPaise(product.avgCostPaise),
+            value: formatPaise(product.stockValuePaise ?? 0),
+          })}
+          {typeof product.marginPercent === 'number' ? t('catalog.detail.marginSuffix', { margin: product.marginPercent.toFixed(1) }) : ''}
+        </Text>
+      )}
+      {canStock && canCosts && product.trackStock && (
+        <Pressable onPress={() => setOpeningOpen(true)} accessibilityRole="button" style={[styles.adjustBtn, { borderColor: c.primary, alignSelf: 'flex-start', marginBottom: 10 }]}>
+          <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('catalog.opening.button')}</Text>
+        </Pressable>
+      )}
 
       <AppInput label={t('catalog.form.name')} value={name} onChangeText={setName} error={errors.name} disabled={!canManage} />
 
@@ -286,7 +345,15 @@ export default function ProductDetailScreen() {
         {t('catalog.detail.footnote', { price: formatPaise(product.sellPaise), date: formatI18nDate(product.updatedAt, t) })}
       </Text>
 
+      <OpeningStockDialog
+        visible={openingOpen}
+        name={product.name}
+        submitting={opening.isPending}
+        onCancel={() => setOpeningOpen(false)}
+        onSubmit={(body) => opening.mutate(body)}
+      />
       <StockAdjustModal
+        showCost={canCosts}
         target={stockTarget}
         submitting={adjustStock.isPending}
         onCancel={() => setStockTarget(null)}
@@ -310,9 +377,11 @@ const styles = StyleSheet.create({
   body: { padding: 16, gap: 4, paddingBottom: 40 },
   offSaleBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: radii.sm, padding: 10, marginBottom: 10 },
   stockCard: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
     borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 12,
   },
+  stockText: { flex: 1, minWidth: 0 },
+  historyLink: { alignSelf: 'flex-start', marginTop: 6 },
   stockLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2 },
   stockValue: { fontSize: 22, fontWeight: '600', marginTop: 2 },
   adjustBtn: { borderWidth: 1.5, borderRadius: radii.card, paddingHorizontal: 14, paddingVertical: 9 },

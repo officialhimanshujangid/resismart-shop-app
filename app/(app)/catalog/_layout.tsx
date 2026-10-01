@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, useColorScheme } from 'react-native';
-import { ActivityIndicator } from 'react-native-paper';
-import { Stack, Redirect } from 'expo-router';
+import { ActivityIndicator, IconButton } from 'react-native-paper';
+import { Stack, Redirect, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -55,10 +55,30 @@ export default function CatalogLayout() {
         contentStyle: { backgroundColor: c.background },
       }}
     >
-      <Stack.Screen name="index" options={{ title: t('catalog.nav.index'), headerRight: () => <HelpButton c={c} /> }} />
+      <Stack.Screen
+        name="index"
+        options={{
+          title: t('catalog.nav.index'),
+          // The shop-wide stock ledger (contract §5) lives one tap from the list.
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <IconButton
+                icon="history"
+                size={22}
+                onPress={() => router.push('/catalog/movements')}
+                accessibilityLabel={t('stockHistory.navShop')}
+                style={{ margin: 0 }}
+              />
+              <HelpButton c={c} />
+            </View>
+          ),
+        }}
+      />
       <Stack.Screen name="create" options={{ title: t('catalog.nav.create'), presentation: 'modal' }} />
       <Stack.Screen name="[id]" options={{ title: t('catalog.nav.detail') }} />
       <Stack.Screen name="scan" options={{ title: t('catalog.nav.scan'), headerShown: false }} />
+      <Stack.Screen name="history/[id]" options={{ title: t('stockHistory.navProduct') }} />
+      <Stack.Screen name="movements" options={{ title: t('stockHistory.navShop') }} />
     </Stack>
   );
 }

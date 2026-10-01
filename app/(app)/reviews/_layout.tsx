@@ -30,7 +30,8 @@ export default function ReviewsLayout() {
     );
   }
 
-  if (!can('CUSTOMERS', 'READ')) {
+  // `GET /reviews/mine` answers anybody who may see bookings or orders.
+  if (!can('BOOKINGS_VIEW', 'READ') && !can('ORDERS_VIEW', 'READ')) {
     return <Redirect href="/(app)/(tabs)" />;
   }
 

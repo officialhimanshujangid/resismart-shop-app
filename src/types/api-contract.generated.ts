@@ -28,7 +28,7 @@ export const PARTNER_SERVICE_MODES = ['AT_PARTNER', 'AT_CUSTOMER'] as const;
 export type PartnerServiceMode = typeof PARTNER_SERVICE_MODES[number];
 
 /** Lifecycle of a partner account. */
-export const PARTNER_STATUSES = ['DRAFT', 'PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED'] as const;
+export const PARTNER_STATUSES = ['DRAFT', 'PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED', 'ARCHIVED'] as const;
 export type PartnerStatus = typeof PARTNER_STATUSES[number];
 
 /** Where a partner sits in KYC review. */
@@ -44,7 +44,7 @@ export const PARTNER_MODULES = ['BOOKINGS', 'CATALOG', 'ORDERS', 'INVOICING', 'P
 export type PartnerModule = typeof PARTNER_MODULES[number];
 
 /** Permission rows a partner staff role can grant (gate 3). */
-export const PARTNER_ACCESS_MODULES = ['BOOKINGS_VIEW', 'BOOKINGS_MANAGE', 'CATALOG_VIEW', 'CATALOG_MANAGE', 'ORDERS_VIEW', 'ORDERS_MANAGE', 'INVOICING_VIEW', 'INVOICING_MANAGE', 'CUSTOMERS', 'REPORTS', 'PROMOTION', 'STAFF', 'SETTINGS'] as const;
+export const PARTNER_ACCESS_MODULES = ['BOOKINGS_VIEW', 'BOOKINGS_MANAGE', 'CATALOG_VIEW', 'CATALOG_MANAGE', 'ORDERS_VIEW', 'ORDERS_MANAGE', 'INVOICING_VIEW', 'INVOICING_MANAGE', 'CUSTOMERS', 'REPORTS', 'PROMOTION', 'STAFF', 'SETTINGS', 'PURCHASES_VIEW', 'PURCHASES_MANAGE', 'STOCK_VIEW', 'STOCK_MANAGE', 'STOCK_COUNT', 'EXPENSES_VIEW', 'EXPENSES_MANAGE', 'ACCOUNTS', 'COSTS', 'DOCUMENTS_VOID', 'PHARMACY_VIEW', 'PHARMACY_MANAGE', 'RX_REGISTER', 'SUBSCRIPTIONS_VIEW', 'SUBSCRIPTIONS_MANAGE', 'DELIVERIES_MARK', 'ATTENDANCE_MARK', 'PACKAGES_MANAGE', 'JOBS_QUOTE'] as const;
 export type PartnerAccessModule = typeof PARTNER_ACCESS_MODULES[number];
 
 /** Input types an owner can put on a category booking form. */
@@ -72,7 +72,7 @@ export const ORDER_STATUSES = ['PLACED', 'ACCEPTED', 'PACKED', 'OUT_FOR_DELIVERY
 export type OrderStatus = typeof ORDER_STATUSES[number];
 
 /** Billing document kinds a partner can issue or record. */
-export const PARTNER_DOCUMENT_TYPES = ['TAX_INVOICE', 'QUOTATION', 'PROFORMA', 'DELIVERY_CHALLAN', 'CREDIT_NOTE', 'SALES_RETURN', 'PURCHASE_INVOICE', 'PURCHASE_ORDER', 'DEBIT_NOTE'] as const;
+export const PARTNER_DOCUMENT_TYPES = ['TAX_INVOICE', 'QUOTATION', 'PROFORMA', 'DELIVERY_CHALLAN', 'CREDIT_NOTE', 'SALES_RETURN', 'PURCHASE_INVOICE', 'PURCHASE_ORDER', 'DEBIT_NOTE', 'GOODS_RECEIPT'] as const;
 export type PartnerDocumentType = typeof PARTNER_DOCUMENT_TYPES[number];
 
 /** How a partner payment was made or received. */

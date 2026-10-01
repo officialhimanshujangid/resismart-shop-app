@@ -14,6 +14,7 @@ import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { MapPicker } from '../../../src/components/MapPicker';
 import { Card, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { alertApiError } from '../../../src/features/owners/alertApiError';
 
 /**
  * Where residents find you — and the map pin had no editor anywhere in this app.
@@ -113,7 +114,9 @@ export default function AddressScreen() {
       refresh();
       Alert.alert(t('settings.address.savedTitle'), t('settings.address.savedBody'));
     },
-    onError: (e) => Alert.alert(t('settings.address.couldNotSave'), apiErrorMessage(e)),
+    // `PUT /partners/me/partner` — the route that refuses an admin-email change
+    // with PARTNER_ADMIN_EMAIL_USE_HANDOVER; that one alert offers Team → Owners.
+    onError: (e) => alertApiError(t('settings.address.couldNotSave'), e),
   });
 
   const onSave = () => {

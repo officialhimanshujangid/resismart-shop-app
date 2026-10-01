@@ -31,6 +31,17 @@ export interface ProductListPage {
 }
 
 export const catalogApi = {
+  /**
+   * Active products by name — the bill's "add from catalogue" picker. Barcode
+   * lookup is `features/scanner`'s job, not this. This used to be a second
+   * client in `features/billing/products.api.ts`; merged here so there is one
+   * client for `/partners/me/products`.
+   */
+  search: (q: string, limit = 20) =>
+    apiClient
+      .get<{ data: Product[] }>('/partners/me/products', { params: { q, limit, isActive: 'true' } })
+      .then((r) => r.data.data),
+
   list: (filters: ProductListFilters) =>
     apiClient
       .get<ProductListPage>('/partners/me/products', {
@@ -58,7 +69,8 @@ export const catalogApi = {
   remove: (id: string) =>
     apiClient.delete<ApiEnvelope<unknown>>(`/partners/me/products/${id}`).then((r) => r.data),
 
-  adjustStock: (id: string, body: { mode: StockAdjustMode; qty: number; reason: string; reasonCode?: StockAdjustReasonCode }) =>
+  /** `unitCostPaise` (P1): an increase enters the average at this cost — honoured only for a COSTS holder. */
+  adjustStock: (id: string, body: { mode: StockAdjustMode; qty: number; reason: string; reasonCode?: StockAdjustReasonCode; unitCostPaise?: number }) =>
     apiClient
       .post<ApiEnvelope<{ name: string; stockQty: number; lowStockAt?: number }>>(`/partners/me/products/${id}/stock`, body)
       .then((r) => r.data),

@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { partnerApi, PartnerEntitlementsPayload, PartnerPermissionLevel } from '../api/partner.api';
 import { qk } from '../lib/queryKeys';
 import { PARTNER_MODULES, PartnerModule, PartnerAccessModule } from '../types/api-contract.generated';
+import { normaliseRoleLimits, PartnerRoleLimits } from '../features/p1/access';
+import { isP2Module, type P2Module } from '../features/p2/modules';
 
 /**
  * One place the partner app asks "may I?", fed by `GET /partners/me/entitlements`.
@@ -229,6 +231,14 @@ function normalise(raw: PartnerEntitlementsPayload | undefined): PartnerEntitlem
     // beside the discovery gates on the server.
     visibility: raw.visibility,
     kycRequired: raw.kycRequired,
+    // The ROLE's limits (P1). An absent or unreadable key is "no limit", which
+    // is the server's reading too — the server enforces them either way.
+    limits: normaliseRoleLimits(raw.limits),
+    // P2: only the four names this build knows; absent stays absent (an old
+    // server), so nothing here changes for a business that never opted in.
+    ...(Array.isArray(raw.categoryModules)
+      ? { categoryModules: raw.categoryModules.filter((m): m is P2Module => isP2Module(m)) }
+      : {}),
   };
 }
 
@@ -297,8 +307,12 @@ export interface UsePartnerEntitlements {
   moduleState: (module: PartnerModule) => PartnerModuleState;
   /** The module rows "More" should draw, gate 3 applied — see `moduleMenuEntries`. */
   menu: ModuleMenuEntry[];
+  /** The role's P1 limits (discount cap, price edit, backdate, credit override). `{}` = none. */
+  roleLimits: PartnerRoleLimits;
   refresh: () => void;
 }
+
+const NO_LIMITS: PartnerRoleLimits = Object.freeze({});
 
 export interface UsePartnerEntitlementsOptions {
   /**
@@ -358,6 +372,7 @@ export function usePartnerEntitlements(options?: UsePartnerEntitlementsOptions):
   }, [queryClient]);
 
   const menu = useMemo(() => moduleMenuEntries(resolved, ready), [resolved, ready]);
+  const roleLimits = resolved.limits ?? NO_LIMITS;
 
-  return { entitlements: resolved, loading, ready, failed, can, hasModule, moduleState, menu, refresh };
+  return { entitlements: resolved, loading, ready, failed, can, hasModule, moduleState, menu, roleLimits, refresh };
 }

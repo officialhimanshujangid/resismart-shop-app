@@ -152,7 +152,16 @@ interface Props {
    * (`documentTypeLabelKey` in `features/billing/types.ts`) — the button says so.
    */
   billOfSupply?: boolean;
+  /**
+   * P2 JOBS: "Send quote" for an open booking. Handed in only when the business
+   * has the Jobs module and the person may quote; drawn only on the statuses
+   * below. Absent = nothing changes.
+   */
+  onSendQuote?: () => void;
 }
+
+/** The statuses a job quote can be started from (the Jobs "Pick a booking" set). */
+const QUOTABLE_BOOKING_STATUSES = new Set<string>(['ACCEPTED', 'SCHEDULED', 'RESCHEDULED', 'IN_PROGRESS']);
 
 /** The statuses a job can be billed in — `BILLABLE_BOOKING_STATUSES` on the server. */
 const BILLABLE_STATUSES = new Set<string>(['COMPLETED', 'INVOICED', 'PAID']);
@@ -170,7 +179,7 @@ const BILLABLE_STATUSES = new Set<string>(['COMPLETED', 'INVOICED', 'PAID']);
  * bookings" question that could disagree with the table.
  */
 export function BookingCard({
-  booking, pending, onQuickAction, onOpenForm, compact, isDark, onTaxInvoice, taxInvoiceBusy, billOfSupply,
+  booking, pending, onQuickAction, onOpenForm, compact, isDark, onTaxInvoice, taxInvoiceBusy, billOfSupply, onSendQuote,
 }: Props) {
   const { t } = useTranslation();
   const c = themeColors(isDark);
@@ -270,6 +279,22 @@ export function BookingCard({
             labelStyle={styles.actionLabel}
           >
             {billOfSupply ? t('bookings.card.billOfSupply') : t('bookings.card.taxInvoice')}
+          </Button>
+        </View>
+      )}
+
+      {!compact && onSendQuote && QUOTABLE_BOOKING_STATUSES.has(booking.status) && (
+        <View style={styles.actions}>
+          <Button
+            mode="outlined"
+            compact
+            icon="file-document-edit-outline"
+            onPress={onSendQuote}
+            style={styles.actionBtn}
+            labelStyle={styles.actionLabel}
+            testID={`booking-send-quote-${booking.id}`}
+          >
+            {t('p2.jobs.actions.sendQuote')}
           </Button>
         </View>
       )}

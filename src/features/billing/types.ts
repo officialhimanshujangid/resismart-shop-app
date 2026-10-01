@@ -27,8 +27,25 @@ export const PARTNER_DOCUMENT_TYPES = [
   'PURCHASE_INVOICE',
   'PURCHASE_ORDER',
   'DEBIT_NOTE',
+  // P1: a goods-received note. Made ONLY by "Receive against PO"
+  // (`POST /purchases/purchase-orders/:poId/receive`), never from the generic
+  // create screen — see `CREATABLE_DOCUMENT_TYPES`.
+  'GOODS_RECEIPT',
 ] as const;
 export type PartnerDocumentType = typeof PARTNER_DOCUMENT_TYPES[number];
+
+/**
+ * What the TAX_INVOICE was printed as (CONTRACT-partner-P1 §1.1, stamped at
+ * issue). Absent on documents issued before P1 — the old rule applies then.
+ */
+export const PRINT_AS_VALUES = [
+  'TAX_INVOICE', 'BILL_OF_SUPPLY_COMPOSITION', 'BILL_OF_SUPPLY_EXEMPT', 'BILL_OF_SUPPLY_UNREGISTERED',
+] as const;
+export type PrintAs = typeof PRINT_AS_VALUES[number];
+
+/** Types the generic New screen offers. GOODS_RECEIPT is made by receiving against a PO. */
+export const CREATABLE_DOCUMENT_TYPES: PartnerDocumentType[] =
+  PARTNER_DOCUMENT_TYPES.filter((t) => t !== 'GOODS_RECEIPT');
 
 /**
  * The types the New Invoice screen may create — as of C5, all nine.
@@ -67,6 +84,7 @@ export const DOCUMENT_TYPE_LABEL_KEY: Record<PartnerDocumentType, string> = {
   PURCHASE_INVOICE: 'billing.documentType.PURCHASE_INVOICE',
   PURCHASE_ORDER: 'billing.documentType.PURCHASE_ORDER',
   DEBIT_NOTE: 'billing.documentType.DEBIT_NOTE',
+  GOODS_RECEIPT: 'billing.documentType.GOODS_RECEIPT',
 };
 
 /**
@@ -93,13 +111,27 @@ export function isBillOfSupply(
   return type === 'TAX_INVOICE' && isGstRegistered === false && (taxPaise ?? 0) === 0;
 }
 
-/** `DOCUMENT_TYPE_LABEL_KEY[type]`, except a bill of supply reads as one. */
+/**
+ * `DOCUMENT_TYPE_LABEL_KEY[type]`, except a bill of supply reads as one.
+ *
+ * P1: an issued TAX_INVOICE carries the server's own verdict in `printAs`
+ * (composition, exempt or unregistered → a bill of supply). When it is there it
+ * WINS — it is what was printed on the paper — and the older guess from the
+ * registration flag is only the fallback for documents issued before P1 and for
+ * pickers where nothing has been issued yet.
+ */
 export function documentTypeLabelKey(
   type: PartnerDocumentType,
   isGstRegistered: boolean | undefined,
   taxPaise?: number,
+  printAs?: PrintAs | string,
 ): string {
-  return isBillOfSupply(type, isGstRegistered, taxPaise) ? BILL_OF_SUPPLY_LABEL_KEY : DOCUMENT_TYPE_LABEL_KEY[type];
+  if (type === 'TAX_INVOICE' && printAs) {
+    return printAs.startsWith('BILL_OF_SUPPLY') ? BILL_OF_SUPPLY_LABEL_KEY : DOCUMENT_TYPE_LABEL_KEY.TAX_INVOICE;
+  }
+  return isBillOfSupply(type, isGstRegistered, taxPaise)
+    ? BILL_OF_SUPPLY_LABEL_KEY
+    : (DOCUMENT_TYPE_LABEL_KEY[type] ?? 'billing.documentType.UNKNOWN');
 }
 
 /**
@@ -171,14 +203,19 @@ export const PARTNER_DOCUMENT_BEHAVIOUR: Readonly<Record<PartnerDocumentType, Do
   PURCHASE_INVOICE: { label: 'Purchase invoice', direction: 'PURCHASE', dateField: 'dueDate', requiresParty: true, stockNeedsGoodsFlag: false, isTaxDocument: true, settlement: 'OUT' },
   PURCHASE_ORDER: { label: 'Purchase order', direction: 'PURCHASE', dateField: 'none', requiresParty: true, stockNeedsGoodsFlag: false, isTaxDocument: false, settlement: 'NONE' },
   DEBIT_NOTE: { label: 'Debit note', direction: 'PURCHASE', dateField: 'none', requiresParty: true, stockNeedsGoodsFlag: true, isTaxDocument: true, settlement: 'IN' },
+  GOODS_RECEIPT: { label: 'Goods received note', direction: 'PURCHASE', dateField: 'none', requiresParty: true, stockNeedsGoodsFlag: false, isTaxDocument: false, settlement: 'NONE' },
 });
 
 export const behaviourOf = (type: PartnerDocumentType): DocumentBehaviour => PARTNER_DOCUMENT_BEHAVIOUR[type];
 
 export const SALES_DOCUMENT_TYPES: PartnerDocumentType[] =
   PARTNER_DOCUMENT_TYPES.filter((t) => PARTNER_DOCUMENT_BEHAVIOUR[t].direction === 'SALES');
+/** Every purchase type, GOODS_RECEIPT included — for LISTS and filters. */
 export const PURCHASE_DOCUMENT_TYPES: PartnerDocumentType[] =
   PARTNER_DOCUMENT_TYPES.filter((t) => PARTNER_DOCUMENT_BEHAVIOUR[t].direction === 'PURCHASE');
+/** The purchase types the generic New screen may create — no GOODS_RECEIPT (§4.4). */
+export const CREATABLE_PURCHASE_DOCUMENT_TYPES: PartnerDocumentType[] =
+  PURCHASE_DOCUMENT_TYPES.filter((t) => t !== 'GOODS_RECEIPT');
 
 /**
  * Mirrors `PARTNER_DOCUMENT_CONVERSIONS` — which button `billing/[id].tsx`
@@ -195,6 +232,7 @@ export const CONVERSION_TARGETS: Readonly<Record<PartnerDocumentType, PartnerDoc
   PURCHASE_INVOICE: [],
   PURCHASE_ORDER: ['PURCHASE_INVOICE'],
   DEBIT_NOTE: [],
+  GOODS_RECEIPT: [],
 });
 
 export const PARTNER_DOCUMENT_STATUSES = [
@@ -311,6 +349,29 @@ export interface DocumentLineInput {
   taxInclusive?: boolean;
   taxRatePercent?: number;
   cessRatePercent?: number;
+  /**
+   * P2 PHARMACY only (TAX_INVOICE / DELIVERY_CHALLAN / DEBIT_NOTE): sell from
+   * THIS batch instead of the automatic earliest-expiry pick. Absent = automatic.
+   * The server refuses it with 400 BATCH_FIELDS_NOT_ALLOWED when Pharmacy is off,
+   * which is why nothing sets it unless the module is on.
+   */
+  batchId?: string;
+}
+
+/**
+ * P2 PHARMACY: the prescription on a Schedule H/H1 sale (`rxDetailsSchema`).
+ * Only what the register needs — no clinical fields (Owner decision 10).
+ */
+export interface DocumentRx {
+  patientName: string;
+  patientPhone?: string;
+  patientAddress?: string;
+  doctorName: string;
+  doctorRegNo?: string;
+  doctorAddress?: string;
+  rxNo?: string;
+  /** ISO. */
+  rxDate?: string;
 }
 
 /** A document as `GET /partners/me/documents` and `GET .../documents/:id` return it. */
@@ -326,7 +387,8 @@ export interface PartnerDocumentRecord {
   issuedAt?: string;
   partyId?: string;
   partySnapshot: DocumentPartySnapshot;
-  sourceType: 'BOOKING' | 'ORDER' | 'MANUAL' | 'CONVERSION';
+  /** P2 adds SUBSCRIPTION (monthly subscription bills) and PACKAGE (a sold session package). */
+  sourceType: 'BOOKING' | 'ORDER' | 'MANUAL' | 'CONVERSION' | 'SUBSCRIPTION' | 'PACKAGE';
   sourceId?: string;
   convertedFromId?: string;
   convertedToId?: string;
@@ -354,6 +416,28 @@ export interface PartnerDocumentRecord {
   cancelledReason?: string;
   createdAt: string;
   updatedAt: string;
+  // ── P1 (CONTRACT-partner-P1 §1.1) — all optional; absent on older documents.
+  /** TAX_INVOICE only: what the paper says it is. */
+  printAs?: PrintAs;
+  /** Purchase documents: the SUPPLIER's own bill number and date. */
+  supplierInvoiceNo?: string;
+  supplierInvoiceDate?: string;
+  itcEligible?: boolean;
+  /** PURCHASE_INVOICE made from goods-received notes. */
+  sourceDocumentIds?: string[];
+  /** PURCHASE_ORDER only. */
+  fulfilment?: 'OPEN' | 'PARTIAL' | 'RECEIVED' | 'CLOSED_SHORT';
+  fulfilmentNote?: string;
+  /** GOODS_RECEIPT only: the supplier bill it went on. */
+  billedById?: string;
+  /** P2 PHARMACY: the prescription on a Schedule H/H1 sale. */
+  rx?: DocumentRx;
+}
+
+/** A warning an issue answered with (`warnings[]`, §4.4) — the bill WAS issued. */
+export interface IssueWarning {
+  code: 'PARTY_CREDIT_LIMIT_EXCEEDED' | 'PARTY_OVERDUE_BEYOND_CREDIT_DAYS' | string;
+  params?: Record<string, unknown>;
 }
 
 // ────────────────────────────────────────────────────────────────── parties
@@ -448,6 +532,21 @@ export interface InvoiceDraft {
    */
   sourceType?: 'BOOKING' | 'ORDER';
   sourceId?: string;
+  /** P1 purchase bill fields (PURCHASE_INVOICE / DEBIT_NOTE). */
+  supplierInvoiceNo?: string;
+  supplierInvoiceDate?: string;
+  itcEligible?: boolean;
+  /** Re-sent after a 409 PURCHASE_BILL_DUPLICATE_SUPPLIER_NO the partner confirmed. */
+  confirmDuplicateSupplierNo?: boolean;
+  /** Re-issue past a BLOCK credit limit — only when the role may (§4.4). */
+  overrideCreditLimit?: boolean;
+  /** The refusal code of the last FAILED attempt, so a screen can offer the right next step. */
+  lastErrorCode?: string;
+  lastErrorParams?: Record<string, unknown>;
+  /** What the successful issue warned about (credit limit / overdue) — the bill WAS issued. */
+  issueWarnings?: IssueWarning[];
+  /** P2 PHARMACY: the prescription (Schedule H/H1 sale). Absent on every other bill. */
+  rx?: DocumentRx;
   status: DraftSyncStatus;
   /** Set the instant `create` succeeds, persisted before `issue` is ever attempted. */
   serverDraftId?: string;
@@ -475,4 +574,9 @@ export interface AddDraftInput {
   /** The job this bill is for, when the screen was opened from one. */
   sourceType?: 'BOOKING' | 'ORDER';
   sourceId?: string;
+  supplierInvoiceNo?: string;
+  supplierInvoiceDate?: string;
+  itcEligible?: boolean;
+  /** P2 PHARMACY: the prescription for a Schedule H/H1 sale. */
+  rx?: DocumentRx;
 }

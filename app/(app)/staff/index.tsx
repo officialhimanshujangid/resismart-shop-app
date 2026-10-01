@@ -10,6 +10,8 @@ import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { staffApi, PartnerStaffRow } from '../../../src/api/staff.api';
 import { apiErrorMessage } from '../../../src/api/axios';
+import { useAuth } from '../../../src/context/AuthContext';
+import { isOwnStaffRow } from '../../../src/lib/staffAccess';
 import { Hero, GlassStat } from '../../../src/components/Hero';
 import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 
@@ -32,7 +34,8 @@ export default function StaffListScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { t } = useTranslation();
-  const { can } = usePartnerEntitlements();
+  const { can, entitlements } = usePartnerEntitlements();
+  const { user } = useAuth();
   const { capacity } = usePlanUsage();
   const canManage = can('STAFF', 'FULL');
   const cap = capacity('max_partner_staff');
@@ -115,7 +118,10 @@ export default function StaffListScreen() {
       {canManage && row.isActive && (
         <View style={{ flexDirection: 'row' }}>
           <IconButton icon="pencil-outline" size={20} onPress={() => router.push({ pathname: '/staff/new', params: { id: row._id } })} />
-          <IconButton icon="account-remove-outline" size={20} iconColor={c.error} onPress={() => confirmRemove(row)} />
+          {/* Nobody removes themselves — the owner does that. */}
+          {(entitlements.isAdmin || !isOwnStaffRow(row, user)) && (
+            <IconButton icon="account-remove-outline" size={20} iconColor={c.error} onPress={() => confirmRemove(row)} />
+          )}
         </View>
       )}
       {canManage && !row.isActive && (

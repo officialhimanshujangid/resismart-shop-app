@@ -10,6 +10,7 @@ import { formatTime, Translate } from '../../src/features/bookings/format';
 import { usePartnerEntitlements } from '../../src/hooks';
 import { apiErrorMessage } from '../../src/api/axios';
 import { NotificationRow, notificationDestination } from '../../src/api/notification.api';
+import { categoryModulesOf } from '../../src/features/p2/modules';
 import {
   NOTIFICATIONS_PAGE,
   fetchOlderNotifications,
@@ -126,7 +127,7 @@ export default function NotificationsScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const { hasModule } = usePartnerEntitlements();
+  const { hasModule, entitlements } = usePartnerEntitlements();
   const query = useNotifications();
   const markRead = useMarkNotificationsRead();
 
@@ -190,14 +191,18 @@ export default function NotificationsScreen() {
       if (!row.readAt) markRead.mutate([row._id]);
       const dest = notificationDestination(row);
       if (!dest) return;
-      if (dest.requires && !hasModule(dest.requires)) {
+      if (
+        (dest.requires && !hasModule(dest.requires))
+        // P2: a pharmacy / subscription / appointment / job alert whose module is off.
+        || (dest.requiresCategory && !categoryModulesOf(entitlements).includes(dest.requiresCategory))
+      ) {
         // The heading is the notification's own title, as the server wrote it.
         Alert.alert(row.title, t('notifications.screen.gone'));
         return;
       }
       router.push(dest.href);
     },
-    [hasModule, markRead, t],
+    [hasModule, entitlements, markRead, t],
   );
 
   const loadError = query.isError

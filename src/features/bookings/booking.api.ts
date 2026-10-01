@@ -83,6 +83,17 @@ export const bookingApi = {
       .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/complete`, body)
       .then((r) => unwrap(r.data)),
 
+  /**
+   * "Send a new code" — a fresh 6-digit code to the CUSTOMER (never returned
+   * here), attempts reset to 5. Only while a home-visit job is under way and a
+   * first code was sent; at most 3 per booking (429 `BOOKING_CODE_RESEND_LIMIT`).
+   * Answers with the partner view, whose `completionCode` is the fresh state.
+   */
+  resendCode: (id: string, body: { note?: string } = {}) =>
+    apiClient
+      .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/resend-code`, body)
+      .then((r) => unwrap(r.data)),
+
   noShow: (id: string, body: { note?: string } = {}) =>
     apiClient
       .post<ApiEnvelope<PartnerBookingView>>(`/partners/me/bookings/${id}/no-show`, body)
@@ -235,15 +246,13 @@ export const bookingVerbCall: Record<
 /**
  * Staff this partner may hand a booking to.
  *
- * Reads `GET /partners/me/staff` (gate 3: `STAFF READ`) rather than a
- * bookings-specific endpoint — there isn't one, and the assign sheet needs
- * exactly the same list the Staff screen manages. Filtered to active,
- * booking-eligible rows client-side: `canTakeBookings: false` is how a partner
- * marks somebody as back-office only, and the transition table's ASSIGNEE role
- * has no opinion on that flag, so nothing server-side stops an assign to
- * somebody who does not take jobs.
+ * `GET /partners/me/staff/assignable` — the job picker's own endpoint, gated on
+ * `BOOKINGS_MANAGE: FULL` (the permission `assign` itself needs) rather than
+ * `STAFF: READ`, so a manager who may assign a job can also see who to give it
+ * to. The server already sends active staff only; `takesBookings: false` is how
+ * a partner marks somebody as back-office only, so those are left out here.
  */
 export async function listAssignableStaff(): Promise<AssignableStaff[]> {
-  const { data } = await apiClient.get<{ success: boolean; data: AssignableStaff[] }>('/partners/me/staff');
-  return (data.data || []).filter((s) => s.isActive && s.canTakeBookings);
+  const { data } = await apiClient.get<{ success: boolean; data: AssignableStaff[] }>('/partners/me/staff/assignable');
+  return (data.data || []).filter((s) => s.takesBookings);
 }

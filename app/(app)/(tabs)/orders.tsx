@@ -5,14 +5,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // `as Href` below: the destination carries a query string, so it is not one of
 // the literal routes the generated union describes — the same escape hatch
 // `(tabs)/bookings.tsx#openBillFor` uses for the identical link.
-import { router, type Href } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { Hero } from '../../../src/components/Hero';
 import { HelpButton } from '../../../src/features/help/HelpButton';
 import { usePartnerEntitlements } from '../../../src/hooks';
-import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
+import { apiErrorMessage, apiErrorCode, apiErrorParams } from '../../../src/api/axios';
+import type { DocumentRx } from '../../../src/features/billing/types';
+import { OrderRxSheet } from '../../../src/features/p2/billing/OrderRxSheet';
 import {
   useOrders, useOrder, useOrderTransition,
   OrderCard, OrderDetailModal, ReasonPromptModal, RecordReturnModal,
@@ -153,6 +155,18 @@ export default function OrdersScreen() {
   const detail = useOrder(selectedId ?? undefined);
 
   /**
+   * A notification tap lands here with `?id=<orderId>` (`notificationDestination`)
+   * — open that order's sheet, then drop the param so closing the sheet does
+   * not reopen it.
+   */
+  const { id: linkedId } = useLocalSearchParams<{ id?: string }>();
+  useEffect(() => {
+    if (!linkedId) return;
+    setSelectedId(linkedId);
+    router.setParams({ id: undefined });
+  }, [linkedId]);
+
+  /**
    * The same question for the ONE order behind the detail sheet, and the sheet
    * has to be told about it rather than working it out from `loading` and
    * `order`: with both false-y it used to decide it should not be open at all,
@@ -174,6 +188,10 @@ export default function OrdersScreen() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [reasonTarget, setReasonTarget] = useState<(ReasonPromptTarget & { orderId: string }) | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
+  /** P2 PHARMACY: an accept refused for a missing prescription. */
+  const [rxTarget, setRxTarget] = useState<{
+    order: PartnerOrder; drug: { name: string; schedule: 'H' | 'H1' }; refusal: string;
+  } | null>(null);
 
   // ---- M5: record a return ----
   const [returnOrder, setReturnOrder] = useState<PartnerOrder | null>(null);
@@ -248,12 +266,37 @@ export default function OrdersScreen() {
             );
             return;
           }
+          /**
+           * P2 PHARMACY: a Schedule H/H1 medicine on the order — take the
+           * prescription and accept again, without leaving the order.
+           */
+          if (verb === 'accept' && apiErrorCode(e) === 'RX_DETAILS_REQUIRED') {
+            const p = apiErrorParams(e) ?? {};
+            const schedule = p.schedule === 'H1' ? 'H1' : 'H';
+            setRxTarget({ order, drug: { name: String(p.itemName ?? ''), schedule }, refusal: apiErrorMessage(e) });
+            return;
+          }
           setSnackbar(apiErrorMessage(e));
         },
         onSettled: () => setPendingId(null),
       },
     );
   }, [transition, patchRow, openBillFor, t]);
+
+  // ---- P2 PHARMACY: accept with a prescription ----
+  const acceptWithRx = useCallback((rx: DocumentRx) => {
+    if (!rxTarget) return;
+    const order = rxTarget.order;
+    setPendingId(order.id);
+    transition.mutate(
+      { id: order.id, verb: 'accept', rx },
+      {
+        onSuccess: (updated) => { patchRow(updated); setRxTarget(null); },
+        onError: (e: unknown) => setRxTarget((cur) => (cur ? { ...cur, refusal: apiErrorMessage(e) } : cur)),
+        onSettled: () => setPendingId(null),
+      },
+    );
+  }, [rxTarget, transition, patchRow]);
 
   const handleAction = useCallback((order: PartnerOrder, verb: KnownOrderVerb) => {
     if (verbNeedsReason(verb)) {
@@ -421,6 +464,17 @@ export default function OrdersScreen() {
         submitting={transition.isPending}
         onCancel={() => setReasonTarget(null)}
         onSubmit={submitReason}
+      />
+
+      {/* P2 PHARMACY: only ever opened by a RX_DETAILS_REQUIRED refusal. */}
+      <OrderRxSheet
+        visible={rxTarget !== null}
+        orderCode={rxTarget?.order.code ?? ''}
+        drug={rxTarget?.drug ?? null}
+        refusal={rxTarget?.refusal}
+        submitting={transition.isPending}
+        onAccept={acceptWithRx}
+        onDismiss={() => setRxTarget(null)}
       />
 
       <Snackbar visible={Boolean(snackbar)} onDismiss={() => setSnackbar(null)} duration={4000}>

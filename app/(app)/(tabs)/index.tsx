@@ -12,15 +12,23 @@ import { useTranslation } from 'react-i18next';
 import { blockerFix, splitBlockers } from '../../../src/api/partner.api';
 import { themeColors, radii } from '../../../src/constants/colors';
 import { formatPaise } from '../../../src/lib/money';
-import { apiErrorMessage } from '../../../src/api/axios';
+import { apiErrorMessage, apiErrorCode, apiErrorParams } from '../../../src/api/axios';
+import { isCodeRefusal } from '../../../src/lib/completionCode';
 import { qk } from '../../../src/lib/queryKeys';
 import { Kpi, findKpi, findSeries, formatKpiValue } from '../../../src/api/analytics.api';
 import { Hero, GlassStat } from '../../../src/components/Hero';
 import { HelpButton } from '../../../src/features/help/HelpButton';
+import { TodayShortcuts } from '../../../src/features/p1/TodayShortcuts';
+import { P2TodayShortcuts } from '../../../src/features/p2/P2Shortcuts';
 import { MiniBars } from '../../../src/components/charts';
+import { HomeSocietyBanner } from '../../../src/features/society/components/HomeSocietyBanner';
+import { useMyReach } from '../../../src/features/society/hooks';
+import { useMyRent } from '../../../src/features/rent/hooks';
+import { rentAccess } from '../../../src/features/rent/logic';
+import { RentTodayCard } from '../../../src/features/rent/components/RentTodayCard';
 
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
-import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
+import { BookingActionModal, CodeRefusal } from '../../../src/features/bookings/components/BookingActionModal';
 import { useBookingAction } from '../../../src/features/bookings/hooks';
 import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABEL_KEYS } from '../../../src/features/bookings/booking.types';
 import { slotConflictsOf } from '../../../src/features/bookings/booking.api';
@@ -131,10 +139,16 @@ export default function TodayScreen() {
   const kpiOf = (key: string, label: string, unit: Kpi['unit'], goodWhen: Kpi['goodWhen']): Kpi =>
     findKpi(board, key) ?? { key, label, value: null, unit, previous: null, deltaPercent: null, direction: null, goodWhen };
   const { act, pendingId, isPending } = useBookingAction();
+  /** P3: the home-society banner (society partners only; nothing for independents). */
+  const myReach = useMyReach();
+  /** P4: the shop rent due card — only asked by somebody the rent route lets in. */
+  const myRent = useMyRent(ready && rentAccess(can).canView);
 
   const [formTarget, setFormTarget] = useState<{ booking: PartnerBookingView; verb: BookingVerb } | null>(null);
   /** The appointments the last submit was refused for — see `submitForm`. */
   const [conflicts, setConflicts] = useState<BookingConflictView[]>([]);
+  /** A wrong / locked completion code — shown in the sheet, beside "Send a new code". */
+  const [codeRefusal, setCodeRefusal] = useState<CodeRefusal | null>(null);
 
   const runQuick = useCallback(
     (booking: PartnerBookingView, verb: BookingVerb) => {
@@ -168,6 +182,12 @@ export default function TodayScreen() {
            */
           const named = slotConflictsOf(e);
           if (named.length) return setConflicts(named);
+          // A code refusal stays in the sheet, where "Send a new code" is.
+          if (formTarget.verb === 'complete' && isCodeRefusal(apiErrorCode(e))) {
+            return setCodeRefusal({
+              code: apiErrorCode(e), params: apiErrorParams(e), message: apiErrorMessage(e), at: Date.now(),
+            });
+          }
           Alert.alert(t('bookings.actionFailed'), apiErrorMessage(e));
         });
     },
@@ -177,6 +197,8 @@ export default function TodayScreen() {
   const refreshing = bookingsQuery.isFetching || ordersQuery.isFetching || lowStockQuery.isFetching || analyticsQuery.isFetching;
   const onRefresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: qk.today() });
+    void queryClient.invalidateQueries({ queryKey: qk.partner.reach() });
+    void queryClient.invalidateQueries({ queryKey: qk.rent.all() });
   }, [queryClient]);
 
   const banner = ((): TodayBanner | null => {
@@ -398,6 +420,13 @@ export default function TodayScreen() {
           ) : null}
         </Hero>
 
+        {/* "Society shop of <society> — approved" / "removed by your society".
+            Beside, never instead of, the dashboard — see the component. */}
+        <HomeSocietyBanner c={c} reach={myReach.data} canManage={ready && can('SETTINGS', 'READ')} />
+
+        {/* P4: "Rent ₹35,400 due 5 Oct" — only with a lease and something due. */}
+        <RentTodayCard c={c} list={myRent.data} />
+
         {banner && (
           <Surface
             style={[
@@ -528,8 +557,17 @@ export default function TodayScreen() {
             >
               {t('today.manageCatalogue')}
             </Button>
+            {/* P1 (screen S12): straight to the reorder list, which drafts the POs. */}
+            {can('STOCK_VIEW', 'READ') && (
+              <Button mode="text" compact icon="cart-arrow-down" onPress={() => router.push('/stock/reorder')} style={{ alignSelf: 'flex-start' }}>
+                {t('stock.home.reorder')}
+              </Button>
+            )}
           </Surface>
         )}
+
+        {ready && !blocked && <TodayShortcuts c={c} />}
+        {ready && !blocked && <P2TodayShortcuts c={c} />}
 
         {ready && !blocked && showBookings && (
           <View style={styles.section}>
@@ -569,7 +607,8 @@ export default function TodayScreen() {
         isDark={isDark}
         submitting={isPending}
         conflicts={conflicts}
-        onDismiss={() => { setConflicts([]); setFormTarget(null); }}
+        codeRefusal={codeRefusal}
+        onDismiss={() => { setConflicts([]); setCodeRefusal(null); setFormTarget(null); }}
         onSubmit={submitForm}
       />
     </SafeAreaView>

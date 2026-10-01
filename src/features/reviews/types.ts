@@ -1,6 +1,8 @@
 /**
  * What the partner reviews screen reads off the wire.
  *
+ * Read from `GET /reviews/mine` (`serializeReviewsForPartner`), which is the
+ * same shape plus `bookingId`/`orderId` and includes HELD reviews.
  * `ReviewPublicView` is `serializeReviewPublic` in
  * `backend/src/services/partner-review.service.ts`, field for field — the
  * mobile twin of `frontend/src/app/(dashboard)/dashboard/partner/reviews/shared.ts`.

@@ -93,6 +93,9 @@ export interface ScannedProduct {
   isActive: boolean;
   categoryId?: string;
   images: string[];
+  /** P2 PHARMACY — sent by a server whose lookup projects them; absent otherwise. */
+  drugSchedule?: 'H' | 'H1' | 'X';
+  batchTracking?: boolean;
 }
 
 export type BarcodeLookupResult =

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, useColorScheme, View,
+  Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, useColorScheme, View,
 } from 'react-native';
 import {
   ActivityIndicator, Button, Chip, Divider, IconButton, Modal, Portal, SegmentedButtons, Snackbar, Surface, Switch, Text, TextInput,
@@ -17,8 +17,10 @@ import { DateField } from '../../../src/components/DateField';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { formatPaise } from '../../../src/lib/money';
 import { BarcodeScannerView, ProductScanOutcome } from '../../../src/features/scanner';
-import { partiesApi } from '../../../src/features/billing/parties.api';
-import { productsApi, BillableProduct } from '../../../src/features/billing/products.api';
+import { partiesApi } from '../../../src/api/parties.api';
+import { catalogApi } from '../../../src/features/catalog/api';
+import type { Product } from '../../../src/features/catalog/types';
+import { canStepDown, stepQty } from '../../../src/lib/qtyStep';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
 import { useDebouncedValue } from '../../../src/features/billing/useDebouncedValue';
 import { previewDocumentTax } from '../../../src/features/billing/taxPreview';
@@ -26,15 +28,24 @@ import { UsageMeter } from '../../../src/features/billing/components/UsageMeter'
 import { LineEditorSheet } from '../../../src/features/billing/components/LineEditorSheet';
 import {
   BillingScreenDocumentType, DOCUMENT_TYPE_LABEL_KEY, DocumentDirection, DraftLineInput, documentTypeLabelKey,
-  GST_STATES, PartnerPartyRecord, SALES_DOCUMENT_TYPES, PURCHASE_DOCUMENT_TYPES, behaviourOf,
+  GST_STATES, InvoiceDraft, PartnerPartyRecord, SALES_DOCUMENT_TYPES, CREATABLE_PURCHASE_DOCUMENT_TYPES, behaviourOf,
   TRANSPORT_REASONS, TRANSPORT_REASON_LABEL_KEY, TransportReason, statesTransportReason, statesDeliveryDate,
 } from '../../../src/features/billing/types';
+import { checkRoleLimits, earliestAllowedDay, mayOverrideCredit } from '../../../src/features/p1/access';
+import { warningText } from '../../../src/features/p1/warnings';
+import { PurchaseBillFields, takesSupplierBillFields } from '../../../src/features/purchases/components/PurchaseBillFields';
 import { toHref } from '../../../src/features/billing/routeHref';
 // Reached only when this screen was opened FROM a booking or an order — see
 // the note at the call site on why the job is settled here rather than left
 // for a second tap.
 import { bookingApi } from '../../../src/features/bookings/booking.api';
 import { ordersApi } from '../../../src/features/orders/api';
+// P2 PHARMACY — inert unless the business switched Pharmacy on (see the hook).
+import { usePharmacyBilling } from '../../../src/features/p2/billing/usePharmacyBilling';
+import { PharmacyLineChip } from '../../../src/features/p2/billing/PharmacyLineChip';
+import { BatchPickSheet } from '../../../src/features/pharmacy/components/BatchPickSheet';
+import { RxDetailsForm, RxDetails } from '../../../src/features/pharmacy/components/RxDetailsForm';
+import { EMPTY_RX, expiryLabel, rxBody, rxProblem } from '../../../src/features/pharmacy/logic';
 
 /**
  * The two-tap invoice (build spec §4 / PARTNERS_PLAN §12.5): pick a party,
@@ -53,7 +64,17 @@ import { ordersApi } from '../../../src/features/orders/api';
  * second, so in practice this still reads as "tap Issue, see the invoice".
  */
 
-type EditableLine = DraftLineInput & { key: string };
+/**
+ * `catalogRatePaise` is the product's shelf price when the line came from the
+ * catalogue — held so a role that must bill at catalogue price
+ * (`limits.mayEditPrice === false`) is told on the line, not after a round trip.
+ * Stripped before the draft is written, with `key`.
+ */
+type EditableLine = DraftLineInput & {
+  key: string; catalogRatePaise?: number; batchLabel?: string;
+  /** P2 PHARMACY: the drug facts when the product lookup carried them (never sent). */
+  drugSchedule?: 'H' | 'H1' | 'X'; batchTracking?: boolean;
+};
 let lineKeySeq = 0;
 const nextLineKey = () => `line-${(lineKeySeq += 1)}`;
 
@@ -75,6 +96,7 @@ const nextLineKey = () => `line-${(lineKeySeq += 1)}`;
 function lineFromProduct(product: {
   _id: string; name: string; unit: string; hsnCode?: string;
   sellPaise: number; taxRatePercent: number; taxInclusive: boolean;
+  drugSchedule?: 'H' | 'H1' | 'X'; batchTracking?: boolean;
 }): EditableLine {
   return {
     key: nextLineKey(),
@@ -84,9 +106,13 @@ function lineFromProduct(product: {
     unit: product.unit,
     qty: 1,
     ratePaise: product.sellPaise,
+    catalogRatePaise: product.sellPaise,
     discountPaise: 0,
     taxRatePercent: product.taxRatePercent,
     taxInclusive: product.taxInclusive,
+    // P2 PHARMACY: carried only when the lookup sent them (a newer server).
+    ...(product.drugSchedule ? { drugSchedule: product.drugSchedule } : {}),
+    ...(typeof product.batchTracking === 'boolean' ? { batchTracking: product.batchTracking } : {}),
   };
 }
 
@@ -110,22 +136,45 @@ export default function NewInvoiceScreen() {
     sourceType?: string; sourceId?: string;
     partyId?: string; partyName?: string; partyPhone?: string;
     itemName?: string; ratePaise?: string;
+    /** P1: Purchases home opens this screen on the purchase side with a type chosen. */
+    direction?: string; docType?: string;
   }>();
   const sourceType = jobParams.sourceType === 'BOOKING' || jobParams.sourceType === 'ORDER'
     ? jobParams.sourceType
     : undefined;
   const sourceId = sourceType ? jobParams.sourceId : undefined;
-  const { can } = usePartnerEntitlements();
+  const { can, entitlements, roleLimits: rawRoleLimits } = usePartnerEntitlements();
+  const roleLimits = rawRoleLimits ?? {};
   const { capacity } = usePlanUsage();
-  const { addDraft, retryDraft } = useOfflineDrafts();
-  const canManage = can('INVOICING_MANAGE', 'FULL');
+  const { addDraft, retryDraft, confirmDuplicateAndRetry, overrideCreditAndRetry } = useOfflineDrafts();
+  /**
+   * P1 split the permission by side (§4.4): purchase documents are
+   * PURCHASES_MANAGE, sales INVOICING_MANAGE. Derived defaults make them equal
+   * for every existing role; a role that holds only one side sees only it.
+   */
+  const canSales = can('INVOICING_MANAGE', 'FULL');
+  const canPurchases = can('PURCHASES_MANAGE', 'FULL');
+  const canManage = canSales || canPurchases;
   const invoiceCapacity = capacity('max_invoices_month');
 
   // ---- direction + type (C5) ----
-  const [direction, setDirection] = useState<DocumentDirection>('SALES');
-  const [docType, setDocType] = useState<BillingScreenDocumentType>('TAX_INVOICE');
-  const typesForDirection = direction === 'SALES' ? SALES_DOCUMENT_TYPES : PURCHASE_DOCUMENT_TYPES;
+  const askedPurchase = jobParams.direction === 'PURCHASE';
+  const askedType = CREATABLE_PURCHASE_DOCUMENT_TYPES.find((ty) => ty === jobParams.docType);
+  const [direction, setDirection] = useState<DocumentDirection>(
+    (askedPurchase && canPurchases) || (!canSales && canPurchases) ? 'PURCHASE' : 'SALES',
+  );
+  const [docType, setDocType] = useState<BillingScreenDocumentType>(
+    direction === 'PURCHASE' ? (askedType ?? 'PURCHASE_INVOICE') : 'TAX_INVOICE',
+  );
+  // GOODS_RECEIPT is never offered here (§4.4) — goods are received against a PO.
+  const typesForDirection = direction === 'SALES' ? SALES_DOCUMENT_TYPES : CREATABLE_PURCHASE_DOCUMENT_TYPES;
   const behaviour = behaviourOf(docType);
+
+  // ---- P1 purchase bill fields (§4.4) ----
+  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
+  const [supplierInvoiceDate, setSupplierInvoiceDate] = useState('');
+  /** `null` = leave it to the server's default (REGULAR partner and a taxed bill → eligible). */
+  const [itcEligible, setItcEligible] = useState<boolean | null>(null);
 
   // ---- dates (C6) ----
   const today = useMemo(() => {
@@ -197,8 +246,12 @@ export default function NewInvoiceScreen() {
    * a purchase) and forces search mode — every PURCHASE type requires a named
    * party, so "walk-in" is not offered on that side.
    */
+  const firstDirection = useRef(true);
   useEffect(() => {
-    setDocType(direction === 'SALES' ? 'TAX_INVOICE' : 'PURCHASE_INVOICE');
+    // On the first run the type is already what the screen was opened for
+    // (P1: Purchases home can ask for a PO); only a real toggle resets it.
+    if (!firstDirection.current) setDocType(direction === 'SALES' ? 'TAX_INVOICE' : 'PURCHASE_INVOICE');
+    firstDirection.current = false;
     setPartyMode(direction === 'PURCHASE' ? 'SEARCH' : 'WALKIN');
     setSelectedParty(null);
     setPartyQuery('');
@@ -223,7 +276,7 @@ export default function NewInvoiceScreen() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [productQuery, setProductQuery] = useState('');
   const debouncedProductQuery = useDebouncedValue(productQuery, 300);
-  const [productResults, setProductResults] = useState<BillableProduct[]>([]);
+  const [productResults, setProductResults] = useState<Product[]>([]);
   /**
    * The line the editor sheet is open on: a `key` for an existing line, `'NEW'`
    * for the one-off item being typed, `null` for closed. One piece of state
@@ -279,7 +332,7 @@ export default function NewInvoiceScreen() {
       return;
     }
     let cancelled = false;
-    productsApi
+    catalogApi
       .search(debouncedProductQuery.trim())
       .then((rows) => {
         if (!cancelled) setProductResults(rows);
@@ -358,13 +411,26 @@ export default function NewInvoiceScreen() {
   const updateQty = useCallback((key: string, delta: number) => {
     setLines((prev) =>
       prev
-        .map((l) => (l.key === key ? { ...l, qty: Math.max(0, Math.round((l.qty + delta) * 100) / 100) } : l))
-        .filter((l) => l.qty > 0),
+        // Never below 1 — removing a line is the bin button's job (`stepQty`).
+        .map((l) => (l.key === key ? { ...l, qty: stepQty(l.qty, delta) } : l)),
     );
   }, []);
 
   const removeLine = useCallback((key: string) => {
     setLines((prev) => prev.filter((l) => l.key !== key));
+  }, []);
+
+  // ---- P2 PHARMACY: batch pick + prescription (nothing here for any other business) ----
+  const pharmacy = usePharmacyBilling(direction, docType, lines);
+  const [rx, setRx] = useState<RxDetails>(EMPTY_RX);
+  /** The line whose batch is being picked. */
+  const [batchKey, setBatchKey] = useState<string | null>(null);
+  const batchLine = batchKey ? lines.find((l) => l.key === batchKey) : undefined;
+  const pickBatch = useCallback((key: string, pick: { batchId: string; batchNo: string; expiryDate: string } | null) => {
+    setLines((prev) => prev.map((l) => (l.key === key
+      ? { ...l, batchId: pick?.batchId, batchLabel: pick ? `${pick.batchNo} · ${expiryLabel(pick.expiryDate)}` : undefined }
+      : l)));
+    setBatchKey(null);
   }, []);
 
   /**
@@ -386,7 +452,13 @@ export default function NewInvoiceScreen() {
     staleTime: 5 * 60 * 1000,
   });
   const supplierState = businessQuery.data?.state;
-  const gstApplicable = businessQuery.data?.isGstRegistered ?? true;
+  /**
+   * P1 (§4.1): a COMPOSITION partner's SALES carry no GST — the server's
+   * `salesGstApplicable` — so the preview must not add any either, and the
+   * tax invoice reads as a bill of supply on the type picker.
+   */
+  const isComposition = businessQuery.data?.registrationType === 'COMPOSITION';
+  const gstApplicable = (businessQuery.data?.isGstRegistered ?? true) && !(direction === 'SALES' && isComposition);
 
   /**
    * Place of supply, exactly as `handleIssue` will send it — a named party's
@@ -420,13 +492,122 @@ export default function NewInvoiceScreen() {
   const totals = preview.totals;
   const untaxedLineCount = lines.filter((l) => !(l.taxRatePercent ?? 0)).length;
 
+  /**
+   * The role's limits, checked as the partner types (§4.4 / P1.12) — the same
+   * rules and order as the server's `checkRoleLimits`, so the refusal is said
+   * ON the line before the round trip. Sales documents only; the proprietor has
+   * `{}` and is never limited.
+   */
+  const limitViolation = useMemo(() => {
+    if (direction !== 'SALES') return null;
+    const priceOf = new Map(lines.filter((l) => l.itemId && l.catalogRatePaise !== undefined)
+      .map((l) => [l.itemId as string, l.catalogRatePaise as number]));
+    return checkRoleLimits({
+      limits: roleLimits,
+      lines,
+      documentDay: documentDate || undefined,
+      catalogPricePaise: (itemId) => priceOf.get(itemId),
+    });
+  }, [direction, lines, roleLimits, documentDate]);
+  const limitMessage = limitViolation ? t(`errors.${limitViolation.code}`, limitViolation.params) : null;
+  const earliestDay = direction === 'SALES' ? earliestAllowedDay(roleLimits) : undefined;
+
   // ---- issue ----
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  /**
+   * Where a finished attempt goes next. Split out of `handleIssue` because the
+   * two P1 follow-ups (confirm a duplicate supplier bill, override a credit
+   * limit) end in exactly the same places as the first attempt.
+   */
+  const finishSettled = useCallback(async (settled: InvoiceDraft | undefined): Promise<void> => {
+    if (settled?.status === 'SYNCED' && settled.syncedDocumentId) {
+      /**
+       * The job (booking or order) is marked invoiced here rather than left for
+       * a second tap: `POST /bookings/:id/invoice` and the order's `invoice`
+       * verb are READS of the billing engine that find the document just issued.
+       * Best-effort — the document exists either way, and the job's own
+       * "Raise the bill" button settles it later if this call fails.
+       */
+      if (sourceType === 'BOOKING' && sourceId) {
+        await bookingApi.invoice(sourceId).catch(() => {});
+      }
+      if (sourceType === 'ORDER' && sourceId) {
+        await ordersApi.transition(sourceId, 'invoice').catch(() => {});
+      }
+      const go = () => router.replace(toHref(`/(app)/billing/${settled.syncedDocumentId}`));
+      // §4.4 WARN: the bill IS issued; the partner is told once, then lands on it.
+      const warnings = (settled.issueWarnings ?? []).map((w) => warningText(w, t)).filter(Boolean);
+      if (warnings.length) {
+        Alert.alert(t('billing.new.issuedWithWarningTitle'), warnings.join('\n\n'), [{ text: t('common.ok'), onPress: go }]);
+        return;
+      }
+      go();
+      return;
+    }
+    if (settled?.status === 'BLOCKED_UPGRADE') {
+      setErrorMessage(settled.lastError ?? t('billing.new.planLimit'));
+      return;
+    }
+    if (settled?.status === 'FAILED') {
+      const reason = settled.lastError ?? t('billing.new.createFailedFallback');
+      if (settled.lastErrorCode === 'PURCHASE_BILL_DUPLICATE_SUPPLIER_NO') {
+        Alert.alert(t('billing.new.duplicateSupplierTitle'), reason, [
+          { text: t('common.cancel'), style: 'cancel', onPress: () => setErrorMessage(reason) },
+          {
+            text: t('billing.new.duplicateSupplierConfirm'),
+            onPress: () => {
+              setSubmitting(true);
+              void confirmDuplicateAndRetry(settled.id).then(async (next) => {
+                setSubmitting(false);
+                await finishSettled(next);
+              });
+            },
+          },
+        ]);
+        return;
+      }
+      if (settled.lastErrorCode === 'PARTY_CREDIT_LIMIT_EXCEEDED') {
+        if (mayOverrideCredit(entitlements.isAdmin, roleLimits)) {
+          Alert.alert(t('billing.new.creditBlockTitle'), reason, [
+            { text: t('common.cancel'), style: 'cancel', onPress: () => setErrorMessage(reason) },
+            {
+              text: t('billing.new.creditOverride'),
+              style: 'destructive',
+              onPress: () => {
+                setSubmitting(true);
+                void overrideCreditAndRetry(settled.id).then(async (next) => {
+                  setSubmitting(false);
+                  await finishSettled(next);
+                });
+              },
+            },
+          ]);
+          return;
+        }
+        setErrorMessage(`${reason}\n${t('billing.new.creditAskOwner')}`);
+        return;
+      }
+      setErrorMessage(t('billing.new.createFailed', { reason }));
+      return;
+    }
+    // Still PENDING — genuinely offline. The bill is safe on-device; sync
+    // happens automatically the moment the connection returns.
+    router.replace('/(app)/billing/drafts');
+  }, [sourceType, sourceId, t, confirmDuplicateAndRetry, overrideCreditAndRetry, entitlements.isAdmin, roleLimits]);
+
   const handleIssue = useCallback(async () => {
     if (lines.length === 0) {
       setErrorMessage(t('billing.new.needItem'));
+      return;
+    }
+    if (limitMessage) {
+      setErrorMessage(limitMessage);
+      return;
+    }
+    if (takesSupplierBillFields(docType) && supplierInvoiceDate && documentDate && supplierInvoiceDate > documentDate) {
+      setErrorMessage(t('purchases.bill.supplierDateAfter'));
       return;
     }
     if (behaviour.requiresParty && !selectedParty) {
@@ -448,6 +629,19 @@ export default function NewInvoiceScreen() {
     if (statesDeliveryDate(docType) && deliveryDate && documentDate && deliveryDate < documentDate) {
       setErrorMessage(t('billing.new.deliveryBeforeDocument'));
       return;
+    }
+    // P2 PHARMACY: said here, before a draft is queued that can only be refused.
+    if (pharmacy.scheduleXNames.length) {
+      setErrorMessage(t('errors.RX_SCHEDULE_X_NOT_ALLOWED', { itemName: pharmacy.scheduleXNames[0] }));
+      return;
+    }
+    const rxNeeded = pharmacy.rxDrugs.length > 0;
+    if (rxNeeded) {
+      const problem = rxProblem(rx);
+      if (problem) {
+        setErrorMessage(t(problem));
+        return;
+      }
     }
     setSubmitting(true);
     setErrorMessage(null);
@@ -478,7 +672,12 @@ export default function NewInvoiceScreen() {
           placeOfSupply: walkinState || undefined,
         };
 
-    const plainLines: DraftLineInput[] = lines.map(({ key, ...rest }) => rest);
+    const plainLines: DraftLineInput[] = lines.map(({ key, catalogRatePaise, batchLabel, batchId, drugSchedule, batchTracking, ...rest }) => {
+      void key; void catalogRatePaise; void batchLabel; void drugSchedule; void batchTracking;
+      // A chosen batch goes only on a pharmacy sale — any other bill is unchanged.
+      return pharmacy.active && batchId ? { ...rest, batchId } : rest;
+    });
+    const billFields = takesSupplierBillFields(docType);
 
     // "YYYY-MM-DD" (DateField's `date` output) → ISO, at local midnight —
     // never sent as a bare date string, the server's `dateInput` schema wants
@@ -504,63 +703,18 @@ export default function NewInvoiceScreen() {
       deliveryDate: statesDeliveryDate(docType) ? isoOf(deliveryDate) : undefined,
       sourceType,
       sourceId,
+      supplierInvoiceNo: billFields && supplierInvoiceNo.trim() ? supplierInvoiceNo.trim() : undefined,
+      supplierInvoiceDate: billFields ? isoOf(supplierInvoiceDate) : undefined,
+      itcEligible: docType === 'PURCHASE_INVOICE' && itcEligible !== null ? itcEligible : undefined,
+      ...(rxNeeded ? { rx: rxBody(rx) } : {}),
     });
     const settled = await retryDraft(draft.id);
     setSubmitting(false);
-
-    if (settled?.status === 'SYNCED' && settled.syncedDocumentId) {
-      /**
-       * The job is marked invoiced here rather than left for a second tap.
-       *
-       * `POST /bookings/:id/invoice` is a READ of the billing engine — it looks
-       * for the document we have just issued and records that it covers the
-       * job. Making the partner go back to Bookings and press the same button
-       * again, to tell the app something it can already see, is the kind of step
-       * that gets skipped and leaves a bill raised against a job that still says
-       * it was never invoiced.
-       *
-       * Best-effort on purpose: the DOCUMENT is the thing that matters and it
-       * exists either way. If this call fails — offline, or a race with another
-       * device — the booking simply stays COMPLETED and its own "Raise the bill"
-       * button will settle it, now that a live document names it.
-       */
-      if (sourceType === 'BOOKING' && sourceId) {
-        await bookingApi.invoice(sourceId).catch(() => {});
-      }
-      /**
-       * The order mirror of the booking case just above: `POST
-       * /partners/me/orders/:id/invoice` is the same kind of READ — it looks
-       * for the document just issued and flips DELIVERED → INVOICED. Without
-       * this the order board's own "Raise the bill" flow
-       * ((tabs)/orders.tsx#openBillFor) would land here, issue the bill, and
-       * still leave the order sitting at DELIVERED until the partner noticed
-       * and pressed `invoice` a second time by hand. Best-effort for the same
-       * reason as the booking branch: the document exists either way, and a
-       * failed settle here just leaves the order's own `invoice` verb to
-       * finish the job once a live document names it.
-       */
-      if (sourceType === 'ORDER' && sourceId) {
-        await ordersApi.transition(sourceId, 'invoice').catch(() => {});
-      }
-      router.replace(toHref(`/(app)/billing/${settled.syncedDocumentId}`));
-      return;
-    }
-    if (settled?.status === 'BLOCKED_UPGRADE') {
-      setErrorMessage(settled.lastError ?? t('billing.new.planLimit'));
-      return;
-    }
-    if (settled?.status === 'FAILED') {
-      setErrorMessage(
-        t('billing.new.createFailed', { reason: settled.lastError ?? t('billing.new.createFailedFallback') }),
-      );
-      return;
-    }
-    // Still PENDING — genuinely offline. The bill is safe on-device; sync
-    // happens automatically the moment the connection returns.
-    router.replace('/(app)/billing/drafts');
+    await finishSettled(settled);
   }, [lines, selectedParty, walkinName, walkinPhone, walkinState, docType, behaviour, addDraft, retryDraft,
     sourceType, sourceId, jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned,
-    transportReason, transportReasonNote, deliveryDate, t]);
+    transportReason, transportReasonNote, deliveryDate, t, limitMessage, supplierInvoiceNo, supplierInvoiceDate,
+    itcEligible, finishSettled, pharmacy.active, pharmacy.rxDrugs.length, pharmacy.scheduleXNames, rx]);
 
   if (!canManage) {
     return (
@@ -590,8 +744,8 @@ export default function NewInvoiceScreen() {
             onValueChange={(v) => setDirection(v as DocumentDirection)}
             density="small"
             buttons={[
-              { value: 'SALES', label: t('billing.new.dirSales') },
-              { value: 'PURCHASE', label: t('billing.new.dirPurchase') },
+              { value: 'SALES', label: t('billing.new.dirSales'), disabled: !canSales },
+              { value: 'PURCHASE', label: t('billing.new.dirPurchase'), disabled: !canPurchases },
             ]}
           />
 
@@ -604,7 +758,7 @@ export default function NewInvoiceScreen() {
               buttons={typesForDirection.map((type) => ({
                 value: type,
                 // An unregistered shop's TAX_INVOICE is issued untaxed — a bill of supply.
-                label: t(documentTypeLabelKey(type, businessQuery.data?.isGstRegistered)),
+                label: t(documentTypeLabelKey(type, businessQuery.data?.isGstRegistered, undefined, isComposition ? 'BILL_OF_SUPPLY_COMPOSITION' : undefined)),
               }))}
             />
           </ScrollView>
@@ -711,7 +865,27 @@ export default function NewInvoiceScreen() {
 
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.new.dates')}</Text>
-            <DateField label={t('billing.new.documentDate')} value={documentDate} onChangeText={setDocumentDate} mode="date" />
+            <DateField
+              label={t('billing.new.documentDate')}
+              value={documentDate}
+              onChangeText={setDocumentDate}
+              mode="date"
+              // P1.12: a role may date a SALES bill at most `mayBackdateDays` back.
+              minimumDate={earliestDay ? new Date(`${earliestDay}T00:00:00`) : undefined}
+            />
+            {takesSupplierBillFields(docType) && (
+              <PurchaseBillFields
+                c={c}
+                showItc={docType === 'PURCHASE_INVOICE'}
+                supplierInvoiceNo={supplierInvoiceNo}
+                onSupplierInvoiceNo={setSupplierInvoiceNo}
+                supplierInvoiceDate={supplierInvoiceDate}
+                onSupplierInvoiceDate={setSupplierInvoiceDate}
+                itcEligible={itcEligible}
+                onItcEligible={setItcEligible}
+                maxDate={documentDate}
+              />
+            )}
             {behaviour.dateField === 'dueDate' && (
               <DateField
                 label={t('billing.new.dueDate')}
@@ -881,11 +1055,27 @@ export default function NewInvoiceScreen() {
                       {t('billing.new.lineTaxLine', { tax: formatPaise(lineTaxPaise), total: formatPaise(priced.totalPaise) })}
                     </Text>
                   )}
+                  {pharmacy.active ? (
+                    <PharmacyLineChip
+                      c={c}
+                      info={pharmacy.infoFor(line.itemId)}
+                      batchLabel={line.batchLabel}
+                      onPickBatch={() => setBatchKey(line.key)}
+                      testID={`line-batch-${idx}`}
+                    />
+                  ) : null}
+                  {limitViolation?.lineIndex === idx && limitMessage ? (
+                    <Text style={[styles.lineMeta, { color: c.error, fontWeight: '600' }]} testID="line-limit-error">
+                      {limitMessage}
+                    </Text>
+                  ) : null}
                 </Pressable>
                 <View style={styles.qtyStepper}>
-                  <IconButton icon="minus" size={16} onPress={() => updateQty(line.key, -1)} />
+                  {/* hitSlop takes each button's touch area past 44dp without
+                      widening the row, which has to fit at 320dp. */}
+                  <IconButton icon="minus" size={18} hitSlop={7} disabled={!canStepDown(line.qty)} onPress={() => updateQty(line.key, -1)} accessibilityLabel={t('billing.new.qtyLess', { item: line.itemName })} />
                   <Text style={{ color: c.textPrimary, minWidth: 24, textAlign: 'center' }}>{line.qty}</Text>
-                  <IconButton icon="plus" size={16} onPress={() => updateQty(line.key, 1)} />
+                  <IconButton icon="plus" size={18} hitSlop={7} onPress={() => updateQty(line.key, 1)} accessibilityLabel={t('billing.new.qtyMore', { item: line.itemName })} />
                 </View>
                 <Text style={[styles.lineAmount, { color: c.textPrimary }]}>
                   {formatPaise(priced?.taxablePaise ?? 0)}
@@ -904,6 +1094,18 @@ export default function NewInvoiceScreen() {
               {t('billing.new.addOneOff')}
             </Button>
           </Surface>
+
+          {/* P2 PHARMACY: a Schedule H/H1 medicine on the bill → the prescription goes on it. */}
+          {pharmacy.rxDrugs.length > 0 && (
+            <RxDetailsForm c={c} value={rx} onChange={setRx} drugs={pharmacy.rxDrugs} testID="bill-rx" />
+          )}
+          {pharmacy.scheduleXNames.length > 0 && (
+            <Surface style={[styles.errorCard, { backgroundColor: c.error + '18' }]} elevation={0}>
+              <Text style={{ color: c.error, fontSize: 13 }}>
+                {t('errors.RX_SCHEDULE_X_NOT_ALLOWED', { itemName: pharmacy.scheduleXNames[0] })}
+              </Text>
+            </Surface>
+          )}
 
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             {/*
@@ -989,6 +1191,11 @@ export default function NewInvoiceScreen() {
             )}
           </Surface>
 
+          {limitMessage && limitViolation?.lineIndex === undefined && (
+            <Surface style={[styles.errorCard, { backgroundColor: c.error + '18' }]} elevation={0}>
+              <Text style={{ color: c.error, fontSize: 13 }} testID="bill-limit-error">{limitMessage}</Text>
+            </Surface>
+          )}
           {errorMessage && (
             <Surface style={[styles.errorCard, { backgroundColor: c.error + '18' }]} elevation={0}>
               <Text style={{ color: c.error, fontSize: 13 }}>{errorMessage}</Text>
@@ -1003,7 +1210,7 @@ export default function NewInvoiceScreen() {
           mode="contained"
           onPress={handleIssue}
           loading={submitting}
-          disabled={submitting || lines.length === 0 || invoiceCapacity.atLimit}
+          disabled={submitting || lines.length === 0 || invoiceCapacity.atLimit || !!limitMessage}
           style={{ borderRadius: radii.field, marginTop: 8 }}
         >
           {docType === 'TAX_INVOICE'
@@ -1047,6 +1254,10 @@ export default function NewInvoiceScreen() {
           ? () => { removeLine(editingKey); setEditingKey(null); }
           : undefined}
         c={c}
+        // P1.12 role limits, on SALES documents only.
+        lockRate={direction === 'SALES' && roleLimits.mayEditPrice === false
+          && !!(editingKey && editingKey !== 'NEW' && lines.find((l) => l.key === editingKey)?.itemId)}
+        discountCapPercent={direction === 'SALES' ? roleLimits.maxDiscountPercent : undefined}
       />
 
       {/*
@@ -1099,6 +1310,18 @@ export default function NewInvoiceScreen() {
           </ScrollView>
         </Modal>
       </Portal>
+
+      {pharmacy.active && (
+        <BatchPickSheet
+          visible={!!batchLine}
+          productId={batchLine?.itemId ?? null}
+          productName={batchLine?.itemName ?? ''}
+          qty={batchLine?.qty ?? 1}
+          selectedBatchId={batchLine?.batchId}
+          onPick={(pick) => batchKey && pickBatch(batchKey, pick)}
+          onDismiss={() => setBatchKey(null)}
+        />
+      )}
 
       <Snackbar visible={!!scanError} onDismiss={() => setScanError(null)} duration={3000}>
         {scanError}

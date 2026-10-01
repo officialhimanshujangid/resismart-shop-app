@@ -27,8 +27,17 @@ const t = (key: string, vars?: Record<string, string>): string => i18n.t(key, va
 
 export const PARTNER_REPORT_KEYS = [
   'sales', 'purchase', 'gstr1', 'gstr3b', 'items', 'parties', 'outstanding', 'profit',
+  // P1 (CONTRACT-partner-P1 §8/§9): export-only on the Reports screen; P&L is
+  // also read on screen under Money → Profit & loss.
+  'pnl', 'stock-valuation', 'expenses', 'cmp08',
+  // P2 (B5): listed by GET /reports only when the business-type module is on and
+  // the viewer holds its grant; export-only here (PDF / Excel).
+  'near-expiry-value', 'subscription-collections', 'appointment-utilisation', 'job-conversion',
 ] as const;
 export type PartnerReportKey = typeof PARTNER_REPORT_KEYS[number];
+export const P2_REPORT_KEYS = ['near-expiry-value', 'subscription-collections', 'appointment-utilisation', 'job-conversion'] as const;
+export type P2ReportKey = typeof P2_REPORT_KEYS[number];
+export const isP2ReportKey = (k: string): k is P2ReportKey => (P2_REPORT_KEYS as readonly string[]).includes(k);
 
 export interface ReportListEntry {
   key: PartnerReportKey;
@@ -224,6 +233,12 @@ export const reportsApi = {
   register: (key: 'sales' | 'purchase', query: ReportQuery) =>
     apiClient
       .get<ApiEnvelope<RegisterReport>>(`/partners/me/reports/${key}`, { params: query })
+      .then((r) => unwrap(r.data)),
+
+  /** P2 (B5): one business-type report as JSON (es.body.data), drawn by P2ReportSummary. */
+  p2: (key: P2ReportKey, query: ReportQuery) =>
+    apiClient
+      .get<ApiEnvelope<Record<string, unknown>>>(`/partners/me/reports/${key}`, { params: query })
       .then((r) => unwrap(r.data)),
 
   items: (query: ReportQuery) =>

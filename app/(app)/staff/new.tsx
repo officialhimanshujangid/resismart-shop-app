@@ -8,6 +8,9 @@ import { useTranslation } from 'react-i18next';
 import { themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
 import { rolesApi, staffApi } from '../../../src/api/staff.api';
+import { useAuth } from '../../../src/context/AuthContext';
+import { usePartnerEntitlements } from '../../../src/hooks';
+import { isOwnStaffRow } from '../../../src/lib/staffAccess';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
@@ -28,6 +31,8 @@ export default function StaffFormScreen() {
   const existing = staffList.data?.find((s) => s._id === params.id);
 
   const roles = useQuery({ queryKey: qk.staffRoles(), queryFn: rolesApi.list });
+  const { user } = useAuth();
+  const { entitlements } = usePartnerEntitlements();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -51,9 +56,23 @@ export default function StaffFormScreen() {
    * the wire) so its KEY never moves; only the word for it is translated. Every
    * other option is a role the partner named — their text, shown back as typed.
    */
+  /**
+   * The ceiling, said up front. Nobody but the owner may change their OWN role,
+   * and nobody may give or take away a role above their own access — the server
+   * refuses both (`PARTNER_OWN_ACCESS_REFUSED`, `PARTNER_ROLE_BEYOND_YOUR_ACCESS`).
+   * So the picker offers only roles marked `assignable`, and is replaced by a
+   * sentence when this row's role cannot be touched from here.
+   */
+  const ownRow = editing && !entitlements.isAdmin && !!existing && isOwnStaffRow(existing, user);
+  const currentRoleId = existing && typeof existing.roleId === 'object' ? existing.roleId._id : existing?.roleId;
+  const currentRole = roles.data?.roles.find((r) => r._id === currentRoleId);
+  const roleAboveMe = editing && !!currentRole && currentRole.assignable === false;
+  const roleLocked = ownRow || roleAboveMe;
   const roleOptions = [
     { key: NO_ROLE, label: t('staff.form.noRole') },
-    ...(roles.data?.roles.filter((r) => r.isActive).map((r) => ({ key: r._id, label: r.name })) ?? []),
+    ...(roles.data?.roles
+      .filter((r) => r.isActive && r.assignable !== false)
+      .map((r) => ({ key: r._id, label: r.name })) ?? []),
   ];
 
   const skillsArray = () => skillsText.split(',').map((s) => s.trim()).filter(Boolean);
@@ -78,7 +97,8 @@ export default function StaffFormScreen() {
   const updateMutation = useMutation({
     mutationFn: () => staffApi.update(params.id as string, {
       designation: designation.trim(),
-      roleId: roleId === NO_ROLE ? null : roleId,
+      // Omitted, not re-sent, when the role cannot be changed from here.
+      ...(roleLocked ? {} : { roleId: roleId === NO_ROLE ? null : roleId }),
       canTakeBookings,
       skills: skillsArray(),
     }),
@@ -140,6 +160,13 @@ export default function StaffFormScreen() {
         <Text style={[styles.label, { color: c.textSecondary }]}>{t('staff.form.role')}</Text>
         {roles.isPending ? (
           <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('staff.form.loadingRoles')}</Text>
+        ) : roleLocked ? (
+          <>
+            <Text style={{ color: c.textPrimary, fontSize: 14 }}>{currentRole?.name ?? t('staff.form.noRole')}</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 12 }}>
+              {t(ownRow ? 'staff.form.ownRoleLocked' : 'staff.form.roleAboveYou')}
+            </Text>
+          </>
         ) : (
           <ChipRow c={c} value={roleId} options={roleOptions} onChange={setRoleId} />
         )}

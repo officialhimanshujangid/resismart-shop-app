@@ -1,7 +1,7 @@
 import { apiClient, ApiEnvelope, unwrap, withIdempotency } from '../../api/axios';
 import { OrderListFilters, PartnerOrder } from './types';
 import { OrderVerb } from './backend-mirror';
-import { PartnerDocumentRecord } from '../billing/types';
+import { DocumentRx, PartnerDocumentRecord } from '../billing/types';
 
 /**
  * `/partners/me/orders/**` — see `order.routes.ts` and `order.controller.ts`.
@@ -96,8 +96,12 @@ export const ordersApi = {
    * field a verb's own schema does not declare is dropped server-side (zod
    * strips unknown keys), so this does not need to branch on it a second time.
    */
-  transition: (id: string, verb: KnownOrderVerb, text?: string) => {
-    const body = verbNeedsReason(verb) ? { reason: text } : text ? { note: text } : {};
+  transition: (id: string, verb: KnownOrderVerb, text?: string, rx?: DocumentRx) => {
+    const base = verbNeedsReason(verb) ? { reason: text } : text ? { note: text } : {};
+    // P2 PHARMACY: `accept` carries the prescription for a Schedule H/H1 order
+    // (`orderAcceptSchema.rx`). Sent only when there is one — every other accept
+    // body is exactly what it was.
+    const body = verb === 'accept' && rx ? { ...base, rx } : base;
     return apiClient
       .post<ApiEnvelope<PartnerOrder>>(`/partners/me/orders/${id}/${ENDPOINT_FOR[verb]}`, body)
       .then((r) => unwrap(r.data));

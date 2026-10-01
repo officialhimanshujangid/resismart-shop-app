@@ -10,7 +10,10 @@ import { usePlanUsage } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { partiesApi, PartyKind } from '../../../src/api/parties.api';
 import { parseRupeesToPaise, paiseToInput } from '../../../src/lib/money';
-import { apiErrorMessage } from '../../../src/api/axios';
+import { apiErrorCode, apiErrorMessage } from '../../../src/api/axios';
+import {
+  EMPTY_SUPPLIER_FORM, SupplierFields, SupplierForm, SupplierFormError, supplierFormFrom, supplierInputFrom,
+} from '../../../src/features/purchases/components/SupplierFields';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { ChipRow, Screen } from '../../../src/features/more/ui';
@@ -55,6 +58,11 @@ export default function PartyFormScreen() {
   const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // P1 supplier master (screen S1) — shown for SUPPLIER and BOTH.
+  const [supplier, setSupplier] = useState<SupplierForm>(EMPTY_SUPPLIER_FORM);
+  const [supplierErrors, setSupplierErrors] = useState<Partial<Record<SupplierFormError, string>>>({});
+  const [tags, setTags] = useState('');
+  const isSupplierSide = kind === 'SUPPLIER' || kind === 'BOTH';
 
   useEffect(() => {
     const p = existing.data;
@@ -70,20 +78,59 @@ export default function PartyFormScreen() {
     setCity(p.billingAddress?.city ?? '');
     setState(p.billingAddress?.state ?? '');
     setPincode(p.billingAddress?.pincode ?? '');
+    setSupplier(supplierFormFrom(p.supplier));
+    setTags((p.tags ?? []).join(', '));
   }, [existing.data]);
 
+  /**
+   * 409 PARTY_GSTIN_ALREADY_USED (§7.1): another party of this shop has the
+   * same GSTIN — two branches of one business are legitimate, so the partner
+   * is asked once and the same save is repeated with `confirmDuplicateGstin`.
+   */
+  const onSaveError = (fallbackKey: string, retry: () => void) => (err: unknown) => {
+    if (apiErrorCode(err) === 'PARTY_GSTIN_ALREADY_USED') {
+      Alert.alert(t('parties.form.duplicateGstinTitle'), apiErrorMessage(err), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('parties.form.duplicateGstinConfirm'), onPress: retry },
+      ]);
+      return;
+    }
+    Alert.alert(t(fallbackKey), apiErrorMessage(err));
+  };
+
+  const p1Fields = (): { supplier?: ReturnType<typeof supplierInputFrom>['input'] | null; tags?: string[] } | null => {
+    const tagList = tags.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 10).map((x) => x.slice(0, 30));
+    if (!isSupplierSide) return { tags: tagList, ...(editing && existing.data?.supplier ? { supplier: null } : {}) };
+    const res = supplierInputFrom(supplier);
+    if (res.error) {
+      setSupplierErrors({ [res.error]: t(`parties.supplier.error.${res.error}`) });
+      return null;
+    }
+    setSupplierErrors({});
+    return { supplier: res.input, tags: tagList };
+  };
+
   const createMutation = useMutation({
-    mutationFn: partiesApi.create,
+    mutationFn: (payload: Parameters<typeof partiesApi.create>[0]) => partiesApi.create(payload),
     onSuccess: (party) => {
       void queryClient.invalidateQueries({ queryKey: qk.parties.all() });
       void queryClient.invalidateQueries({ queryKey: qk.usage() });
       router.replace({ pathname: '/parties/[id]', params: { id: party._id } });
     },
-    onError: (err) => Alert.alert(t('parties.form.addFailed'), apiErrorMessage(err)),
+    // Return type written out: the handler re-sends through this same mutation,
+    // and an inferred type would be circular.
+    onError: (err: unknown, payload: Parameters<typeof partiesApi.create>[0]): void => {
+      onSaveError('parties.form.addFailed', () => createMutation.mutate({
+        ...payload, checkDuplicateGstin: undefined, confirmDuplicateGstin: true,
+      }))(err);
+    },
   });
 
   const updateMutation = useMutation({
-    mutationFn: () => partiesApi.update(params.id as string, {
+    mutationFn: (extra: { confirmDuplicateGstin?: boolean; p1: NonNullable<ReturnType<typeof p1Fields>> }) => partiesApi.update(params.id as string, {
+      ...extra.p1,
+      // First save opts in to the duplicate-GSTIN check; the confirm retries.
+      ...(extra.confirmDuplicateGstin ? { confirmDuplicateGstin: true } : { checkDuplicateGstin: true }),
       kind, name: name.trim(), phone: phone.trim() || undefined, email: email.trim() || undefined,
       gstin: gstin.trim() || undefined,
       billingAddress: line1.trim() ? { line1: line1.trim(), city: city.trim() || undefined, state: state.trim() || undefined, pincode: pincode.trim() || undefined } : undefined,
@@ -93,7 +140,9 @@ export default function PartyFormScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.parties.detail(party._id) });
       router.back();
     },
-    onError: (err) => Alert.alert(t('parties.form.saveFailed'), apiErrorMessage(err)),
+    onError: (err: unknown, extra: { confirmDuplicateGstin?: boolean; p1: NonNullable<ReturnType<typeof p1Fields>> }): void => {
+      onSaveError('parties.form.saveFailed', () => updateMutation.mutate({ ...extra, confirmDuplicateGstin: true }))(err);
+    },
   });
 
   const validate = (): boolean => {
@@ -111,15 +160,21 @@ export default function PartyFormScreen() {
 
   const onSubmit = () => {
     if (!validate()) return;
+    const p1 = p1Fields();
+    if (!p1) return;
     if (editing) {
-      updateMutation.mutate();
+      updateMutation.mutate({ p1 });
       return;
     }
     const paise = parseRupeesToPaise(openingBalance || '0') ?? 0;
     createMutation.mutate({
       kind, name: name.trim(), phone: phone.trim() || undefined, email: email.trim() || undefined,
       gstin: gstin.trim() || undefined, isWalkIn,
+      // Opt in to the duplicate-GSTIN check; the 409 confirm retries with `confirmDuplicateGstin`.
+      checkDuplicateGstin: true,
       openingBalancePaise: paise,
+      ...(p1.supplier ? { supplier: p1.supplier } : {}),
+      ...(p1.tags?.length ? { tags: p1.tags } : {}),
       billingAddress: line1.trim() ? { line1: line1.trim(), city: city.trim() || undefined, state: state.trim() || undefined, pincode: pincode.trim() || undefined } : undefined,
     });
   };
@@ -181,6 +236,17 @@ export default function PartyFormScreen() {
           `features/billing/types.ts:186-204` explains must never be translated. */}
       <AppInput label={t('parties.form.state')} value={state} onChangeText={setState} />
       <AppInput label={t('parties.form.pincode')} value={pincode} onChangeText={setPincode} keyboardType="numeric" />
+
+      {isSupplierSide && (
+        <SupplierFields
+          c={c}
+          value={supplier}
+          onChange={setSupplier}
+          panMasked={existing.data?.supplier?.panMasked}
+          errors={supplierErrors}
+        />
+      )}
+      <AppInput label={t('parties.form.tags')} value={tags} onChangeText={setTags} placeholder={t('parties.form.tagsHint')} />
 
       <AppButton
         label={t(editing ? 'parties.form.saveChanges' : 'parties.form.addTitle')}

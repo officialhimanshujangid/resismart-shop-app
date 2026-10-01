@@ -2,6 +2,7 @@ import type { Href } from 'expo-router';
 
 import { apiClient, ApiEnvelope, unwrap } from './axios';
 import { PartnerModule } from '../types/api-contract.generated';
+import type { P2Module } from '../features/p2/modules';
 
 /**
  * A person's own notifications and their own devices.
@@ -54,32 +55,138 @@ export interface NotificationRow {
  * along with the destination and the CALLER checks it against
  * `hasModule`, falling back to the notification list, which is never gated.
  *
- * A `?id=` in the link is deliberately dropped: this app has no booking- or
- * order-detail ROUTE (both are modals over their list), so there is nothing to
- * pass it to. Landing on the right list with the item at the top is the honest
- * approximation; inventing a detail route to receive the id is not this phase's
- * job. See the report.
+ * A `?id=` in the link is KEPT and passed on as the screen's own `id` param,
+ * so a tap opens the item, not just its list: Bookings shows that booking at
+ * the top with its actions, Orders opens its detail sheet, Promotion and
+ * Reviews mark that row. Screens that are one page (verification, invoice
+ * settings, plan) take no id. See `idFromLink`.
  */
 export interface NotificationDestination {
   href: Href;
   /** The gate-2 module this destination sits behind, when it sits behind one. */
   requires?: PartnerModule;
+  /**
+   * P2: the business-type module the destination sits behind. A pharmacy alert
+   * kept in the inbox after Pharmacy was switched off must land on the inbox,
+   * not on a screen whose layout would send the partner back to Today.
+   */
+  requiresCategory?: P2Module;
 }
+
+/** `/dashboard/partner/<area>/<id>` → the `<id>` (id-shaped only), else undefined. */
+function pathId(path: string, base: string): string | undefined {
+  if (!path.startsWith(`${base}/`)) return undefined;
+  const rest = path.slice(base.length + 1);
+  return /^[A-Za-z0-9_-]{1,64}$/.test(rest) ? rest : undefined;
+}
+
+/**
+ * P2 (CONTRACT-partner-P2 §13): the links and kinds the business-type modules
+ * send a partner. Links first (they name the item), kinds as the fallback.
+ * Every destination carries its base module AND its category module.
+ */
+export function p2Destination(frame: { link?: string | null; kind?: string | null }): NotificationDestination | undefined {
+  const link = frame.link ?? '';
+  const path = link.split('?')[0];
+  if (path === '/dashboard/partner/pharmacy/near-expiry') {
+    return { href: '/pharmacy/near-expiry' as Href, requires: 'CATALOG', requiresCategory: 'PHARMACY' };
+  }
+  if (path === '/dashboard/partner/pharmacy' || path.startsWith('/dashboard/partner/pharmacy/')) {
+    return { href: '/pharmacy' as Href, requires: 'CATALOG', requiresCategory: 'PHARMACY' };
+  }
+  if (path === '/dashboard/partner/subscriptions/bills') {
+    const period = paramFromLink(link, 'period');
+    const status = paramFromLink(link, 'status');
+    const q = [period ? `period=${encodeURIComponent(period)}` : '', status ? `status=${encodeURIComponent(status)}` : '']
+      .filter(Boolean).join('&');
+    return { href: `/subscriptions/bills${q ? `?${q}` : ''}` as Href, requires: 'INVOICING', requiresCategory: 'SUBSCRIPTIONS' };
+  }
+  const subId = pathId(path, '/dashboard/partner/subscriptions');
+  if (subId) return { href: `/subscriptions/${subId}` as Href, requires: 'INVOICING', requiresCategory: 'SUBSCRIPTIONS' };
+  if (path === '/dashboard/partner/subscriptions' || path.startsWith('/dashboard/partner/subscriptions/')) {
+    return { href: '/subscriptions' as Href, requires: 'INVOICING', requiresCategory: 'SUBSCRIPTIONS' };
+  }
+  const seriesId = pathId(path, '/dashboard/partner/appointments/series');
+  if (seriesId) return { href: `/appointments/series/${seriesId}` as Href, requires: 'BOOKINGS', requiresCategory: 'APPOINTMENTS' };
+  if (path === '/dashboard/partner/appointments' || path.startsWith('/dashboard/partner/appointments/')) {
+    return { href: '/appointments' as Href, requires: 'BOOKINGS', requiresCategory: 'APPOINTMENTS' };
+  }
+  const jobId = pathId(path, '/dashboard/partner/jobs');
+  if (jobId) return { href: `/jobs/${jobId}` as Href, requires: 'BOOKINGS', requiresCategory: 'JOBS' };
+  if (path === '/dashboard/partner/jobs' || path.startsWith('/dashboard/partner/jobs/')) return { href: '/jobs' as Href, requires: 'BOOKINGS', requiresCategory: 'JOBS' };
+
+  // A link we know that is NOT a P2 page (bookings, orders…) is left to the main table.
+  if (path) return undefined;
+
+  switch (frame.kind ?? '') {
+    case 'PARTNER_NEAR_EXPIRY':
+      return { href: '/pharmacy/near-expiry' as Href, requires: 'CATALOG', requiresCategory: 'PHARMACY' };
+    case 'SUBSCRIPTION_PAUSE':
+      return { href: '/subscriptions' as Href, requires: 'INVOICING', requiresCategory: 'SUBSCRIPTIONS' };
+    case 'SUBSCRIPTION_BILL':
+      return { href: '/subscriptions/bills' as Href, requires: 'INVOICING', requiresCategory: 'SUBSCRIPTIONS' };
+    case 'APPOINTMENT_REMINDER':
+      return { href: '/appointments' as Href, requires: 'BOOKINGS', requiresCategory: 'APPOINTMENTS' };
+    case 'APPOINTMENT_SERIES':
+      return { href: '/appointments/series' as Href, requires: 'BOOKINGS', requiresCategory: 'APPOINTMENTS' };
+    case 'PACKAGE_UPDATE':
+      return { href: '/appointments/packages' as Href, requires: 'BOOKINGS', requiresCategory: 'APPOINTMENTS' };
+    case 'JOB_QUOTE':
+    case 'JOB_QUOTE_DECISION':
+    case 'JOB_GATE_PASS':
+      return { href: '/jobs' as Href, requires: 'BOOKINGS', requiresCategory: 'JOBS' };
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The `id` in a notification link (`/dashboard/partner/orders?id=<id>`), or
+ * `undefined`. Only an id-shaped value (letters, digits, `-`, `_`) is kept —
+ * this lands in a route param, and a malformed send is not something to pass on.
+ */
+export function idFromLink(link: string | null | undefined): string | undefined {
+  return paramFromLink(link, 'id');
+}
+
+/** The same id-shaped rule for another query key (`?open=` on the rent links). */
+export function paramFromLink(link: string | null | undefined, name: string): string | undefined {
+  const query = (link ?? '').split('?')[1];
+  if (!query) return undefined;
+  for (const part of query.split('&')) {
+    const [k, v] = part.split('=');
+    if (k !== name || !v) continue;
+    let value: string;
+    try { value = decodeURIComponent(v); } catch { return undefined; }
+    return /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : undefined;
+  }
+  return undefined;
+}
+
+/** `base?id=<id>` when there is an id, else `base`. */
+const withId = (base: string, id: string | undefined): Href =>
+  (id ? `${base}?id=${encodeURIComponent(id)}` : base) as Href;
 
 export function notificationDestination(frame: {
   link?: string | null;
   kind?: string | null;
 }): NotificationDestination | undefined {
+  // P2 business-type modules first: their links and kinds share no prefix with
+  // the table below, and each one carries its category gate.
+  const p2 = p2Destination(frame);
+  if (p2) return p2;
+
   // The link wins when there is one — it is what the sender meant, and it is
   // more specific than the kind.
   const path = (frame.link ?? '').split('?')[0];
+  const id = idFromLink(frame.link);
   switch (path) {
     case '/dashboard/partner/bookings':
-      return { href: '/(app)/(tabs)/bookings', requires: 'BOOKINGS' };
+      return { href: withId('/(app)/(tabs)/bookings', id), requires: 'BOOKINGS' };
     case '/dashboard/partner/orders':
-      return { href: '/(app)/(tabs)/orders', requires: 'ORDERS' };
+      return { href: withId('/(app)/(tabs)/orders', id), requires: 'ORDERS' };
     case '/dashboard/partner/promotion':
-      return { href: '/promotion' };
+      return { href: withId('/promotion', id) };
     /**
      * No `requires` on these three, and that is not an omission.
      *
@@ -101,13 +208,40 @@ export function notificationDestination(frame: {
       // `PARTNER_REVIEW`. The reply window is the message: one reply, editable
       // for 24 hours, and this notification is what starts the clock — so it
       // has to land on the screen with the reply box, not on the inbox.
-      return { href: '/reviews' };
+      return { href: withId('/reviews', id) };
     case '/dashboard/partner/verification':
       // Already reached the right screen via the kind chain below, which is
       // exactly what `partner.controller.ts` says it relied on. Written out
       // anyway: the kinds carrying this link are four unrelated verdicts, and
       // the next one added would not be covered by anything.
       return { href: '/settings/verification' };
+    case '/dashboard/partner/team':
+      // `PARTNER_OWNERSHIP` (CONTRACT-partner-P0 §8): handover started/completed,
+      // co-owner joined, invitation declined. `owners/_layout.tsx` sends a
+      // non-owner back out, the same self-deciding rule as the routes above.
+      return { href: '/owners' };
+    /**
+     * P1 (CONTRACT-partner-P1 §6, screen S13): the low-stock push and its
+     * 09:30 digest link the web reorder page. The app's reorder list is a
+     * stack route behind `stock/_layout.tsx`, which refuses a person without
+     * stock access itself; `requires: 'CATALOG'` sends a tap to the inbox when
+     * the catalogue module is off.
+     */
+    case '/dashboard/partner/reorder':
+    case '/dashboard/partner/stock/reorder':
+      return { href: '/stock/reorder', requires: 'CATALOG' };
+    case '/dashboard/partner/khata':
+      return { href: '/khata', requires: 'INVOICING' };
+    /**
+     * P4 (CONTRACT-partner-P4 §10.8): rent bills, reminders and lease alerts
+     * (kinds RENT / LEASE) link the web "my rent" page, `?open=<billId>` for one
+     * bill (`partnerRentBillPath`). No `requires`: `rent/_layout.tsx` decides
+     * for itself who may look, like the stack routes above.
+     */
+    case '/dashboard/partner/society-rent': {
+      const bill = paramFromLink(frame.link, 'open');
+      return { href: bill ? (`/rent/${encodeURIComponent(bill)}` as Href) : '/rent' };
+    }
     case '/dashboard/billing':
       // Ours is the PLAN screen, not the partner's own invoicing tab: every
       // sender of this link is the subscription lifecycle (`cron.service.ts`).
@@ -118,6 +252,9 @@ export function notificationDestination(frame: {
 
   const kind = frame.kind ?? '';
   if (!kind) return undefined;
+  // P1: before the ORDER/INVOICE prefixes below, which none of these share.
+  if (kind.startsWith('PARTNER_LOW_STOCK')) return { href: '/stock/reorder', requires: 'CATALOG' };
+  if (kind.startsWith('PARTNER_KHATA')) return { href: '/khata', requires: 'INVOICING' };
   if (kind.startsWith('PARTNER_BOOKING') || kind.startsWith('BOOKING')) {
     return { href: '/(app)/(tabs)/bookings', requires: 'BOOKINGS' };
   }
@@ -129,6 +266,8 @@ export function notificationDestination(frame: {
     return { href: '/(app)/(tabs)/billing', requires: 'INVOICING' };
   }
   if (kind.startsWith('PARTNER_PLAN')) return { href: '/settings/plan' };
+  // P4: exact kinds — `RENT_PAID_NOTE` goes to the society office, never a shop.
+  if (kind === 'RENT' || kind === 'LEASE') return { href: '/rent' };
   if (kind.startsWith('PARTNER_REVIEW')) return { href: '/reviews' };
   /**
    * A prefix, not the one kind the server sends today. `PARTNER_BANK_DETAILS_`

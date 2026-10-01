@@ -2,12 +2,31 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Chip, Text, TextInput } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 
-import { AssignableStaff, BookingConflictView, BookingVerb, PartnerBookingView } from '../booking.types';
+import { BookingConflictView, BookingVerb, PartnerBookingView } from '../booking.types';
 import { MAX_EXTEND_MIN, VERB_LABEL_KEYS } from '../booking.types';
+import { bookingApi } from '../booking.api';
 import { useAssignableStaff, useBookingOverrun } from '../hooks';
 import { formatMinutes, formatTime, Translate } from '../format';
 import { themeColors, radii } from '../../../constants/colors';
+import { apiErrorMessage } from '../../../api/axios';
+import { qk } from '../../../lib/queryKeys';
+import { afterRefusal, CodePanelState, isLocked } from '../../../lib/completionCode';
+import { WhatsAppSupport } from '../../help/WhatsAppSupport';
+
+/**
+ * A refusal of `complete` about the CODE (wrong, locked, not sent), handed in by
+ * the screen so the sheet can show it in place — next to "Send a new code" —
+ * instead of an alert that closes over the one button that gets the partner out.
+ * `at` makes two identical refusals in a row still count as two.
+ */
+export interface CodeRefusal {
+  code?: string;
+  params?: Record<string, unknown>;
+  message: string;
+  at: number;
+}
 
 /**
  * The one modal for every verb that needs MORE than a confirmation tap:
@@ -61,6 +80,8 @@ interface Props {
    * an alert, so the sheet stays open and a smaller number is one tap away.
    */
   conflicts?: BookingConflictView[];
+  /** The last code refusal of `complete` — see `CodeRefusal`. */
+  codeRefusal?: CodeRefusal | null;
   onDismiss: () => void;
   onSubmit: (body: Record<string, unknown>) => void;
 }
@@ -109,9 +130,10 @@ const dayLabel = (d: Date, idx: number, t: Translate) => {
 };
 
 export function BookingActionModal({
-  visible, verb, booking, isDark, submitting, conflicts, onDismiss, onSubmit,
+  visible, verb, booking, isDark, submitting, conflicts, codeRefusal, onDismiss, onSubmit,
 }: Props) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const c = themeColors(isDark);
   const [reason, setReason] = useState('');
   const [otp, setOtp] = useState('');
@@ -119,6 +141,11 @@ export function BookingActionModal({
   const [dayIndex, setDayIndex] = useState(0);
   const [slot, setSlot] = useState<Date | null>(null);
   const [minutes, setMinutes] = useState<number | null>(null);
+  /** The completion code's tries / new codes left — the server's, kept fresh here. */
+  const [codeState, setCodeState] = useState<CodePanelState | undefined>(undefined);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [codeNotice, setCodeNotice] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
 
   const days = useMemo(() => nextDays(14), []);
   const slots = useMemo(() => timeSlots(days[dayIndex] ?? new Date()), [days, dayIndex]);
@@ -143,7 +170,53 @@ export function BookingActionModal({
     setDayIndex(0);
     setSlot(null);
     setMinutes(null);
+    setCodeState(booking?.completionCode);
+    setCodeError(null);
+    setCodeNotice(null);
+    // `booking?.completionCode` is read on open only; later changes come from
+    // the refusal / resend paths below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, verb, booking?.id]);
+
+  /**
+   * A code refusal from the screen: say it in place, count the try down at once,
+   * then read the booking again so tries / new codes left are the server's.
+   */
+  const bookingId = booking?.id;
+  React.useEffect(() => {
+    if (!codeRefusal || !bookingId) return;
+    setCodeError(codeRefusal.message);
+    setCodeNotice(null);
+    setOtp('');
+    setCodeState((prev) => afterRefusal(prev, codeRefusal.code, codeRefusal.params));
+    let alive = true;
+    bookingApi.get(bookingId)
+      .then((fresh) => { if (alive && fresh.completionCode) setCodeState(fresh.completionCode); })
+      .catch(() => { /* the folded state above stands */ });
+    return () => { alive = false; };
+  }, [codeRefusal, bookingId]);
+
+  /** "Send a new code" — the way out of five wrong codes. */
+  const resendCode = async () => {
+    if (!bookingId) return;
+    setResending(true);
+    setCodeError(null);
+    setCodeNotice(null);
+    try {
+      const fresh = await bookingApi.resendCode(bookingId);
+      if (fresh.completionCode) setCodeState(fresh.completionCode);
+      setOtp('');
+      setCodeNotice(t('bookings.code.resent'));
+      void queryClient.invalidateQueries({ queryKey: qk.bookings.all() });
+    } catch (e) {
+      // Said in place; a refusal like "no new codes left" also folds in.
+      setCodeError(apiErrorMessage(e));
+      const code = (e as { response?: { data?: { code?: string } } })?.response?.data?.code;
+      setCodeState((prev) => afterRefusal(prev, code, undefined));
+    } finally {
+      setResending(false);
+    }
+  };
 
   if (!verb || !booking) return null;
 
@@ -171,13 +244,13 @@ export function BookingActionModal({
     return fit.includes(room) || room <= 0 ? fit : [...fit, room];
   })();
 
-  const staffName = (s: AssignableStaff) => (typeof s.userId === 'string' ? s.designation : s.userId.name);
+  const codeLocked = isLocked(codeState);
 
   const canSubmit = (() => {
     if (verb === 'reject') return reason.trim().length >= 3;
     if (verb === 'assign') return Boolean(staffId);
     if (verb === 'reschedule') return Boolean(slot);
-    if (verb === 'complete') return booking.mode !== 'AT_CUSTOMER' || /^\d{6}$/.test(otp);
+    if (verb === 'complete') return booking.mode !== 'AT_CUSTOMER' || (!codeLocked && /^\d{6}$/.test(otp));
     if (verb === 'extend') return minutes !== null;
     return true;
   })();
@@ -255,8 +328,58 @@ export function BookingActionModal({
                   onChangeText={(next) => setOtp(next.replace(/\D/g, '').slice(0, 6))}
                   keyboardType="number-pad"
                   maxLength={6}
+                  disabled={codeLocked}
                   style={styles.input}
                 />
+
+                {/* Tries and new codes left — one line each, so a Hindi line
+                    wraps on its own instead of pushing the other off-screen. */}
+                {codeState && (
+                  <View style={styles.codeCounts}>
+                    <Text style={[styles.hint, { color: codeLocked ? c.error : c.textSecondary }]}>
+                      {t('bookings.code.triesLeft', { count: codeState.attemptsLeft })}
+                    </Text>
+                    <Text style={[styles.hint, { color: c.textSecondary }]}>
+                      {t('bookings.code.newCodesLeft', { count: codeState.resendsLeft })}
+                    </Text>
+                  </View>
+                )}
+
+                {codeError && (
+                  <Text style={[styles.hint, { color: c.error }]}>{codeError}</Text>
+                )}
+                {codeNotice && (
+                  <Text style={[styles.hint, { color: c.success }]}>{codeNotice}</Text>
+                )}
+                {codeLocked && !codeError && (
+                  <Text style={[styles.hint, { color: c.error }]}>{t('bookings.code.locked')}</Text>
+                )}
+
+                {codeState?.canResend && (
+                  <>
+                    <Button
+                      mode={codeLocked ? 'contained' : 'outlined'}
+                      icon="message-reply-text-outline"
+                      onPress={() => { void resendCode(); }}
+                      loading={resending}
+                      disabled={resending || submitting}
+                      style={styles.resendBtn}
+                      contentStyle={styles.resendContent}
+                    >
+                      {t('bookings.code.sendNew')}
+                    </Button>
+                    <Text style={[styles.hint, { color: c.textSecondary }]}>{t('bookings.code.sendNewHint')}</Text>
+                  </>
+                )}
+
+                {/* Stuck for real: no tries and no new codes. Say what still
+                    works, and give the one door out. */}
+                {codeState && codeLocked && !codeState.canResend && (
+                  <>
+                    <Text style={[styles.hint, { color: c.textSecondary }]}>{t('bookings.code.noNewCodes')}</Text>
+                    <WhatsAppSupport c={c} topic={t('bookings.code.supportTopic', { code: booking.code })} />
+                  </>
+                )}
               </>
             )}
 
@@ -278,12 +401,12 @@ export function BookingActionModal({
                 <View style={styles.chipWrap}>
                   {(staffQuery.data ?? []).map((s) => (
                     <Chip
-                      key={s._id}
-                      selected={staffId === s._id}
-                      onPress={() => setStaffId(s._id)}
+                      key={s.id}
+                      selected={staffId === s.id}
+                      onPress={() => setStaffId(s.id)}
                       style={styles.chip}
                     >
-                      {staffName(s)}
+                      {s.designation ? t('bookings.action.staffWithRole', { name: s.name, role: s.designation }) : s.name}
                     </Chip>
                   ))}
                 </View>
@@ -462,4 +585,7 @@ const styles = StyleSheet.create({
   chip: { marginBottom: 4 },
   footer: { flexDirection: 'row', gap: 10, marginTop: 16 },
   footerBtn: { flex: 1 },
+  codeCounts: { marginTop: 6 },
+  resendBtn: { alignSelf: 'flex-start', marginTop: 10 },
+  resendContent: { minHeight: 44 },
 });

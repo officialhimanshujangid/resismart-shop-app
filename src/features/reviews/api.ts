@@ -8,17 +8,16 @@ import { ReviewPublicView } from './types';
  * mounted with no caller anywhere in this app: the partner had no way to
  * answer a customer's review from the phone, only from the web panel.
  *
- * WHY THIS READS THE **PUBLIC** LIST
+ * THE PARTNER'S OWN LIST — `GET /reviews/mine`
  *
- * There is no partner-scoped review list on the server — see
- * `backend/src/routes/partner-review.routes.ts`'s own header: the four
- * routers it mounts are resident-create, partner-reply, public-list and
- * owner-moderate. So this calls `GET /partners/:partnerId/reviews` with the
- * signed-in partner's own id, exactly as the web screen does
- * (`frontend/.../partner/reviews/page.tsx`), and that is the honest behaviour
- * rather than a workaround: the partner sees precisely the list a resident
- * browsing their profile sees, masked names and all. A HELD review is not in
- * it — releasing one is the owner console's job, not this screen's.
+ * This business's reviews INCLUDING the ones a moderator has HELD (the public
+ * list hides those, and a business that cannot see why its count moved cannot
+ * answer for it). Default PUBLISHED + HELD; `?status=` narrows. Needs
+ * `BOOKINGS_VIEW` or `ORDERS_VIEW` at READ. Names still arrive masked.
+ *
+ * Replying (`POST /reviews/:id/reply`) needs `BOOKINGS_MANAGE` or
+ * `ORDERS_MANAGE` at FULL (or the owner); anyone else gets 403
+ * `REVIEW_REPLY_NOT_ALLOWED` (or `ACCESS_NOT_ASSIGNED` while awaiting a role).
  */
 export interface ReviewListPage {
   data: ReviewPublicView[];
@@ -27,11 +26,14 @@ export interface ReviewListPage {
   limit: number;
 }
 
+/** Longest reply the server takes (`REVIEW_REPLY_TOO_LONG` past it). */
+export const REPLY_MAX_LENGTH = 2000;
+
 export const reviewsApi = {
-  /** `partnerId` is the signed-in partner's own tenant id — never a query string a screen invents. */
-  list: (partnerId: string, page: number, limit: number) =>
+  /** The signed-in business's own reviews — the server reads the business off the session. */
+  list: (page: number, limit: number) =>
     apiClient
-      .get<ReviewListPage>(`/partners/${partnerId}/reviews`, { params: { page, limit } })
+      .get<ReviewListPage>('/reviews/mine', { params: { page, limit } })
       .then((r) => r.data),
 
   reply: (reviewId: string, text: string) =>

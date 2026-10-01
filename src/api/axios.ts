@@ -16,6 +16,7 @@ import { storage } from '../utils/storage';
  * catalogues, and nothing from `src/api`.
  */
 import i18n from '../i18n';
+import { resolveApiErrorText } from '../lib/apiErrorText';
 
 /**
  * The normal ceiling. A warm server answers every one of these endpoints in
@@ -178,7 +179,15 @@ function normalizeLegacyContextId(contextId?: string): string | undefined {
  * A module-level slot rather than an import of AuthContext, because axios.ts is
  * imported BY the auth layer — the other direction is a require cycle.
  */
-type SessionExpiredHandler = () => void;
+/**
+ * WHY the session ended, handed to the listener so the sign-in screen can say
+ * it. `no-access` is the one a partner must be told about: the credential is
+ * fine, but no business is left on it — an owner whose business was handed
+ * over (ROLE_ENDED), or archived. Without a sentence that reads as "the app
+ * logged me out for no reason".
+ */
+export type SessionEndReason = 'rejected' | 'no-credential' | 'no-access';
+type SessionExpiredHandler = (reason?: SessionEndReason) => void;
 let onSessionExpired: SessionExpiredHandler | null = null;
 
 export function setSessionExpiredHandler(handler: SessionExpiredHandler | null): void {
@@ -186,12 +195,12 @@ export function setSessionExpiredHandler(handler: SessionExpiredHandler | null):
 }
 
 /** Clear the session and tell whoever is listening. Safe to call twice. */
-export async function clearSession(notify = true): Promise<void> {
+export async function clearSession(notify = true, reason?: SessionEndReason): Promise<void> {
   await storage.delete(STORAGE_KEYS.ACCESS_TOKEN);
   await storage.delete(STORAGE_KEYS.REFRESH_TOKEN);
   await storage.delete(STORAGE_KEYS.USER_PROFILE);
   await storage.delete(STORAGE_KEYS.USER_INFO);
-  if (notify) onSessionExpired?.();
+  if (notify) onSessionExpired?.(reason);
 }
 
 /**
@@ -212,16 +221,18 @@ export async function clearSession(notify = true): Promise<void> {
  *                    revoked via `tokenVersion`, which the backend raises on
  *                    logout and password reset. A real sign-out, and it must
  *                    still be prompt.
- *  - `stale-context` 403 `Unauthorized context request`: the TOKEN is fine, but
- *                    the `partner:<id>` this session was minted against no
- *                    longer resolves for this user. See `endsSession`.
+ *  - `stale-context` 403 CONTEXT_NOT_AVAILABLE (`Unauthorized context request`):
+ *                    the TOKEN is fine, but the `partner:<id>` this session was
+ *                    minted against no longer resolves for this user. Repaired
+ *                    in `runRefresh` by refreshing without a context.
  *  - `no-credential` nothing stored to refresh with; there is no session left.
+ *  - `no-access`     403 NO_ACTIVE_ACCESS, or no partner business left.
  *  - `inconclusive`  everything else — no response at all (a timeout included:
  *                    `isTimeout` separates the two no-response cases for the
  *                    SENTENCE a partner reads, and neither of them is evidence
  *                    here), 429, 5xx, or a 200 carrying no token.
  */
-export type RefreshFailureKind = 'rejected' | 'stale-context' | 'no-credential' | 'inconclusive';
+export type RefreshFailureKind = 'rejected' | 'stale-context' | 'no-credential' | 'no-access' | 'inconclusive';
 
 type RefreshError = Error & { refreshFailure: RefreshFailureKind };
 
@@ -239,11 +250,18 @@ function refreshFailed(kind: RefreshFailureKind, message: string): RefreshError 
 function classifyRefreshFailure(e: unknown): RefreshFailureKind {
   const res = (e as AxiosError<ApiErrorBody> | null)?.response;
   if (!res) return 'inconclusive';
+  // 401 is the ONLY answer that ends a session on its own: REFRESH_INVALID,
+  // SESSION_ENDED, REFRESH_REUSED, USER_INACTIVE.
   if (res.status === 401) return 'rejected';
-  // Matched on the server's prose because this answer carries no `code`. If the
-  // backend rewords it the branch degrades to `inconclusive`, which is the safe
-  // side of the mistake: nobody is signed out for it.
-  if (res.status === 403 && res.data?.error === 'Unauthorized context request') return 'stale-context';
+  // The code first; the prose is kept for a server that predates the codes.
+  if (
+    res.status === 403 &&
+    (res.data?.code === 'CONTEXT_NOT_AVAILABLE' || res.data?.error === 'Unauthorized context request')
+  ) {
+    return 'stale-context';
+  }
+  // The person has no society or business left at all — see `endsSession`.
+  if (res.status === 403 && res.data?.code === 'NO_ACTIVE_ACCESS') return 'no-access';
   // 429 lands here on purpose. `/auth/refresh-token` sits behind an IP-keyed
   // limiter of 20 per 15 minutes, and behind carrier NAT or one shop's wifi a
   // whole street shares an egress IP — so a routine background refresh can be
@@ -255,16 +273,21 @@ function classifyRefreshFailure(e: unknown): RefreshFailureKind {
 /**
  * May this failure end the session?
  *
- * Only when the server actually answered that the credential — or the business
- * behind it — is finished. `stale-context` counts, and it is the one kind that
- * needed a decision rather than a default: `partner:<id>` stops resolving when
- * the partner record this session was signed in to is gone or no longer lists
- * this user, and the `tenantId` + `role` pair posted alongside it is read off
- * that same dead context, so there is nothing left to retry with. Signing in
- * again is the only thing that re-establishes WHICH business the app is showing
- * — and doing that visibly matters here, because a user who is PARTNER_ADMIN of
- * one business and PARTNER_STAFF of another would otherwise be silently
- * re-scoped to whichever context the server returned first (see `StoredProfile`).
+ * Only when the server actually answered that the credential is finished — a
+ * 401 from the refresh (`rejected`) — or there is nothing left to refresh with.
+ *
+ * `stale-context` is NOT one any more (auth contract 2026-09-29). The refresh
+ * token is fine; only the `partner:<id>` it was minted against has stopped
+ * resolving (the role was taken away, the business is gone). `runRefresh`
+ * answers it by refreshing again WITHOUT a context and letting the server pick
+ * what this person still has — see `adoptContext`. It only reaches here if even
+ * that retry could not settle, and then it leaves the session alone.
+ *
+ * `no-access` (403 NO_ACTIVE_ACCESS, or a refresh that left this person with no
+ * partner business at all) does end it: the credential is valid but there is
+ * nothing this app can open with it — the same answer the sign-in screen gives
+ * such an account (`auth.session.noPartnerAccess`). Keeping a session that can
+ * only produce 403s would strand the partner on screens that never load.
  *
  * An ALLOWLIST on purpose — a kind added later defaults to "leave the session
  * alone", which is the side of the mistake a partner recovers from by waiting
@@ -272,31 +295,86 @@ function classifyRefreshFailure(e: unknown): RefreshFailureKind {
  */
 export function endsSession(e: unknown): boolean {
   const kind = (e as Partial<RefreshError> | null)?.refreshFailure;
-  return kind === 'rejected' || kind === 'no-credential' || kind === 'stale-context';
+  return kind === 'rejected' || kind === 'no-credential' || kind === 'no-access';
 }
+
+/** The session-ending kind of a refresh failure, for `clearSession`'s listener. */
+export function sessionEndReason(e: unknown): SessionEndReason | undefined {
+  const kind = (e as Partial<RefreshError> | null)?.refreshFailure;
+  return kind === 'rejected' || kind === 'no-credential' || kind === 'no-access' ? kind : undefined;
+}
+
+/**
+ * The context-carrying part of a refresh answer — what `/auth/refresh-token`
+ * returns beside the tokens. Typed loosely here (axios.ts must not import
+ * auth.api.ts: that file imports this one).
+ */
+export interface RefreshedContext {
+  contextId: string;
+  tenantType: string;
+  tenantId: string;
+  tenantName?: string;
+  role: string;
+}
+
+/**
+ * Called when a refresh MOVED the session to a different context (the stored
+ * one had gone stale). `AuthProvider` registers it to repaint the header,
+ * reset the query cache and update the business switcher. A module-level slot
+ * for the same require-cycle reason as `onSessionExpired`.
+ */
+type ContextChangedHandler = (active: RefreshedContext, available: RefreshedContext[]) => void;
+let onContextChanged: ContextChangedHandler | null = null;
+
+export function setContextChangedHandler(handler: ContextChangedHandler | null): void {
+  onContextChanged = handler;
+}
+
+/**
+ * 403 codes an AUTHENTICATED API answers when the token's role/seat has been
+ * taken away since it was minted. The answer is a refresh WITHOUT a context.
+ */
+export const STALE_ROLE_CODES: ReadonlySet<string> = new Set(['ROLE_ENDED', 'COMMITTEE_SEAT_ENDED', 'GATE_ACCESS_REVOKED']);
 
 /**
  * The single-flight slot, and the reason the refresh moved out of the
  * interceptor.
  *
  * It used to run INLINE there, so a screen that fired five requests at once ran
- * five refreshes. The server tolerates that — rotation re-issues in the same
- * `tokenVersion` generation, so the previous refresh token stays valid — but
- * tolerating is not surviving: if any ONE of the five failed for any reason, its
+ * five refreshes. Since 2026-09-29 the server ROTATES the refresh token on every
+ * success and treats a token re-presented more than 60 s after its rotation as
+ * REUSE (401 REFRESH_REUSED — the whole device session is ended), so parallel
+ * refreshes are no longer merely wasteful. Even before that,
+ * tolerating was not surviving: if any ONE of the five failed for any reason, its
  * `catch` deleted the tokens the other four had just written successfully, and a
  * perfectly good session died at a random moment. It also spent that budget of
  * 20-per-15-minutes five times faster, turning a burst into the 429 above.
  */
-let refreshInFlight: Promise<string> | null = null;
+interface RefreshOutcome {
+  token: string;
+  /** True when the session was moved to a different context than the stored one. */
+  contextChanged: boolean;
+}
 
-async function runRefresh(): Promise<string> {
-  const [refreshToken, stored] = await Promise.all([
-    storage.get(STORAGE_KEYS.REFRESH_TOKEN),
-    storage.getObject<StoredProfile>(STORAGE_KEYS.USER_PROFILE),
-  ]);
-  if (!refreshToken) throw refreshFailed('no-credential', 'no refresh token');
-  const profile = normalizeLegacyProfile(stored);
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
+interface RefreshAnswer {
+  token?: string;
+  refreshToken?: string;
+  activeContext?: RefreshedContext;
+  availableContexts?: RefreshedContext[];
+}
+
+/**
+ * One `/auth/refresh-token` call. `context` null = let the server pick.
+ *
+ * The rotated refresh token is written to disk HERE, the moment it arrives —
+ * the server rotates on every success, so the token we just presented is dead
+ * (after a 60 s grace) and the new one is the only way back. Writing it before
+ * anything else can fail is what keeps a second call in the same refresh (the
+ * stale-context retry, the partner pick) from presenting a spent token.
+ */
+async function postRefresh(refreshToken: string, context: StoredProfile | { contextId: string } | null): Promise<RefreshAnswer> {
   let data: unknown;
   try {
     // A bare axios call on purpose: going through `apiClient` would put the
@@ -306,9 +384,13 @@ async function runRefresh(): Promise<string> {
       refreshToken,
       // contextId when we have it; the tenantId/role pair is the fallback the
       // server still honours for sessions that predate contexts.
-      contextId: profile?.contextId,
-      tenantId: profile?.tenantId,
-      role: profile?.role,
+      ...(context
+        ? {
+            contextId: context.contextId,
+            tenantId: (context as StoredProfile).tenantId,
+            role: (context as StoredProfile).role,
+          }
+        : {}),
     }));
   } catch (e) {
     // Even a refusal proves the server is awake — the same rule the response
@@ -320,16 +402,95 @@ async function runRefresh(): Promise<string> {
   // successful refresh still hands the NEXT request a cold-start ceiling.
   lastResponseAt = Date.now();
 
-  const { token, refreshToken: newRefresh } = (data ?? {}) as {
-    token?: string;
-    refreshToken?: string;
-  };
+  const answer = (data ?? {}) as RefreshAnswer;
   // A 2xx carrying no token is the server misbehaving, not this partner's
   // session ending — `inconclusive`, so the session survives it.
-  if (!token) throw refreshFailed('inconclusive', 'refresh returned no token');
+  if (!answer.token) throw refreshFailed('inconclusive', 'refresh returned no token');
+  if (answer.refreshToken) {
+    const kept = await storage.set(STORAGE_KEYS.REFRESH_TOKEN, answer.refreshToken);
+    if (!kept) throw refreshFailed('inconclusive', 'could not store the rotated refresh token');
+  }
+  return answer;
+}
 
+/**
+ * The stale-context repair: the server picked a context for us — make it a
+ * PARTNER one, preferring the business this device was already showing.
+ *
+ * "Keep the partner context if still present": the same `contextId` first,
+ * then the same business under another role, then the server's own pick if it
+ * is a partner, then any partner business. None left → `no-access`.
+ */
+async function adoptContext(
+  answer: RefreshAnswer,
+  previous: StoredProfile | null,
+): Promise<RefreshAnswer & { activeContext: RefreshedContext }> {
+  const partners = (answer.availableContexts ?? (answer.activeContext ? [answer.activeContext] : []))
+    .filter((c) => c.tenantType === 'PARTNER');
+  if (partners.length === 0) throw refreshFailed('no-access', 'no partner business left on this account');
+
+  const active = answer.activeContext;
+  const pick =
+    partners.find((c) => previous?.contextId && c.contextId === previous.contextId) ??
+    partners.find((c) => previous?.tenantId && c.tenantId === previous.tenantId) ??
+    (active && active.tenantType === 'PARTNER' ? active : undefined) ??
+    partners[0];
+
+  if (active && active.contextId === pick.contextId) return { ...answer, activeContext: active };
+  // One more refresh, now naming the partner context. Uses the token the
+  // previous call just rotated in (already on disk).
+  const switched = await postRefresh(answer.refreshToken ?? '', { contextId: pick.contextId });
+  return {
+    ...switched,
+    availableContexts: switched.availableContexts ?? answer.availableContexts,
+    activeContext: switched.activeContext ?? pick,
+  };
+}
+
+async function runRefresh(dropContext: boolean): Promise<RefreshOutcome> {
+  const [refreshToken, stored] = await Promise.all([
+    storage.get(STORAGE_KEYS.REFRESH_TOKEN),
+    storage.getObject<StoredProfile>(STORAGE_KEYS.USER_PROFILE),
+  ]);
+  if (!refreshToken) throw refreshFailed('no-credential', 'no refresh token');
+  const profile = normalizeLegacyProfile(stored);
+
+  let answer: RefreshAnswer;
+  let contextChanged = false;
+  if (dropContext) {
+    // An API said ROLE_ENDED (or similar): the context itself is what went
+    // stale, so do not even present it.
+    answer = await postRefresh(refreshToken, null);
+    contextChanged = true;
+  } else {
+    try {
+      answer = await postRefresh(refreshToken, profile);
+    } catch (e) {
+      if ((e as Partial<RefreshError>).refreshFailure !== 'stale-context') throw e;
+      // 403 CONTEXT_NOT_AVAILABLE: the token is fine, the business is not.
+      // Forget the stored context and ask again without one. Same refresh
+      // token — a refused call does not rotate it.
+      answer = await postRefresh(refreshToken, null);
+      contextChanged = true;
+    }
+  }
+
+  if (contextChanged) {
+    const adopted = await adoptContext(answer, profile);
+    answer = adopted;
+    const ctx = adopted.activeContext;
+    contextChanged = ctx.contextId !== profile?.contextId;
+    await storage.setObject(STORAGE_KEYS.USER_PROFILE, {
+      tenantType: ctx.tenantType,
+      tenantId: ctx.tenantId,
+      role: ctx.role,
+      contextId: ctx.contextId,
+      tenantName: ctx.tenantName,
+    });
+  }
+
+  const token = answer.token as string;
   const storedAccess = await storage.set(STORAGE_KEYS.ACCESS_TOKEN, token);
-  if (newRefresh) await storage.set(STORAGE_KEYS.REFRESH_TOKEN, newRefresh);
   /**
    * A token we cannot persist is not a session we can use.
    *
@@ -340,22 +501,56 @@ async function runRefresh(): Promise<string> {
    * straight into the IP limiter, with nothing anywhere to say why. Reported as
    * `inconclusive` because it is our disk that failed and not the credential:
    * this request fails, the session stays, and the next attempt tries again.
-   * Whichever refresh token is on disk afterwards — the rotated one or the one
-   * it was meant to replace — is still accepted, so there is a way back.
    */
   if (!storedAccess) throw refreshFailed('inconclusive', 'could not store the new access token');
 
-  return token;
+  if (contextChanged && answer.activeContext) {
+    onContextChanged?.(answer.activeContext, answer.availableContexts ?? [answer.activeContext]);
+  }
+  return { token, contextChanged };
 }
 
-/** The shared refresh. Callers that arrive while one is running join it. */
-export function refreshSession(): Promise<string> {
+/**
+ * The shared refresh. Callers that arrive while one is running join it —
+ * whatever kind it is: a context-keeping refresh that meets a stale context
+ * repairs it itself, so a `dropContext` caller loses nothing by joining.
+ */
+function sharedRefresh(dropContext = false): Promise<RefreshOutcome> {
   if (!refreshInFlight) {
-    refreshInFlight = runRefresh().finally(() => {
+    refreshInFlight = runRefresh(dropContext).finally(() => {
       refreshInFlight = null;
     });
   }
   return refreshInFlight;
+}
+
+/** The shared refresh, for callers that only need the new access token. */
+export function refreshSession(opts: { dropContext?: boolean } = {}): Promise<string> {
+  return sharedRefresh(opts.dropContext).then((o) => o.token);
+}
+
+/**
+ * Sign-in/out endpoints whose 401 is an ANSWER (wrong password, bad code), not
+ * an expired access token — a refresh there is meaningless.
+ */
+function isAuthEntry(url: string | undefined): boolean {
+  if (!url) return false;
+  return /\/auth\/(login|refresh-token|logout|otp|register|forgot-password|reset-password|google)/.test(url);
+}
+
+/**
+ * Retry the original request after a refresh — unless the refresh MOVED the
+ * session to another business and the request would write. A retried POST
+ * would then create the invoice/booking in a business the partner did not
+ * pick. Reads are safe (the cache is reset for the new business anyway).
+ */
+function retryAfterRefresh(original: RetriableRequest, outcome: RefreshOutcome) {
+  const method = (original.method ?? 'get').toLowerCase();
+  if (outcome.contextChanged && method !== 'get') {
+    return Promise.reject(new Error(i18n.t('errors.ROLE_ENDED')));
+  }
+  if (original.headers) original.headers.Authorization = `Bearer ${outcome.token}`;
+  return apiClient(original);
 }
 
 /**
@@ -395,20 +590,30 @@ apiClient.interceptors.response.use(
     // never got a response leaves the question open.
     if (error.response) lastResponseAt = Date.now();
     const originalRequest = error.config as RetriableRequest | undefined;
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+    const status = error.response?.status;
+    const code = (error.response?.data as ApiErrorBody | undefined)?.code;
+    /**
+     * Two ways in: a 401 (the access token expired — refresh keeping the
+     * context), and a 403 whose code says the ROLE behind the token is gone
+     * (ROLE_ENDED …) — refresh WITHOUT the context and let the server say what
+     * this person still has. Neither ends the session by itself; only a 401
+     * from the refresh does (see `endsSession`).
+     */
+    const expired = status === 401 && !isAuthEntry(originalRequest?.url);
+    const roleEnded = status === 403 && !!code && STALE_ROLE_CODES.has(code);
+    if ((expired || roleEnded) && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
+      let outcome: RefreshOutcome;
       try {
-        const token = await refreshSession();
-        if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-        }
-        return apiClient(originalRequest);
+        outcome = await sharedRefresh(roleEnded);
       } catch (refreshError) {
         // The whole point: only a server answer that rejects the credential ends
         // the session. Anything we never got an answer to leaves it exactly as it
         // was — this request fails, and the next one refreshes again.
-        if (endsSession(refreshError)) await clearSession();
+        if (endsSession(refreshError)) await clearSession(true, sessionEndReason(refreshError));
+        return Promise.reject(error);
       }
+      return retryAfterRefresh(originalRequest, outcome);
     }
     return Promise.reject(error);
   }
@@ -456,6 +661,8 @@ interface ApiErrorBody {
   error?: string;
   message?: string;
   code?: string;
+  /** Values the coded sentence names (`{attemptsLeft}`, `{max}` …). */
+  params?: Record<string, unknown>;
   upgradeRequired?: boolean;
   missing?: Array<{ step: number; field: string; message: string }>;
 }
@@ -519,15 +726,45 @@ export function apiErrorMessage(error: unknown, fallback?: string): string {
         : i18n.t('common.apiError.planLimit');
     }
 
-    // The server's own sentence, in whatever language IT sent — untranslated on
-    // purpose, and the same trade `UsageMeter.tsx` states: it is written for a
-    // shop owner and names the thing to fix, which a generic client string
-    // cannot. The four sentences around it are this app's own words and are the
-    // ones the catalogue owns.
+    /**
+     * A CODED refusal is shown in OUR words, in the current language — the
+     * `errors.<CODE>` catalogue, seeded from the backend's partner and
+     * marketplace catalogues. An uncoded 4xx keeps the server's own sentence
+     * (written for a shop owner, names the thing to fix); a 5xx gets the
+     * generic line, never a server's crash text. The rules are in
+     * `src/lib/apiErrorText.ts`.
+     */
     const fromBody = body?.error ?? body?.message;
-    if (typeof fromBody === 'string' && fromBody.trim()) return fromBody;
-    if (isTimeout(error)) return i18n.t('common.apiError.timeout');
-    if (!error.response) return i18n.t('common.apiError.noConnection');
+
+    /**
+     * PASSWORD_POLICY is the one auth code whose SERVER sentence is better than
+     * ours — it names the exact problem ("too common", "contains your name").
+     * It is English only, so a Hindi reader still gets the catalogue sentence.
+     */
+    if (
+      body?.code === 'PASSWORD_POLICY' &&
+      typeof fromBody === 'string' &&
+      fromBody.trim() &&
+      !String(i18n.language ?? 'en').startsWith('hi')
+    ) {
+      return fromBody.trim();
+    }
+
+    const resolved = resolveApiErrorText(
+      {
+        status: error.response?.status,
+        code: body?.code,
+        params: body?.params,
+        serverText: typeof fromBody === 'string' ? fromBody : undefined,
+        hasResponse: !!error.response,
+        timedOut: isTimeout(error),
+      },
+      { t: (k, o) => String(i18n.t(k, o)), exists: (k) => i18n.exists(k) },
+    );
+    if (resolved.kind === 'text') return resolved.text;
+    if (resolved.kind === 'timeout') return i18n.t('common.apiError.timeout');
+    if (resolved.kind === 'noConnection') return i18n.t('common.apiError.noConnection');
+    return fallback ?? i18n.t('common.somethingWentWrong');
   }
   if (error instanceof Error && error.message) return error.message;
   /**
@@ -560,6 +797,12 @@ export function isUpgradeRequired(error: unknown): boolean {
 export function apiErrorCode(error: unknown): string | undefined {
   if (!axios.isAxiosError(error)) return undefined;
   return (error.response?.data as ApiErrorBody | undefined)?.code;
+}
+
+/** The `params` of a coded refusal (`{ attemptsLeft: '3' }` …), where sent. */
+export function apiErrorParams(error: unknown): Record<string, unknown> | undefined {
+  if (!axios.isAxiosError(error)) return undefined;
+  return (error.response?.data as ApiErrorBody | undefined)?.params;
 }
 
 /**

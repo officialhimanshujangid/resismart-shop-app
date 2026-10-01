@@ -27,6 +27,10 @@ export interface UseOfflineDrafts {
   addDraft: (input: AddDraftInput) => Promise<InvoiceDraft>;
   discardDraft: (id: string) => Promise<void>;
   retryDraft: (id: string) => Promise<InvoiceDraft | undefined>;
+  /** P1: after a confirmed duplicate supplier bill number. */
+  confirmDuplicateAndRetry: (id: string) => Promise<InvoiceDraft | undefined>;
+  /** P1: bill past a BLOCK credit limit (only offered when the role may). */
+  overrideCreditAndRetry: (id: string) => Promise<InvoiceDraft | undefined>;
   syncPending: () => Promise<void>;
 }
 
@@ -44,6 +48,8 @@ export function useOfflineDrafts(): UseOfflineDrafts {
     addDraft: draftStore.addDraft,
     discardDraft: draftStore.discardDraft,
     retryDraft: draftStore.retryDraft,
+    confirmDuplicateAndRetry: draftStore.confirmDuplicateAndRetry,
+    overrideCreditAndRetry: draftStore.overrideCreditAndRetry,
     syncPending: draftStore.syncPending,
   };
 }

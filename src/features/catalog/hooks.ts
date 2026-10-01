@@ -69,6 +69,7 @@ export interface AdjustStockInput {
   qty: number;
   reason: string;
   reasonCode?: StockAdjustReasonCode;
+  unitCostPaise?: number;
 }
 
 export function useAdjustStock() {

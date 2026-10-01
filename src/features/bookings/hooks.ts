@@ -55,14 +55,14 @@ export function useBookingOverrun(id: string | undefined, enabled: boolean) {
 }
 
 /**
- * Staff eligible for assignment. A 403 here means this viewer's role does not
- * hold `STAFF READ` — a real, unremarkable case for somebody who only manages
- * bookings — so it fails to an EMPTY list rather than surfacing a scary error;
- * the assign sheet reads `staffUnavailable` and explains it in one line instead.
+ * Staff eligible for assignment (`GET /partners/me/staff/assignable`). Gated on
+ * the same `BOOKINGS_MANAGE: FULL` the assign verb needs, so anybody shown the
+ * Assign button can load this list. A refusal is still explained in one line
+ * by the sheet rather than as an alert.
  */
 export function useAssignableStaff(enabled: boolean) {
   return useQuery({
-    queryKey: qk.staff(),
+    queryKey: qk.staffAssignable(),
     queryFn: listAssignableStaff,
     enabled,
     staleTime: 60_000,

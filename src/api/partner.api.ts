@@ -11,6 +11,7 @@ import {
   PartnerAccessModule,
   BookingFieldType,
 } from '../types/api-contract.generated';
+import type { PartnerRoleLimits } from '../features/p1/access';
 
 /**
  * Every `/partners/me/...` call the foundation needs, plus the two the signup
@@ -78,7 +79,12 @@ export interface PartnerBusinessSummary {
 
 /** One thing standing between this business and being found by a resident. */
 export interface PartnerVisibilityBlocker {
-  code: 'NOT_ACTIVE' | 'NOT_VERIFIED' | 'NO_LOCATION' | 'NO_SERVICE_MODES' | 'NO_CATEGORY' | 'NO_AVAILABILITY';
+  /**
+   * `SOCIETY_ONLY_REACH` (CONTRACT-partner-P3 §6-7): an APPROVED society partner
+   * shown only inside its society — info, `blocksDiscovery: false`, replacing
+   * `NOT_VERIFIED` for them.
+   */
+  code: 'NOT_ACTIVE' | 'NOT_VERIFIED' | 'NO_LOCATION' | 'NO_SERVICE_MODES' | 'NO_CATEGORY' | 'NO_AVAILABILITY' | 'SOCIETY_ONLY_REACH';
   /** Already in the proprietor's language — render it, do not re-word it. */
   message: string;
   /**
@@ -153,6 +159,9 @@ export function blockerFix(code: PartnerVisibilityBlocker['code']): BlockerFix |
       // has that editor, so unlike the web the partner can fix it where they
       // were told about it.
       return { href: '/availability', labelKey: 'blockerFix.NO_AVAILABILITY' };
+    case 'SOCIETY_ONLY_REACH':
+      // The web href is `/dashboard/partner/reach`; this app's twin.
+      return { href: '/settings/reach', labelKey: 'blockerFix.SOCIETY_ONLY_REACH' };
     default:
       return undefined;
   }
@@ -235,6 +244,18 @@ export interface PartnerEntitlementsPayload {
    * every reader treats anything but an explicit `false` as "yes".
    */
   kycRequired?: boolean;
+  /**
+   * The signed-in person's ROLE limits (CONTRACT-partner-P1 §2) — discount cap,
+   * price edits, backdating, credit override. `{}` for the proprietor; an absent
+   * key is unlimited. Not the plan's `plan.limits`.
+   */
+  limits?: PartnerRoleLimits;
+  /**
+   * P2 (CONTRACT-partner-P2 §2.2): the business-type modules that are EFFECTIVE
+   * for this business — chosen AND their base modules on. `[]` (or absent, on a
+   * server that predates P2) for everybody who never opted in.
+   */
+  categoryModules?: string[];
 }
 
 // ----------------------------------------------------------------- onboarding

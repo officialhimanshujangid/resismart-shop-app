@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { themeColors, radii } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
 import {
-  reportsApi, exportReport, PartnerReportKey, ReportQuery,
+  reportsApi, exportReport, PartnerReportKey, ReportQuery, isP2ReportKey,
   RegisterReport, ItemWiseReport, GrossProfitReport, PartyWiseReport, AgeingReport,
 } from '../../../src/api/reports.api';
 import {
@@ -22,6 +22,7 @@ import { Hero } from '../../../src/components/Hero';
 import { HelpButton } from '../../../src/features/help/HelpButton';
 import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
 import { MiniBars, DonutRing, ProgressBar } from '../../../src/components/charts';
+import { P2ReportSummary } from '../../../src/features/p2/components/P2ReportSummary';
 
 /**
  * `sales`/`purchase`/`items`/`parties`/`outstanding`/`profit` are read on
@@ -60,7 +61,19 @@ const REPORT_TABS: { key: ReportTabKey; labelKey: string }[] = [
   { key: 'profit', labelKey: 'reports.tab.profit' },
   { key: 'gstr1', labelKey: 'reports.tab.gstr1' },
   { key: 'gstr3b', labelKey: 'reports.tab.gstr3b' },
+  { key: 'pnl', labelKey: 'reports.tab.pnl' },
+  { key: 'stock-valuation', labelKey: 'reports.tab.stock-valuation' },
+  { key: 'expenses', labelKey: 'reports.tab.expenses' },
+  { key: 'cmp08', labelKey: 'reports.tab.cmp08' },
+  // P2 business-type reports — shown only once GET /reports has listed them.
+  { key: 'near-expiry-value', labelKey: 'reports.tab.near-expiry-value' },
+  { key: 'subscription-collections', labelKey: 'reports.tab.subscription-collections' },
+  { key: 'appointment-utilisation', labelKey: 'reports.tab.appointment-utilisation' },
+  { key: 'job-conversion', labelKey: 'reports.tab.job-conversion' },
 ];
+
+/** P2 report keys: never offered on a guess, only when the server's index names them. */
+const P2_REPORT_KEYS = new Set<string>(['near-expiry-value', 'subscription-collections', 'appointment-utilisation', 'job-conversion']);
 
 /**
  * The three period presets. `id` is this screen's own React key and the label
@@ -74,7 +87,7 @@ const PERIOD_PRESETS = [
   // year here and the April-start FY on the web — see `financialYearRange`.
   { id: 'financialYear', labelKey: 'reports.page.presetFinancialYear', range: () => financialYearRange() },
 ] as const;
-const EXPORT_ONLY = new Set<PartnerReportKey>(['gstr1', 'gstr3b']);
+const EXPORT_ONLY = new Set<PartnerReportKey>(['gstr1', 'gstr3b', 'pnl', 'stock-valuation', 'expenses', 'cmp08']);
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 function isoDate(d: Date) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
@@ -112,6 +125,17 @@ export default function ReportsScreen() {
   const [asOf, setAsOf] = useState(isoDate(new Date()));
   const [exporting, setExporting] = useState<'pdf' | 'xlsx' | null>(null);
 
+  /**
+   * P1 (§9): `GET /reports` lists only the reports THIS viewer may run — P&L
+   * and stock valuation need COSTS, CMP-08 is for composition partners, GSTR-1/3B
+   * are hidden from them. The chips follow it once it has answered; before
+   * that (or if it fails) the server still refuses what it must.
+   */
+  const index = useQuery({ queryKey: qk.reports('index'), queryFn: reportsApi.index, staleTime: 5 * 60_000 });
+  const allowedKeys = index.data ? new Set<string>(index.data.map((r) => r.key)) : null;
+  const tabs = REPORT_TABS.filter((tab) => tab.key === 'insights'
+    || (P2_REPORT_KEYS.has(tab.key) ? !!allowedKeys?.has(tab.key) : (!allowedKeys || allowedKeys.has(tab.key))));
+
   const isInsights = key === 'insights';
   const query: ReportQuery = key === 'outstanding' ? { asOf } : { from: range.from, to: range.to };
   // `!isInsights` narrows `key` to `PartnerReportKey` for `EXPORT_ONLY.has`, below.
@@ -126,6 +150,8 @@ export default function ReportsScreen() {
       if (key === 'profit') return reportsApi.profit(query);
       if (key === 'parties') return reportsApi.parties(query);
       if (key === 'outstanding') return reportsApi.outstanding(query);
+      // P2 business-type reports: read on screen (summary) and exportable.
+      if (isP2ReportKey(key)) return reportsApi.p2(key, query);
       return null;
     },
     enabled: !exportOnly && !isInsights,
@@ -183,7 +209,7 @@ export default function ReportsScreen() {
       <Hero isDark={isDark} action={<HelpButton c={c} variant="hero" />} rounded={false} eyebrow={t('reports.page.eyebrow')} title={t('reports.page.title')} />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
-        <ChipRow c={c} value={key} options={REPORT_TABS.map((tab) => ({ key: tab.key, label: t(tab.labelKey) }))} onChange={setKey} />
+        <ChipRow c={c} value={key} options={tabs.map((tab) => ({ key: tab.key, label: t(tab.labelKey) }))} onChange={setKey} />
 
         {/*
           `DateField`, not a raw `AppInput`. These three feed a GST period, and
@@ -251,10 +277,12 @@ export default function ReportsScreen() {
         ) : exportOnly ? (
           <Card c={c}>
             <Text style={{ color: c.textPrimary, fontWeight: '600' }}>
-              {t(key === 'gstr1' ? 'reports.page.gstr1Title' : 'reports.page.gstr3bTitle')}
+              {key === 'gstr1' || key === 'gstr3b'
+                ? t(key === 'gstr1' ? 'reports.page.gstr1Title' : 'reports.page.gstr3bTitle')
+                : t(`reports.tab.${key}`)}
             </Text>
             <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 19 }}>
-              {t('reports.page.gstrBody')}
+              {key === 'gstr1' || key === 'gstr3b' ? t('reports.page.gstrBody') : t('reports.page.p1ExportBody')}
             </Text>
           </Card>
         ) : data.isPending ? (
@@ -263,7 +291,9 @@ export default function ReportsScreen() {
           <ErrorBlock c={c} message={apiErrorMessage(data.error, t('reports.page.reportLoadFailed'))} onRetry={() => data.refetch()} />
         ) : (
           // `isInsights` (checked above) has already excluded `'insights'`.
-          <ReportBody c={c} reportKey={key as PartnerReportKey} data={data.data} />
+          isP2ReportKey(key)
+            ? <P2ReportSummary c={c} reportKey={key} data={data.data} />
+            : <ReportBody c={c} reportKey={key as PartnerReportKey} data={data.data} />
         )}
 
         <SectionLabel c={c}>{t('reports.page.partyBalances')}</SectionLabel>

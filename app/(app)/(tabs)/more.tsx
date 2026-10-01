@@ -13,6 +13,13 @@ import { Card, Row, SectionLabel } from '../../../src/features/more/ui';
 import { ContextPicker } from '../../../src/components/ContextPicker';
 import { useNotifications } from '../../../src/features/notifications/hooks';
 import { HelpButton } from '../../../src/features/help/HelpButton';
+import { MyInvitationsCard } from '../../../src/features/owners/components/MyInvitationsCard';
+import { isOwnerSession } from '../../../src/features/owners/access';
+import { useMyReach } from '../../../src/features/society/hooks';
+import { isSocietyPartner } from '../../../src/features/society/logic';
+import { useMyRent } from '../../../src/features/rent/hooks';
+import { hasLease, rentAccess } from '../../../src/features/rent/logic';
+import { useP2Doors } from '../../../src/features/p2/P2Shortcuts';
 
 /**
  * The More tab: everything that is not a bottom tab.
@@ -139,6 +146,11 @@ export default function MoreScreen() {
    */
   const notifications = useNotifications();
   const unread = notifications.data?.unread ?? 0;
+  /** P3 "Who can find you" — only a business that joined through its society has the choice. */
+  const societyPartner = isSocietyPartner(useMyReach().data);
+  /** P4 "My shop rent" — only for a business that rents a unit from a society (the list has a lease). */
+  const rentCanView = ready && rentAccess(can).canView;
+  const hasRent = hasLease(useMyRent(rentCanView).data);
 
   /**
    * A partner with two businesses could not switch between them.
@@ -193,6 +205,8 @@ export default function MoreScreen() {
     [otherContexts, switchToContext, t],
   );
 
+  const p2Doors = useP2Doors();
+
   const moduleRows = useMemo(
     () => menu.filter((e) => !(e.state === 'ON' && TAB_COVERED.has(e.module))),
     [menu],
@@ -237,22 +251,36 @@ export default function MoreScreen() {
       // four shipped with matched no route at all and every Business row was
       // a dead tap.
       { key: 'CUSTOMERS', label: t('more.rows.parties'), icon: 'account-group-outline', blurb: t('more.rows.partiesBlurb'), href: '/parties', visible: can('CUSTOMERS', 'READ') },
-      // C7 — reviews reply. Same `CUSTOMERS` permission row Parties uses;
-      // there is no dedicated review permission on the server (see
-      // `features/reviews/api.ts`'s header).
-      { key: 'REVIEWS', label: t('more.rows.reviews'), icon: 'star-outline', blurb: t('more.rows.reviewsBlurb'), href: '/reviews', visible: can('CUSTOMERS', 'READ') },
+      // C7 — reviews. There is no review permission on the server:
+      // `GET /reviews/mine` answers BOOKINGS_VIEW or ORDERS_VIEW at READ
+      // (see `features/reviews/api.ts`'s header), so the row follows that.
+      { key: 'REVIEWS', label: t('more.rows.reviews'), icon: 'star-outline', blurb: t('more.rows.reviewsBlurb'), href: '/reviews', visible: can('BOOKINGS_VIEW', 'READ') || can('ORDERS_VIEW', 'READ') },
       { key: 'PAYMENTS', label: t('more.rows.payments'), icon: 'cash-multiple', blurb: t('more.rows.paymentsBlurb'), href: '/payments', visible: hasModule('INVOICING') && can('INVOICING_VIEW', 'READ') },
+      // P1 business suite (CONTRACT-partner-P1 §11). Each row follows the same
+      // gate its own `_layout.tsx` applies, so a row is never a dead tap.
+      { key: 'KHATA', label: t('more.rows.khata'), icon: 'notebook-outline', blurb: t('more.rows.khataBlurb'), href: '/khata', visible: hasModule('INVOICING') && can('CUSTOMERS', 'READ') },
+      { key: 'PURCHASES', label: t('more.rows.purchases'), icon: 'truck-outline', blurb: t('more.rows.purchasesBlurb'), href: '/purchases', visible: hasModule('INVOICING') && can('PURCHASES_VIEW', 'READ') },
+      { key: 'STOCK', label: t('more.rows.stock'), icon: 'package-variant', blurb: t('more.rows.stockBlurb'), href: '/stock', visible: hasModule('CATALOG') && (can('STOCK_VIEW', 'READ') || can('STOCK_COUNT', 'FULL')) },
+      { key: 'MONEY', label: t('more.rows.money'), icon: 'wallet-outline', blurb: t('more.rows.moneyBlurb'), href: '/money', visible: hasModule('INVOICING') && (can('ACCOUNTS', 'READ') || can('EXPENSES_VIEW', 'READ') || can('EXPENSES_MANAGE', 'FULL')) },
+      // P4 (CONTRACT-partner-P4 §12 S): "My shop rent", hidden unless the list has a lease.
+      { key: 'RENT', label: t('more.rows.rent'), icon: 'storefront-outline', blurb: t('more.rows.rentBlurb'), href: '/rent', visible: rentCanView && hasRent },
       { key: 'SERVICES', label: t('more.rows.services'), icon: 'clipboard-list-outline', blurb: t('more.rows.servicesBlurb'), href: '/services', visible: hasModule('BOOKINGS') && can('CATALOG_VIEW', 'READ') },
       { key: 'AVAILABILITY', label: t('more.rows.availability'), icon: 'clock-outline', blurb: t('more.rows.availabilityBlurb'), href: '/availability', visible: hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ') },
       { key: 'REPORTS', label: t('more.rows.reports'), icon: 'chart-line', blurb: t('more.rows.reportsBlurb'), href: '/reports', visible: can('REPORTS', 'READ') },
       { key: 'STAFF', label: t('more.rows.staff'), icon: 'account-tie-outline', blurb: t('more.rows.staffBlurb'), href: '/staff', visible: can('STAFF', 'READ') },
+      // Team → Owners (CONTRACT-partner-P0 §6.1): owner logins, co-owner
+      // invitations, handover. The token ROLE decides — no staff grant reaches it.
+      { key: 'OWNERS', label: t('more.rows.owners'), icon: 'account-key-outline', blurb: t('more.rows.ownersBlurb'), href: '/owners', visible: isOwnerSession(profile) },
+      // P3 (CONTRACT-partner-P3 §11): "More → Who can find you". Lives under
+      // `settings/`, so it follows that layout's SETTINGS READ gate.
+      { key: 'REACH', label: t('more.rows.reach'), icon: 'account-search-outline', blurb: t('more.rows.reachBlurb'), href: '/settings/reach', visible: societyPartner && can('SETTINGS', 'READ') },
       { key: 'SETTINGS', label: t('more.rows.settings'), icon: 'cog-outline', blurb: t('more.rows.settingsBlurb'), href: '/settings', visible: can('SETTINGS', 'READ') },
     ];
     return rows.filter((row) => row.visible);
     // `t` is a dependency, not decoration: react-i18next hands back a new `t`
     // when the language changes, and without it here the memo would keep
     // serving the eight rows in the language they were first built in.
-  }, [can, hasModule, t]);
+  }, [can, hasModule, profile, societyPartner, rentCanView, hasRent, t]);
 
   const handleSignOut = () => {
     Alert.alert(t('more.signOut'), t('more.signOutBody'), [
@@ -278,6 +306,9 @@ export default function MoreScreen() {
           <Card c={c}><Text style={{ color: c.textSecondary }}>{t('more.loadingMenu')}</Text></Card>
         ) : (
           <>
+            {/* Owner invitations sent to this person — accept one here. */}
+            <MyInvitationsCard c={c} />
+
             {moduleRows.length > 0 && (
               <>
                 <SectionLabel c={c}>{t('more.sellMoreSection')}</SectionLabel>
@@ -329,6 +360,21 @@ export default function MoreScreen() {
                       </View>
                     );
                   })}
+                </Card>
+              </>
+            )}
+
+            {/* P2: the business-type modules this business switched on — nothing otherwise. */}
+            {p2Doors.length > 0 && (
+              <>
+                <SectionLabel c={c}>{t('p2.doors.section')}</SectionLabel>
+                <Card c={c} style={styles.listCard}>
+                  {p2Doors.map((door, i) => (
+                    <View key={door.key}>
+                      <Row c={c} icon={door.icon} title={t(door.labelKey)} subtitle={t(door.blurbKey)} onPress={() => router.push(door.href)} />
+                      {i < p2Doors.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
+                    </View>
+                  ))}
                 </Card>
               </>
             )}
@@ -408,6 +454,30 @@ export default function MoreScreen() {
                   article by this person's role. */}
               <Row c={c} icon="help-circle-outline" title={t('help.moreRowTitle')} subtitle={t('help.moreRowSub')} onPress={() => router.push('/help')} />
               <View style={[styles.divider, { backgroundColor: c.divider }]} />
+              {/* Sign-in security — this PERSON's own login, so ungated like
+                  Alerts and Help. "Change password" only for an account that
+                  has one; the devices screen also offers it from the server's
+                  own `hasPassword` for a session stored before this field. */}
+              <Row
+                c={c}
+                icon="cellphone-link"
+                title={t('more.devicesRow')}
+                subtitle={t('more.devicesRowSub')}
+                onPress={() => router.push('/account/devices')}
+              />
+              <View style={[styles.divider, { backgroundColor: c.divider }]} />
+              {user?.hasPassword ? (
+                <>
+                  <Row
+                    c={c}
+                    icon="lock-reset"
+                    title={t('more.changePasswordRow')}
+                    subtitle={t('more.changePasswordRowSub')}
+                    onPress={() => router.push('/account/change-password')}
+                  />
+                  <View style={[styles.divider, { backgroundColor: c.divider }]} />
+                </>
+              ) : null}
               <Row c={c} icon="logout" title={t('more.signOut')} onPress={handleSignOut} danger />
               <View style={[styles.divider, { backgroundColor: c.divider }]} />
               {/* Delete account (Google Play's in-app deletion rule). Ungated like

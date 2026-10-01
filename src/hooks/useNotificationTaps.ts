@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 
 import { notificationDestination } from '../api/notification.api';
 import { PartnerModule } from '../types/api-contract.generated';
+import type { P2Module } from '../features/p2/modules';
 
 /**
  * What happens when a partner TAPS a push.
@@ -54,9 +55,14 @@ export interface NotificationTapsInput {
    * answer arrives rather than answered wrongly.
    */
   ready: boolean;
+  /**
+   * P2: is this business-type module effective? Absent = none are (the HARD
+   * RULE direction), so a P2 alert on a phone that cannot answer lands on the inbox.
+   */
+  hasCategoryModule?: (module: P2Module) => boolean;
 }
 
-export function useNotificationTaps({ enabled, hasModule, ready }: NotificationTapsInput): void {
+export function useNotificationTaps({ enabled, hasModule, ready, hasCategoryModule }: NotificationTapsInput): void {
   /** Response identifiers already acted on, so one tap navigates once. */
   const handled = useRef<Set<string>>(new Set());
   /** A tap that arrived before the entitlement answer did. At most one is worth keeping. */
@@ -68,6 +74,8 @@ export function useNotificationTaps({ enabled, hasModule, ready }: NotificationT
   // is a tap that lands nowhere.
   const gate = useRef(hasModule);
   gate.current = hasModule;
+  const categoryGate = useRef(hasCategoryModule);
+  categoryGate.current = hasCategoryModule;
 
   useEffect(() => {
     if (!enabled) return;
@@ -106,6 +114,10 @@ export function useNotificationTaps({ enabled, hasModule, ready }: NotificationT
         return;
       }
       if (dest.requires && !gate.current(dest.requires)) {
+        router.push('/notifications');
+        return;
+      }
+      if (dest.requiresCategory && !(categoryGate.current?.(dest.requiresCategory) ?? false)) {
         router.push('/notifications');
         return;
       }

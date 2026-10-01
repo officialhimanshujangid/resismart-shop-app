@@ -4,6 +4,7 @@ import { Portal, Dialog, Text, TextInput, Button, HelperText, SegmentedButtons }
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../constants/colors';
+import { parseRupeesToPaise } from '../../../lib/money';
 import { StockAdjustMode, StockAdjustReasonCode, STOCK_ADJUST_REASON_CODES, STOCK_ADJUST_REASON_LABEL_KEYS } from '../types';
 
 /**
@@ -24,7 +25,13 @@ interface StockAdjustModalProps {
   target: StockAdjustTarget | null;
   submitting: boolean;
   onCancel: () => void;
-  onSubmit: (input: { mode: StockAdjustMode; qty: number; reason: string; reasonCode: StockAdjustReasonCode }) => void;
+  onSubmit: (input: { mode: StockAdjustMode; qty: number; reason: string; reasonCode: StockAdjustReasonCode; unitCostPaise?: number }) => void;
+  /**
+   * P1 (screen S9): offer "cost per unit" when stock goes UP — only for a
+   * viewer holding COSTS (the server ignores it otherwise). Absent = the goods
+   * enter at the current average cost.
+   */
+  showCost?: boolean;
 }
 
 /**
@@ -43,13 +50,14 @@ const DEFAULT_REASON: Record<StockAdjustMode, StockAdjustReasonCode> = {
   SET: 'RECOUNT',
 };
 
-export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: StockAdjustModalProps) {
+export function StockAdjustModal({ target, submitting, onCancel, onSubmit, showCost = false }: StockAdjustModalProps) {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const [mode, setMode] = useState<StockAdjustMode>('INCREASE');
   const [qtyText, setQtyText] = useState('');
   const [reason, setReason] = useState('');
   const [reasonCode, setReasonCode] = useState<StockAdjustReasonCode>(DEFAULT_REASON.INCREASE);
+  const [costText, setCostText] = useState('');
 
   React.useEffect(() => {
     if (target) {
@@ -57,6 +65,7 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
       setQtyText('');
       setReason('');
       setReasonCode(DEFAULT_REASON.INCREASE);
+      setCostText('');
     }
   }, [target]);
 
@@ -75,7 +84,10 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
   const qty = Number(qtyText);
   const qtyValid = qtyText.trim() !== '' && Number.isFinite(qty) && qty >= 0 && (mode === 'SET' || qty > 0);
   const reasonValid = reason.trim().length >= 3;
-  const canSubmit = qtyValid && reasonValid && !submitting;
+  const raisesStock = mode === 'INCREASE' || (mode === 'SET' && qtyValid && qty > (target?.currentQty ?? 0));
+  const unitCostPaise = showCost && raisesStock && costText.trim() ? parseRupeesToPaise(costText) : undefined;
+  const costValid = unitCostPaise !== null;
+  const canSubmit = qtyValid && reasonValid && costValid && !submitting;
 
   const preview = qtyValid
     ? mode === 'SET' ? qty : mode === 'INCREASE' ? (target?.currentQty ?? 0) + qty : (target?.currentQty ?? 0) - qty
@@ -118,6 +130,18 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
               </Text>
             )}
 
+            {showCost && raisesStock && (
+              <TextInput
+                mode="outlined"
+                label={t('catalog.stock.unitCost')}
+                value={costText}
+                onChangeText={setCostText}
+                keyboardType="decimal-pad"
+                outlineStyle={styles.outline}
+                testID="stock-unit-cost"
+              />
+            )}
+
             <View style={styles.reasonChips}>
               {STOCK_ADJUST_REASON_CODES.map((code) => {
                 const active = code === reasonCode;
@@ -157,7 +181,10 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit }: Sto
         <Dialog.Actions>
           <Button onPress={onCancel} disabled={submitting}>{t('common.cancel')}</Button>
           <Button
-            onPress={() => onSubmit({ mode, qty, reason: reason.trim(), reasonCode })}
+            onPress={() => onSubmit({
+              mode, qty, reason: reason.trim(), reasonCode,
+              ...(typeof unitCostPaise === 'number' ? { unitCostPaise } : {}),
+            })}
             disabled={!canSubmit || (preview !== null && preview < 0)}
             loading={submitting}
           >

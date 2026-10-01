@@ -13,12 +13,13 @@ import { DateField } from '../../../src/components/DateField';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { formatPaise, parseRupeesToPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
-import { partiesApi } from '../../../src/features/billing/parties.api';
+import { partiesApi } from '../../../src/api/parties.api';
 import { documentsApi } from '../../../src/features/billing/documents.api';
 import { PartnerDocumentRecord, PartnerPartyRecord } from '../../../src/features/billing/types';
 import { paymentsApi } from '../../../src/features/payments/payments.api';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { toHref } from '../../../src/features/billing/routeHref';
+import { AccountPicker } from '../../../src/features/money/components/AccountPicker';
 import {
   PAYMENT_MODES, PAYMENT_MODE_LABEL_KEY, PaymentDirection, PaymentMode, SETTLEABLE_TYPES, outstandingOf,
 } from '../../../src/features/payments/types';
@@ -66,6 +67,8 @@ export default function NewPaymentScreen() {
   const [amountRupees, setAmountRupees] = useState('');
   const [reference, setReference] = useState('');
   const [receivedAt, setReceivedAt] = useState(nowLocal());
+  /** '' = the server's default account for the mode (P1 §8). */
+  const [accountId, setAccountId] = useState('');
 
   const [docs, setDocs] = useState<PartnerDocumentRecord[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -182,7 +185,7 @@ export default function NewPaymentScreen() {
   const allocSignature = JSON.stringify(alloc);
   useEffect(() => {
     intentKey.current = null;
-  }, [party?._id, direction, mode, amountPaise, reference, receivedAt, allocSignature]);
+  }, [party?._id, direction, mode, amountPaise, reference, receivedAt, allocSignature, accountId]);
 
   const handleSave = useCallback(async () => {
     if (!canSave || !party) return;
@@ -202,6 +205,7 @@ export default function NewPaymentScreen() {
           allocations,
           reference: reference.trim() || undefined,
           receivedAt: toIso(receivedAt),
+          ...(accountId ? { accountId } : {}),
         },
         intentKey.current,
       );
@@ -215,7 +219,7 @@ export default function NewPaymentScreen() {
     } finally {
       setSaving(false);
     }
-  }, [canSave, party, alloc, direction, mode, amountPaise, reference, receivedAt, t]);
+  }, [canSave, party, alloc, direction, mode, amountPaise, reference, receivedAt, accountId, t]);
 
   if (!canManage) {
     return (
@@ -312,6 +316,7 @@ export default function NewPaymentScreen() {
             style={{ backgroundColor: 'transparent' }}
           />
           <DateField label={t('payments.new.receivedAt')} value={receivedAt} onChangeText={setReceivedAt} mode="datetime" />
+          <AccountPicker c={c} value={accountId} onChange={setAccountId} />
         </Surface>
 
         <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>

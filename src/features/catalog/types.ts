@@ -23,6 +23,8 @@ export type StockAdjustMode = typeof STOCK_ADJUST_MODES[number];
 /** = `STOCK_ADJUST_REASON_CODES` in `order.validator.ts`. */
 export const STOCK_ADJUST_REASON_CODES = [
   'PURCHASE', 'RETURN_TO_SHELF', 'DAMAGE', 'EXPIRY', 'THEFT', 'RECOUNT', 'CORRECTION', 'OTHER',
+  // P1.5, appended: what the shrinkage (adjustments) report groups by.
+  'OPENING', 'OWN_USE', 'SAMPLE_GIFT', 'SPOILAGE',
 ] as const;
 export type StockAdjustReasonCode = typeof STOCK_ADJUST_REASON_CODES[number];
 
@@ -46,6 +48,10 @@ export const STOCK_ADJUST_REASON_LABEL_KEYS: Record<StockAdjustReasonCode, strin
   RECOUNT: 'catalog.stockReason.RECOUNT',
   CORRECTION: 'catalog.stockReason.CORRECTION',
   OTHER: 'catalog.stockReason.OTHER',
+  OPENING: 'catalog.stockReason.OPENING',
+  OWN_USE: 'catalog.stockReason.OWN_USE',
+  SAMPLE_GIFT: 'catalog.stockReason.SAMPLE_GIFT',
+  SPOILAGE: 'catalog.stockReason.SPOILAGE',
 };
 
 export interface ProductCategoryRef {
@@ -81,6 +87,20 @@ export interface Product {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  // P1 cost fields (§1.3) — sent ONLY to a viewer holding COSTS; absent otherwise.
+  costPricePaise?: number;
+  avgCostPaise?: number;
+  stockValuePaise?: number;
+  marginPercent?: number;
+  reorderQty?: number;
+  maxStockQty?: number;
+  preferredSupplierId?: string;
+  // P2 PHARMACY (§1.1) — present only on a medicine a pharmacy has described.
+  batchTracking?: boolean;
+  batchTrackingSuspended?: boolean;
+  drugSchedule?: 'H' | 'H1' | 'X';
+  composition?: string;
+  manufacturer?: string;
 }
 
 export interface ProductListFilters {

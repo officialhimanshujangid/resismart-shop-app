@@ -1,6 +1,8 @@
 import { isAxiosError } from 'axios';
+import { Platform } from 'react-native';
+import * as Device from 'expo-device';
 
-import { apiClient, StoredProfile } from './axios';
+import { apiClient, apiErrorMessage, StoredProfile } from './axios';
 import { TenantType, UserRole } from '../types/api-contract.generated';
 import type { Translate } from '../features/services/duration';
 
@@ -47,6 +49,55 @@ export interface UserInfo {
   email?: string;
   phone?: string;
   profileImage?: string;
+  /**
+   * Whether this account has a password at all — the login response's
+   * `user.hasPassword`. Decides whether "Change password" is offered. Absent on
+   * a session stored by an older build; the devices screen's `hasPassword`
+   * (GET /auth/sessions) covers that case.
+   */
+  hasPassword?: boolean;
+}
+
+/**
+ * The label this device gets in the "Signed-in devices" list, sent as
+ * `deviceName` on every sign-in. The model name comes from `expo-device`,
+ * which this app already ships (push registration uses it); the server caps the
+ * field at 60 characters.
+ */
+export function deviceLabel(): string {
+  let model: string | null = null;
+  try {
+    model = Device.modelName ?? null;
+  } catch {
+    model = null;
+  }
+  const base = `ResiSmart Business · ${Platform.OS}`;
+  return (model ? `${base} · ${model}` : base).slice(0, 60);
+}
+
+/** One row of GET /auth/sessions. */
+export type SessionMethod = 'PASSWORD' | 'OTP' | 'GOOGLE' | 'REFRESH_UPGRADE' | 'PASSWORD_CHANGE';
+export interface DeviceSession {
+  id: string;
+  deviceLabel: string | null;
+  method: SessionMethod | string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  current: boolean;
+}
+export interface SessionsResponse {
+  sessions: DeviceSession[];
+  hasPassword: boolean;
+}
+
+/** POST /auth/change-password — a fresh session for THIS device. */
+export interface ChangePasswordResponse {
+  message?: string;
+  token: string;
+  refreshToken: string;
+  activeContext: ResolvedContext;
+  availableContexts: ResolvedContext[];
+  profile?: ProfileInfo;
 }
 
 /**
@@ -81,13 +132,18 @@ export interface RefreshResponse {
 export type OtpChannel = 'EMAIL' | 'PHONE';
 
 /**
- * `LOGIN` is for signing an existing identity in; `PARTNER_REGISTRATION` is the
- * purpose the signup wizard's email and phone codes are minted under, and
- * `registerPartnerPublic` will only accept verification tokens issued for it.
- * Sending the wrong purpose fails at the very last step of the wizard, after
- * everything has been typed — which is why this is a union and not a string.
+ * `PARTNER_REGISTRATION` is the purpose the signup wizard's email and phone
+ * codes are minted under, and `registerPartnerPublic` will only accept
+ * verification tokens issued for it. Sending the wrong purpose fails at the very
+ * last step of the wizard, after everything has been typed — which is why this
+ * is a union and not a string.
+ *
+ * `LOGIN` is gone: the public `/auth/otp/*` endpoints refuse it
+ * (OTP_PURPOSE_NOT_ALLOWED) — sign-in codes go through `/auth/login/otp/*`.
+ * `GENERIC` is gone too: it needs a bearer token and nothing in this app asks
+ * for one while signed in.
  */
-export type OtpPurpose = 'LOGIN' | 'PARTNER_REGISTRATION' | 'GENERIC';
+export type OtpPurpose = 'PARTNER_REGISTRATION';
 
 /**
  * The transport a PHONE code may be asked for by name.
@@ -174,10 +230,12 @@ export function otpDeliveryFailure(error: unknown, t: Translate): OtpDeliveryFai
   const body = error.response.data as Partial<OtpDeliveryFailure> | undefined;
   if (!body || !Array.isArray(body.alternatives)) return undefined;
   return {
-    // `body.error` is the server's own delivery report — it names the transport
-    // that failed — and is shown as it arrives. Only the fallback, for a 502
-    // that carried no sentence, is ours to translate.
-    error: body.error ?? t('auth.session.otpUndeliverable'),
+    // A CODED 502 (OTP_UNDELIVERABLE) is said in our words, in the reader's
+    // language, like every other auth refusal. An uncoded one keeps the
+    // server's own delivery report; only the no-sentence fallback is ours.
+    error: (body as { code?: string }).code
+      ? apiErrorMessage(error, body.error ?? t('auth.session.otpUndeliverable'))
+      : body.error ?? t('auth.session.otpUndeliverable'),
     channel: body.channel ?? 'PHONE',
     deliveredVia: null,
     alternatives: body.alternatives,
@@ -203,13 +261,12 @@ export const authApi = {
    * previous `{ email, password }` body failed its `identifier` check on every
    * attempt, so this endpoint answered 400 for everybody.
    *
-   * Most partner identities have no password at all: `registerPartnerPublic`
-   * creates them passwordless and they sign in with a code. Those get a 401 with
-   * `useOtp: true` — see `AuthContext.login`, which turns that into the OTP flow
-   * rather than into "invalid credentials".
+   * Every failure is ONE answer now: 401 `INVALID_CREDENTIALS` (unknown account,
+   * no password, on hold, wrong password alike — no `useOtp` flag). The login
+   * screen therefore always offers the one-time-code option.
    */
   login: (identifier: string, password: string) =>
-    apiClient.post<LoginResponse>('/auth/login', { identifier, password }),
+    apiClient.post<LoginResponse>('/auth/login', { identifier, password, deviceName: deviceLabel() }),
 
   /**
    * Passwordless sign-in, step 1. Deliberately vague about whether the account
@@ -229,7 +286,7 @@ export const authApi = {
    * proved — so the caller consumes it identically.
    */
   loginGoogle: (idToken: string) =>
-    apiClient.post<LoginResponse>('/auth/login/google', { idToken }),
+    apiClient.post<LoginResponse>('/auth/login/google', { idToken, deviceName: deviceLabel() }),
 
   /**
    * Google standing in for the emailed code during partner registration.
@@ -243,7 +300,7 @@ export const authApi = {
 
   /** Passwordless sign-in, step 2 — issues the session. */
   loginOtpVerify: (identifier: string, code: string) =>
-    apiClient.post<LoginResponse>('/auth/login/otp/verify', { identifier, code }),
+    apiClient.post<LoginResponse>('/auth/login/otp/verify', { identifier, code, deviceName: deviceLabel() }),
 
   /**
    * Switch context, and the only way to do it. Also how a session is renewed —
@@ -274,6 +331,31 @@ export const authApi = {
    */
   forgotPassword: (data: ForgotPasswordRequest) =>
     apiClient.post<{ message: string }>('/auth/forgot-password', data),
+
+  /**
+   * Sign out. THIS device only unless `everywhere`, which ends every session of
+   * the account. 200 always, except 503 LOGOUT_FAILED.
+   */
+  logout: (refreshToken: string | null, everywhere = false) =>
+    apiClient.post<{ success?: boolean }>('/auth/logout', {
+      ...(refreshToken ? { refreshToken } : {}),
+      ...(everywhere ? { everywhere: true } : {}),
+    }),
+
+  /** The signed-in devices list (bearer). */
+  sessions: () =>
+    apiClient.get<{ success?: boolean; data: SessionsResponse }>('/auth/sessions'),
+
+  /** Sign ONE other device out. 404 SESSION_NOT_FOUND when it already is. */
+  endSession: (id: string) =>
+    apiClient.delete<{ success?: boolean }>(`/auth/sessions/${encodeURIComponent(id)}`),
+
+  /**
+   * Change the password. The 200 carries a NEW session for this device (every
+   * other one is signed out), which the caller must store in place of the old.
+   */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiClient.post<ChangePasswordResponse>('/auth/change-password', { currentPassword, newPassword }),
 };
 
 /** A context this app can actually open. Everything else is another product. */

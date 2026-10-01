@@ -40,7 +40,34 @@ export interface PartnerParty {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  // ── P1 (CONTRACT-partner-P1 §1.4 / §7.1) — all optional.
+  supplier?: SupplierDetails;
+  tags?: string[];
+  credit?: { limitPaise?: number; days?: number; mode?: 'WARN' | 'BLOCK' };
+  collectionPlan?: {
+    nextDate?: string; cadence?: 'NONE' | 'ON_DATE' | 'WEEKLY' | 'MONTHLY'; weekday?: number; dayOfMonth?: number;
+    autoRemind?: boolean; channel?: 'PUSH' | 'WHATSAPP' | 'SMS'; lastRemindedAt?: string; remindCount?: number; optedOutAt?: string;
+  };
+  /** A customer who uses the ResiSmart app (push reminders reach them). */
+  isResidentLinked?: boolean;
+  /** Set when the customer is a resident on the ResiSmart app (the party JSON carries this, not the flag). */
+  residentUserId?: string;
 }
+
+/** The supplier master (§1.4). The PAN is stored MASKED — the full PAN is only ever sent, never read back. */
+export interface SupplierDetails {
+  contactPerson?: string;
+  paymentTermsDays?: number;
+  leadTimeDays?: number;
+  isComposition?: boolean;
+  panMasked?: string;
+  msmeUdyamNo?: string;
+  bank?: { name?: string; acNoLast4?: string; ifsc?: string; upiId?: string };
+  notes?: string;
+}
+
+/** What the form sends: `pan` in full (masked by the server), never `panMasked`. */
+export type SupplierDetailsInput = Omit<SupplierDetails, 'panMasked'> & { pan?: string };
 
 export interface PartyListQuery {
   side?: PartySide;
@@ -67,10 +94,22 @@ export interface CreatePartyPayload {
   shippingAddress?: PartyAddress;
   openingBalancePaise: number;
   isWalkIn: boolean;
+  supplier?: SupplierDetailsInput;
+  tags?: string[];
+  /**
+   * Opt in to the duplicate-GSTIN refusal (409 PARTY_GSTIN_ALREADY_USED). Without
+   * it the server saves anyway and returns a `warnings` entry (old app builds).
+   */
+  checkDuplicateGstin?: boolean;
+  /** Re-post after a 409 PARTY_GSTIN_ALREADY_USED to keep both parties. */
+  confirmDuplicateGstin?: boolean;
 }
 
-export type UpdatePartyPayload = Partial<Omit<CreatePartyPayload, 'openingBalancePaise' | 'isWalkIn'>> & {
+export type UpdatePartyPayload = Partial<Omit<CreatePartyPayload, 'openingBalancePaise' | 'isWalkIn' | 'supplier' | 'tags'>> & {
   isActive?: boolean;
+  /** An object REPLACES the supplier details; `null` removes them. */
+  supplier?: SupplierDetailsInput | null;
+  tags?: string[] | null;
 };
 
 export interface PartyLedgerEntry {
@@ -115,6 +154,19 @@ export interface PartyRecomputeResult {
 }
 
 export const partiesApi = {
+  /**
+   * The party picker's search (billing, payments) — active parties on one
+   * SIDE, matched by name/phone. `side` matches `kind === side || kind ===
+   * 'BOTH'` on the server (`kindsForSide`): a sale searches CUSTOMER, a
+   * purchase document or an OUT payment searches SUPPLIER. This used to be a
+   * second `partiesApi` in `features/billing/parties.api.ts`; merged here so
+   * there is one client for `/partners/me/parties`.
+   */
+  search: (q: string, side: PartySide = 'CUSTOMER', limit = 15) =>
+    apiClient
+      .get<PartyListResponse>('/partners/me/parties', { params: { side, q, limit, isActive: 'true' } })
+      .then((r) => r.data.data),
+
   list: (query: PartyListQuery) =>
     apiClient
       .get<PartyListResponse>('/partners/me/parties', { params: query })

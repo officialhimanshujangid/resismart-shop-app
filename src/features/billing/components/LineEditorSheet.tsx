@@ -47,6 +47,10 @@ export interface LineEditorSheetProps {
   onSave: (line: DraftLineInput) => void;
   onRemove?: () => void;
   c: ReturnType<typeof themeColors>;
+  /** P1.12: the role must bill this catalogue item at its catalogue price — the rate is read-only. */
+  lockRate?: boolean;
+  /** P1.12: the role's per-item discount cap, said under the discount field. */
+  discountCapPercent?: number;
 }
 
 /** Rupee text ("1234.50") ↔ paise, kept as text while the field is being typed into. */
@@ -61,7 +65,7 @@ const blankDraft = (): DraftLineInput => ({
 });
 
 export function LineEditorSheet({
-  visible, line, supplierState, placeOfSupply, gstApplicable, onDismiss, onSave, onRemove, c,
+  visible, line, supplierState, placeOfSupply, gstApplicable, onDismiss, onSave, onRemove, c, lockRate, discountCapPercent,
 }: LineEditorSheetProps) {
   const { t } = useTranslation();
   const [name, setName] = useState('');
@@ -150,6 +154,7 @@ export function LineEditorSheet({
             <TextInput
               mode="outlined" label={t('billing.lineEditor.rate')} value={rate} onChangeText={setRate} keyboardType="decimal-pad"
               style={[styles.field, styles.half]} outlineStyle={{ borderRadius: radii.field }}
+              disabled={lockRate}
             />
           </View>
 
@@ -169,6 +174,12 @@ export function LineEditorSheet({
             />
           </View>
 
+          {lockRate ? (
+            <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('billing.lineEditor.rateLocked')}</Text>
+          ) : null}
+          {discountCapPercent !== undefined ? (
+            <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('billing.lineEditor.discountCap', { cap: discountCapPercent })}</Text>
+          ) : null}
           <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('billing.lineEditor.unit')}</Text>
           {/* The unit CODES are the label — `PCS`, `KG`, `JOB` are what the
               server stores in `unit` and what prints on the bill, so they are

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, useColorScheme, View } from 'react-native';
-import { ActivityIndicator, Chip, Searchbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Searchbar, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
@@ -8,20 +8,23 @@ import { themeColors, radii } from '../../../src/constants/colors';
 import { Hero } from '../../../src/components/Hero';
 import { HelpButton } from '../../../src/features/help/HelpButton';
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
-import { BookingActionModal } from '../../../src/features/bookings/components/BookingActionModal';
-import { useBookingAction, useBookingsList } from '../../../src/features/bookings/hooks';
+import { BookingActionModal, CodeRefusal } from '../../../src/features/bookings/components/BookingActionModal';
+import { useBooking, useBookingAction, useBookingsList } from '../../../src/features/bookings/hooks';
 import { BookingConflictView, BookingVerb, PartnerBookingView, VERB_LABEL_KEYS } from '../../../src/features/bookings/booking.types';
 import { bookingApi, slotConflictsOf } from '../../../src/features/bookings/booking.api';
-import { apiErrorMessage, apiErrorCode } from '../../../src/api/axios';
+import { apiErrorMessage, apiErrorCode, apiErrorParams } from '../../../src/api/axios';
+import { isCodeRefusal } from '../../../src/lib/completionCode';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { formatPaise } from '../../../src/lib/money';
 import { isBillOfSupply } from '../../../src/features/billing/types';
 import { useIsGstRegistered } from '../../../src/features/billing/useGstRegistration';
 import { ErrorBlock } from '../../../src/features/more/ui';
+import { usePartnerEntitlements } from '../../../src/hooks';
+import { useCategoryModules } from '../../../src/features/p2/useCategoryModules';
 // `as Href` on the push below: the destination is built with a query string, so
 // it is not one of the literal routes the generated union describes — the same
 // documented escape hatch `catalog/create.tsx` uses for `returnTo`.
-import { router, type Href } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 
 /**
  * Accept / reject / reschedule / assign, and "I've reached" → the customer's
@@ -86,6 +89,8 @@ export default function BookingsScreen() {
   const [formTarget, setFormTarget] = useState<{ booking: PartnerBookingView; verb: BookingVerb } | null>(null);
   /** The appointments the last submit was refused for — see `submitForm`. */
   const [conflicts, setConflicts] = useState<BookingConflictView[]>([]);
+  /** A wrong / locked completion code — shown in the sheet, beside "Send a new code". */
+  const [codeRefusal, setCodeRefusal] = useState<CodeRefusal | null>(null);
 
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<PartnerBookingView[]>([]);
@@ -102,12 +107,35 @@ export default function BookingsScreen() {
   );
   const list = useBookingsList(filters);
   const { act, pendingId, isPending } = useBookingAction();
+
+  /**
+   * A notification tap lands here with `?id=<bookingId>`
+   * (`notificationDestination`). That booking is shown at the top, with the
+   * same buttons as in the list, whichever tab it would sit in — until the
+   * partner closes it.
+   */
+  const { id: linkedId } = useLocalSearchParams<{ id?: string }>();
+  const linked = useBooking(linkedId || undefined);
+  const closeLinked = useCallback(() => router.setParams({ id: undefined }), []);
   /**
    * An unregistered shop's bill for a job is issued untaxed — a bill of supply,
    * so the button and the confirmation say that rather than "tax invoice"
    * (`isBillOfSupply` in `features/billing/types.ts`).
    */
   const billOfSupply = isBillOfSupply('TAX_INVOICE', useIsGstRegistered());
+
+  /**
+   * P2 JOBS: "Send quote" on an open booking — only when the business uses Jobs
+   * and this person may quote (JOBS_QUOTE + INVOICING_MANAGE, the route's own
+   * gates). Jobs off → `undefined` → the card draws nothing new.
+   */
+  const { can } = usePartnerEntitlements();
+  const jobsOn = useCategoryModules().has('JOBS');
+  const mayQuote = jobsOn && can('JOBS_QUOTE', 'FULL') && can('INVOICING_MANAGE', 'FULL');
+  const sendQuoteFor = useCallback(
+    (booking: PartnerBookingView) => router.push(`/jobs/quote?bookingId=${booking.id}` as Href),
+    [],
+  );
 
   /**
    * Pages accumulated into one list — the `(tabs)/orders.tsx` pattern, which
@@ -285,6 +313,12 @@ export default function BookingsScreen() {
            */
           const named = slotConflictsOf(e);
           if (named.length) return setConflicts(named);
+          // A code refusal stays in the sheet, where "Send a new code" is.
+          if (verb === 'complete' && isCodeRefusal(apiErrorCode(e))) {
+            return setCodeRefusal({
+              code: apiErrorCode(e), params: apiErrorParams(e), message: apiErrorMessage(e), at: Date.now(),
+            });
+          }
           Alert.alert(t('bookings.actionFailed'), apiErrorMessage(e));
         });
     },
@@ -349,6 +383,29 @@ export default function BookingsScreen() {
             <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
           ) : null
         }
+        ListHeaderComponent={
+          linkedId && linked.data ? (
+            <View style={styles.linked}>
+              <Text style={[styles.linkedLabel, { color: c.textSecondary }]}>{t('bookings.list.fromNotification')}</Text>
+              <BookingCard
+                booking={linked.data}
+                isDark={isDark}
+                pending={isPending && pendingId === linked.data.id}
+                onQuickAction={(verb) => runQuick(linked.data, verb)}
+                onOpenForm={(verb) => openForm(linked.data, verb)}
+                onTaxInvoice={() => { void openTaxInvoice(linked.data); }}
+                taxInvoiceBusy={invoiceBusyId === linked.data.id}
+                billOfSupply={billOfSupply}
+                onSendQuote={mayQuote ? () => sendQuoteFor(linked.data) : undefined}
+              />
+              <Button mode="text" icon="close" onPress={closeLinked} style={styles.linkedClose} contentStyle={styles.linkedCloseContent}>
+                {t('bookings.list.closeLinked')}
+              </Button>
+            </View>
+          ) : linkedId && linked.isError ? (
+            <Text style={[styles.linkedLabel, { color: c.error }]}>{apiErrorMessage(linked.error)}</Text>
+          ) : null
+        }
         renderItem={({ item }) => (
           <BookingCard
             booking={item}
@@ -359,6 +416,7 @@ export default function BookingsScreen() {
             onTaxInvoice={() => { void openTaxInvoice(item); }}
             taxInvoiceBusy={invoiceBusyId === item.id}
             billOfSupply={billOfSupply}
+            onSendQuote={mayQuote ? () => sendQuoteFor(item) : undefined}
           />
         )}
         ListEmptyComponent={
@@ -379,7 +437,8 @@ export default function BookingsScreen() {
         isDark={isDark}
         submitting={isPending}
         conflicts={conflicts}
-        onDismiss={() => { setConflicts([]); setFormTarget(null); }}
+        codeRefusal={codeRefusal}
+        onDismiss={() => { setConflicts([]); setCodeRefusal(null); setFormTarget(null); }}
         onSubmit={submitForm}
       />
     </SafeAreaView>
@@ -394,4 +453,8 @@ const styles = StyleSheet.create({
   tabChip: {},
   list: { padding: 20, paddingTop: 12, flexGrow: 1 },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
+  linked: { marginBottom: 16 },
+  linkedLabel: { fontSize: 13, marginBottom: 6 },
+  linkedClose: { alignSelf: 'flex-start' },
+  linkedCloseContent: { minHeight: 44 },
 });

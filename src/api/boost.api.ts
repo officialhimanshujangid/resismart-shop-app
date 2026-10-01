@@ -1,5 +1,6 @@
 import { apiClient } from './axios';
 import type { PartnerBoostStatus } from '../types/api-contract.generated';
+import type { BoostTax } from '../lib/boostTax';
 
 /**
  * `/partners/me/promotion` — buy and track boosts, mirroring
@@ -58,6 +59,8 @@ export interface PartnerBoostView {
   daysRemaining: number;
   purchasedByName: string;
   purchasedAt: string;
+  /** GST split of a PAID boost (tax-inclusive price); `null` for free or older boosts. */
+  tax?: BoostTax | null;
 }
 
 export interface MyBoostsResponse {
@@ -72,7 +75,7 @@ export interface MyBoostsResponse {
  * order for `checkoutBoost.startCheckout` to open.
  */
 export type CheckoutBoostResponse =
-  | { success: true; free: true; boostId: string; message: string }
+  | { success: true; free: true; boostId: string; message: string; boost?: PartnerBoostView }
   | {
       success: true;
       keyId: string;
@@ -81,6 +84,7 @@ export type CheckoutBoostResponse =
       currency: string;
       boostId: string;
       packageLabel: string;
+      tax?: BoostTax | null;
     };
 
 /**
@@ -142,6 +146,11 @@ export const boostApi = {
       .post<CheckoutBoostResponse>('/partners/me/promotion/checkout', { packageId })
       .then((r) => r.data),
 
+  /**
+   * Answers with the boost as re-read AFTER activation (`status: 'ACTIVE'`,
+   * `endAt`, `daysRemaining`) — the fresh state, not the PENDING copy. A
+   * caller should also invalidate `qk.promotion()` so the lists agree.
+   */
   verify: (payload: VerifyBoostPayload) =>
     apiClient
       .post<{ success: boolean; boost: PartnerBoostView }>('/partners/me/promotion/verify', payload)

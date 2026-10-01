@@ -25,9 +25,25 @@ export const qk = {
   partner: {
     me: () => ['partner', 'me'] as const,
     modules: () => ['partner', 'modules'] as const,
+    /** `GET /partners/me/reach` (CONTRACT-partner-P3 §7.3) — Today banner, More row, reach screen. */
+    reach: () => ['partner', 'reach'] as const,
   },
 
+  /** The operator's society invitation link (P3 §7.2), by token, no sign-in. */
+  societyInvite: (token: string) => ['societyInvite', token] as const,
+
   today: () => ['today'] as const,
+
+  /**
+   * "My shop rent" (CONTRACT-partner-P4 §10.8). `list('OPEN')` is ONE cache
+   * entry read by Today (the dues card), More (the row that exists only with a
+   * lease) and the rent screen.
+   */
+  rent: {
+    all: () => ['rent'] as const,
+    list: (status: string) => ['rent', 'list', status] as const,
+    detail: (id: string) => ['rent', 'detail', id] as const,
+  },
 
   bookings: {
     all: () => ['bookings'] as const,
@@ -61,6 +77,22 @@ export const qk = {
     product: (id: string) => ['catalog', 'products', 'detail', id] as const,
     categories: () => ['catalog', 'categories'] as const,
     byBarcode: (code: string) => ['catalog', 'barcode', code] as const,
+    /**
+     * The stock ledger (CONTRACT-partner-P0 §5). Under `catalog` on purpose:
+     * every stock change already invalidates `qk.catalog.all()`, and the prefix
+     * match refreshes the history without a second invalidation.
+     */
+    stockMovements: (filters?: Record<string, string | undefined>) =>
+      ['catalog', 'stockMovements', filters ?? {}] as const,
+  },
+
+  /** Team → Owners (CONTRACT-partner-P0 §2). */
+  owners: {
+    all: () => ['owners'] as const,
+    team: () => ['owners', 'team'] as const,
+    /** Invitations addressed to ME — any signed-in session. */
+    mine: () => ['owners', 'mine'] as const,
+    preview: (key: string) => ['owners', 'preview', key] as const,
   },
 
   billing: {
@@ -93,6 +125,41 @@ export const qk = {
     all: () => ['parties'] as const,
     list: (search?: string) => ['parties', 'list', search ?? ''] as const,
     detail: (id: string) => ['parties', 'detail', id] as const,
+  },
+
+  /** P1 purchases (CONTRACT-partner-P1 §4.3). Under `billing` so every document change refreshes them. */
+  purchases: {
+    all: () => ['billing', 'purchases'] as const,
+    receipts: (poId: string) => ['billing', 'purchases', 'receipts', poId] as const,
+    unbilled: (partyId?: string) => ['billing', 'purchases', 'unbilled', partyId ?? ''] as const,
+    supplier: (partyId: string) => ['billing', 'purchases', 'supplier', partyId] as const,
+  },
+
+  /** P1 stock (§5, §6). Under `catalog` so a stock change refreshes them too. */
+  stock: {
+    all: () => ['catalog', 'stock'] as const,
+    adjustments: (filters?: Record<string, string | undefined>) => ['catalog', 'stock', 'adjustments', filters ?? {}] as const,
+    counts: (status?: string) => ['catalog', 'stock', 'counts', status ?? ''] as const,
+    count: (id: string) => ['catalog', 'stock', 'count', id] as const,
+    countLines: (id: string, filter: string, q: string) => ['catalog', 'stock', 'count', id, 'lines', filter, q] as const,
+    reorder: (filters?: Record<string, string | undefined>) => ['catalog', 'stock', 'reorder', filters ?? {}] as const,
+  },
+
+  /** P1 khata (§7.2). Under `parties`, which every party/payment change already invalidates. */
+  khata: {
+    list: (filter: string, q: string) => ['parties', 'khata', filter, q] as const,
+  },
+
+  /** P1 money (§8). */
+  money: {
+    all: () => ['money'] as const,
+    accounts: () => ['money', 'accounts'] as const,
+    categories: () => ['money', 'categories'] as const,
+    expenses: (filters?: Record<string, string | undefined>) => ['money', 'expenses', filters ?? {}] as const,
+    transfers: () => ['money', 'transfers'] as const,
+    cashBook: (filters?: Record<string, string | undefined>) => ['money', 'cashBook', filters ?? {}] as const,
+    daySummary: (date: string, accountId?: string) => ['money', 'day', date, accountId ?? ''] as const,
+    pnl: (from: string, to: string) => ['money', 'pnl', from, to] as const,
   },
 
   payments: {
@@ -146,6 +213,8 @@ export const qk = {
   // still invalidate both with one `invalidateQueries({ queryKey: qk.staff() })`
   // call, via the same prefix-match rule noted above.
   staffList: () => ['staff', 'list'] as const,
+  /** `GET /partners/me/staff/assignable` — the booking job picker. */
+  staffAssignable: () => ['staff', 'assignable'] as const,
   staffRoles: () => ['staff', 'roles'] as const,
   promotionBoosts: () => ['promotion', 'boosts'] as const,
   /**

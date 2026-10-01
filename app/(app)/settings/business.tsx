@@ -13,6 +13,9 @@ import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 
+/** = `COMPOSITION_RATES` on the server (§1.5). */
+const COMPOSITION_RATES = [0.5, 1, 2, 5, 6] as const;
+
 
 export default function BusinessSettingsScreen() {
   const { t } = useTranslation();
@@ -45,6 +48,8 @@ export default function BusinessSettingsScreen() {
   const [isGstRegistered, setIsGstRegistered] = useState(false);
   const [gstin, setGstin] = useState('');
   const [registrationType, setRegistrationType] = useState<GstRegistrationType>('UNREGISTERED');
+  /** P1 §1.5 — composition partners: the rate their CMP-08 tax is worked out at. '' = not set. */
+  const [compositionRate, setCompositionRate] = useState<string>('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -60,7 +65,9 @@ export default function BusinessSettingsScreen() {
     setIsGstRegistered(s.isGstRegistered);
     setGstin(s.gstin ?? '');
     setRegistrationType(s.registrationType);
+    setCompositionRate(s.compositionRatePercent !== undefined && s.compositionRatePercent !== null ? String(s.compositionRatePercent) : '');
   }, [query.data]);
+  const isComposition = isGstRegistered && registrationType === 'COMPOSITION';
 
   const save = useMutation({
     mutationFn: () => settingsApi.business.update({
@@ -74,6 +81,10 @@ export default function BusinessSettingsScreen() {
       isGstRegistered,
       gstin: isGstRegistered ? (gstin.trim() || undefined) : null,
       registrationType: isGstRegistered ? registrationType : 'UNREGISTERED',
+      // Sent only for a composition partner; any other type leaves it untouched.
+      ...(isGstRegistered && registrationType === 'COMPOSITION'
+        ? { compositionRatePercent: compositionRate ? Number(compositionRate) : null }
+        : {}),
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.businessSettings() });
@@ -141,6 +152,20 @@ export default function BusinessSettingsScreen() {
             <Text style={[styles.label, { color: c.textSecondary }]}>{t('settings.business.registrationType')}</Text>
             <ChipRow c={c} value={registrationType} options={regOptions} onChange={setRegistrationType} />
           </>
+        )}
+        {isComposition && (
+          <View style={{ gap: 6, marginTop: 6 }} testID="composition-section">
+            {/* P1 (screen S19): the composition banner — a legal change the partner must see. */}
+            <Text style={{ color: c.warning, fontSize: 13, fontWeight: '600', lineHeight: 18 }}>{t('settings.business.compositionBanner')}</Text>
+            <Text style={[styles.label, { color: c.textSecondary }]}>{t('settings.business.compositionRate')}</Text>
+            <ChipRow
+              c={c}
+              value={compositionRate}
+              options={COMPOSITION_RATES.map((r) => ({ key: String(r), label: `${r}%` }))}
+              onChange={(v) => { if (canEdit) setCompositionRate(v); }}
+            />
+            {!compositionRate && <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('settings.business.compositionRateNotSet')}</Text>}
+          </View>
         )}
       </Card>
 

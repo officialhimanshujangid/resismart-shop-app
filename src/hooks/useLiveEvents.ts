@@ -38,6 +38,12 @@ interface NotificationFrame {
  * somebody adds `PARTNER_ORDER_RETURNED` — and the symptom, a list that is one
  * item behind, reads as a caching bug rather than a missing table row.
  */
+/** The nine P2 kinds (CONTRACT-partner-P2 §13). */
+const P2_KINDS: ReadonlySet<string> = new Set([
+  'PARTNER_NEAR_EXPIRY', 'SUBSCRIPTION_BILL', 'SUBSCRIPTION_PAUSE', 'APPOINTMENT_REMINDER', 'APPOINTMENT_SERIES',
+  'PACKAGE_UPDATE', 'JOB_QUOTE', 'JOB_QUOTE_DECISION', 'JOB_GATE_PASS',
+]);
+
 function keysForKind(kind: string | undefined): QueryKey[] {
   const keys: QueryKey[] = [qk.notifications(), qk.today()];
   if (!kind) return keys;
@@ -45,6 +51,11 @@ function keysForKind(kind: string | undefined): QueryKey[] {
   if (kind.startsWith('PARTNER_BOOKING') || kind.startsWith('BOOKING')) keys.push(qk.bookings.all());
   if (kind.startsWith('PARTNER_ORDER') || kind.startsWith('ORDER')) keys.push(qk.orders.all());
   if (kind.startsWith('PARTNER_BOOST')) keys.push(qk.promotion(), qk.entitlements());
+  // P1: a low-stock alert refreshes the reorder list and the stock home tiles.
+  if (kind.startsWith('PARTNER_LOW_STOCK')) keys.push(qk.stock.all());
+  if (kind.startsWith('PARTNER_KHATA')) keys.push(qk.parties.all());
+  // P4: a rent bill / reminder / lease alert refreshes 'My shop rent' and the Today card.
+  if (kind === 'RENT' || kind === 'LEASE') keys.push(qk.rent.all());
   // Verified / suspended / reinstated all change what this partner may do at
   // all, so the gate itself has to be re-asked — otherwise a partner who has
   // just been approved keeps seeing the one-tab holding screen until they
@@ -58,6 +69,9 @@ function keysForKind(kind: string | undefined): QueryKey[] {
     keys.push(qk.entitlements(), qk.onboarding.status(), qk.usage());
   }
   if (kind.startsWith('BILL') || kind.startsWith('PAYMENT')) keys.push(qk.billing.all());
+  // P2 business-type modules: every P2 screen keys under ['p2', …].
+  if (P2_KINDS.has(kind)) keys.push(['p2']);
+  if (kind === 'APPOINTMENT_REMINDER' || kind.startsWith('JOB_')) keys.push(qk.bookings.all());
 
   return keys;
 }

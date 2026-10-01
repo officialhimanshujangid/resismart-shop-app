@@ -12,7 +12,17 @@ import {
   isPartnerContext,
   toProfile,
 } from '../api/auth.api';
-import { normalizeLegacyProfile, clearSession, setSessionExpiredHandler, apiErrorMessage } from '../api/axios';
+import { Alert } from 'react-native';
+
+import {
+  normalizeLegacyProfile,
+  clearSession,
+  setSessionExpiredHandler,
+  setContextChangedHandler,
+  apiErrorMessage,
+  refreshSession,
+  endsSession,
+} from '../api/axios';
 import { notificationApi } from '../api/notification.api';
 import { storage } from '../utils/storage';
 import { store } from '../lib/store';
@@ -43,8 +53,6 @@ export interface LoginResult {
    * switch the newer session.
    */
   userId?: string;
-  /** The account has no password and must sign in with a one-time code. */
-  requiresOtp?: boolean;
   error?: string;
 }
 
@@ -107,8 +115,39 @@ interface AuthContextType extends AuthState {
    * is torn down and rebuilt through `applySession`, cache included.
    */
   switchToContext: (contextId: string) => Promise<void>;
+  /** Sign out of THIS device (the server ends this device's session only). */
   logout: () => Promise<void>;
+  /**
+   * Sign out of EVERY device — the server first, then this one. Rejects with a
+   * readable sentence when the server could not do it (503 LOGOUT_FAILED, no
+   * network); the local session is then left as it was, so "signed out
+   * everywhere" is never claimed when it did not happen.
+   */
+  logoutEverywhere: () => Promise<void>;
+  /**
+   * Change the password. On success the server has signed every other device
+   * out and handed THIS one a fresh session, which replaces the stored tokens.
+   * Rejects with a readable sentence.
+   */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /**
+   * Why the LAST session ended, when that is something the partner must be told
+   * (CONTRACT-partner-P0 §2/§3): their access to the business ended — handed
+   * over, removed, or archived. Read by the sign-in screen; `null` otherwise.
+   */
+  sessionNotice: SessionNotice | null;
+  clearSessionNotice: () => void;
+  /**
+   * Step out of the business that is open now (it was archived, or this login
+   * stopped owning it). Moves to another business this person still has when
+   * there is one ('moved'); otherwise signs out with `notice` for the sign-in
+   * screen ('ended'). Rejects with a readable sentence when the server could
+   * not be reached — the session is then left as it was.
+   */
+  leaveBusiness: (notice: SessionNotice) => Promise<'moved' | 'ended'>;
 }
+
+export type SessionNotice = 'ACCESS_ENDED' | 'ARCHIVED';
 
 /**
  * How long sign-out will wait for the server to acknowledge the device before
@@ -157,6 +196,29 @@ async function unregisterPushDevice(): Promise<void> {
 }
 
 /**
+ * Tell the server this device is leaving (`POST /auth/logout`, this device
+ * only). Same three rules as `unregisterPushDevice`: before the keys are
+ * cleared, bounded, and never able to block the sign-out — the local session
+ * ends whatever the server said.
+ */
+async function endServerSession(): Promise<void> {
+  const refreshToken = await storage.get(STORAGE_KEYS.REFRESH_TOKEN);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    authApi.logout(refreshToken).then(
+      () => undefined,
+      (error: unknown) => {
+        console.warn('[auth] server sign-out failed:', error);
+      },
+    ),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, UNREGISTER_TIMEOUT_MS);
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+}
+
+/**
  * The sign-in could not be written to this device.
  *
  * Its own class rather than a bare `Error` so the four `applySession` callers
@@ -193,6 +255,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user: null,
   });
   const [availableContexts, setAvailableContexts] = useState<ResolvedContext[]>([]);
+  const [sessionNotice, setSessionNotice] = useState<SessionNotice | null>(null);
+  const clearSessionNotice = useCallback(() => setSessionNotice(null), []);
 
   /**
    * The half-finished sign-in behind a context picker.
@@ -253,6 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // business's data for a frame. See `resetQueryCache`.
       resetQueryCache();
       pending.current = null;
+      setSessionNotice(null); // a new sign-in answers the old "you no longer have access"
       const partners = contexts.filter(isPartnerContext);
       setAvailableContexts(partners);
       /**
@@ -393,22 +458,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await authApi.login(identifier, password);
         return await consumeLogin(data);
       } catch (err) {
-        // A partner identity created by the signup wizard is PASSWORDLESS —
-        // `registerPartnerPublic` never sets a hash — so the server answers 401
-        // with `useOtp: true`. Reporting that as "invalid credentials" would
-        // tell a partner their password is wrong when they have never had one.
-        const useOtp =
-          typeof err === 'object' &&
-          err !== null &&
-          'response' in err &&
-          (err as { response?: { data?: { useOtp?: boolean } } }).response?.data?.useOtp === true;
-        if (useOtp) {
-          return {
-            success: false,
-            requiresOtp: true,
-            error: t('auth.session.useOtp'),
-          };
-        }
+        // Every failure is ONE coded answer now — 401 INVALID_CREDENTIALS for an
+        // unknown account, a passwordless one, one on hold and a wrong password
+        // alike (no `useOtp` flag: telling them apart would say which accounts
+        // exist). `apiErrorMessage` renders the code from our catalogue, and its
+        // sentence already points at the one-time-code option the login screen
+        // always shows.
         return { success: false, error: apiErrorMessage(err, t('auth.session.loginFailed')) };
       }
     },
@@ -521,15 +576,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applySession, t],
   );
 
-  const logout = useCallback(async () => {
-    pending.current = null;
-    /**
-     * Clear Google's own cached account too, or the next tap signs the previous
-     * person back in with no chooser — on a shop's shared counter tablet that is
-     * one member of staff acting as another. Never throws.
-     */
-    await forgetGoogle();
-    await unregisterPushDevice();
+  /**
+   * Adopt a fresh session the server handed us while signed in (change
+   * password). Same partner-only rule as `consumeLogin`: if the server's
+   * active context is not a partner business, move to the one this device was
+   * showing (by contextId, then by business), else the first partner one.
+   */
+  const adoptSession = useCallback(
+    async (data: {
+      token: string;
+      refreshToken: string;
+      activeContext?: ResolvedContext;
+      availableContexts?: ResolvedContext[];
+    }) => {
+      const all = data.availableContexts ?? (data.activeContext ? [data.activeContext] : []);
+      const partners = all.filter(isPartnerContext);
+      const active = data.activeContext;
+      const current = await storage.getObject<ProfileInfo>(STORAGE_KEYS.USER_PROFILE);
+      const pick =
+        partners.find((c) => current?.contextId && c.contextId === current.contextId) ??
+        partners.find((c) => current?.tenantId && c.tenantId === current.tenantId) ??
+        (active && isPartnerContext(active) ? active : undefined) ??
+        partners[0];
+      if (!pick) throw new Error(t('auth.session.noPartnerAccess'));
+      if (active && active.contextId === pick.contextId) {
+        await applySession(data.token, data.refreshToken, active, all, null);
+        return;
+      }
+      const switched = await authApi.switchContext(data.refreshToken, pick.contextId);
+      await applySession(
+        switched.data.token,
+        switched.data.refreshToken,
+        switched.data.activeContext,
+        switched.data.availableContexts,
+        null,
+      );
+    },
+    [applySession, t],
+  );
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      try {
+        const { data } = await authApi.changePassword(currentPassword, newPassword);
+        await adoptSession(data);
+      } catch (err) {
+        throw new Error(apiErrorMessage(err, t('account.password.failed')));
+      }
+    },
+    [adoptSession, t],
+  );
+
+  /** Everything local that makes this device signed in — shared by both sign-outs. */
+  const endLocalSession = useCallback(async () => {
     await clearSession(false); // we are the ones ending it — no need to be told
     resetQueryCache();
     // `clearSession` only wipes the four SecureStore keys. The cached shop list
@@ -548,6 +647,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // and redirects on its own. Navigating here as well would push at a route
     // that is being removed in the same commit of the render, which expo-router
     // reports as a navigation to a non-existent screen.
+  }, []);
+
+  const logout = useCallback(async () => {
+    pending.current = null;
+    /**
+     * Clear Google's own cached account too, or the next tap signs the previous
+     * person back in with no chooser — on a shop's shared counter tablet that is
+     * one member of staff acting as another. Never throws.
+     */
+    await forgetGoogle();
+    await unregisterPushDevice();
+    // Before the keys go: the server needs this device's refresh token to know
+    // WHICH session to end. Bounded and never blocking.
+    await endServerSession();
+    await endLocalSession();
+  }, [endLocalSession]);
+
+  const logoutEverywhere = useCallback(async () => {
+    pending.current = null;
+    const refreshToken = await storage.get(STORAGE_KEYS.REFRESH_TOKEN);
+    try {
+      // The server FIRST, and awaited: if it could not end the other devices,
+      // saying so matters more than leaving this one.
+      await authApi.logout(refreshToken, true);
+    } catch (err) {
+      throw new Error(apiErrorMessage(err, t('account.devices.everywhereFailed')));
+    }
+    await forgetGoogle();
+    await unregisterPushDevice();
+    await endLocalSession();
+  }, [endLocalSession, t]);
+
+  /**
+   * Leave the business that is open (archived, or no longer ours). A refresh
+   * WITHOUT a context lets the server say what this person still has — the same
+   * repair the interceptor runs on ROLE_ENDED. Another business → the context
+   * handler below repaints onto it. None → a real sign-out, with the reason kept
+   * for the sign-in screen, so it is never a silent bounce or a loop of 403s.
+   */
+  const leaveBusiness = useCallback(
+    async (notice: SessionNotice): Promise<'moved' | 'ended'> => {
+      try {
+        await refreshSession({ dropContext: true });
+        return 'moved';
+      } catch (err) {
+        if (!endsSession(err)) {
+          throw new Error(apiErrorMessage(err, t('partnerAccess.leaveFailed')));
+        }
+        pending.current = null;
+        await forgetGoogle();
+        await unregisterPushDevice();
+        await endServerSession();
+        await endLocalSession();
+        setSessionNotice(notice);
+        return 'ended';
+      }
+    },
+    [endLocalSession, t],
+  );
+
+  /**
+   * The refresh interceptor moved the session to another context because the
+   * stored one went stale (403 CONTEXT_NOT_AVAILABLE / ROLE_ENDED). Tokens and
+   * the stored profile are already written by `runRefresh`; this repaints.
+   */
+  /** The live translator for the two module-level handlers below, which register once. */
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  useEffect(() => {
+    setContextChangedHandler((active, available) => {
+      const ctx = active as ResolvedContext;
+      const profile = toProfile(ctx);
+      const partners = (available as ResolvedContext[]).filter(isPartnerContext);
+      resetQueryCache();
+      setAvailableContexts(partners);
+      void store.setJson(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS, partners);
+      void storage.get(STORAGE_KEYS.ACCESS_TOKEN).then((token) => {
+        setState((s) => (s.isAuthenticated ? { ...s, token: token ?? s.token, profile } : s));
+      });
+      // Said, not silent: the business on screen changed under the partner's
+      // feet (handed over, removed, archived). One alert naming where they are now.
+      Alert.alert(
+        tRef.current('partnerAccess.movedTitle'),
+        tRef.current('partnerAccess.movedBody', { name: ctx.tenantName || tRef.current('more.yourBusiness') }),
+      );
+    });
+    return () => setContextChangedHandler(null);
   }, []);
 
   useEffect(() => {
@@ -612,8 +799,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * way back except killing the app.
    */
   useEffect(() => {
-    setSessionExpiredHandler(() => {
+    setSessionExpiredHandler((reason) => {
       pending.current = null;
+      // No business left on a still-valid login (handed over / removed /
+      // archived): the sign-in screen says so instead of a silent bounce.
+      if (reason === 'no-access') setSessionNotice('ACCESS_ENDED');
       resetQueryCache();
       // Same reasoning as `logout` — the AsyncStorage copy is not covered by the
       // interceptor's `clearSession`.
@@ -637,6 +827,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         selectContext,
         switchToContext,
         logout,
+        logoutEverywhere,
+        changePassword,
+        sessionNotice,
+        clearSessionNotice,
+        leaveBusiness,
       }}
     >
       {children}

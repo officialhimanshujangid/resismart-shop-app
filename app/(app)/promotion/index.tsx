@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Button, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
@@ -10,13 +11,16 @@ import { IN_APP_PLAN_PURCHASES } from '../../../src/constants/app';
 import { formatI18nDate } from '../../../src/i18n';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
-import { boostApi, BoostPackage, BoostPackagesResponse, BoostReach, MyBoostsResponse } from '../../../src/api/boost.api';
+import { boostApi, BoostPackage, BoostPackagesResponse, BoostReach, MyBoostsResponse, PartnerBoostView } from '../../../src/api/boost.api';
+import { boostTaxLines } from '../../../src/lib/boostTax';
 import { formatPaise } from '../../../src/lib/money';
 import { apiErrorCode, apiErrorMessage } from '../../../src/api/axios';
 import { AppButton } from '../../../src/components/AppButton';
 import { Hero } from '../../../src/components/Hero';
 import { HelpButton } from '../../../src/features/help/HelpButton';
 import { Card, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
+import { useMyReach } from '../../../src/features/society/hooks';
+import { isSocietyPartner } from '../../../src/features/society/logic';
 
 /**
  * Buy and track a boost — the ONE place in this app where a LOCKED module has
@@ -59,6 +63,8 @@ export default function PromotionScreen() {
   const canSpend = can('PROMOTION', 'FULL');
   const queryClient = useQueryClient();
   const [buying, setBuying] = useState<string | null>(null);
+  /** `?id=<boostId>` from a notification tap — that boost's row is marked. */
+  const { id: linkedId } = useLocalSearchParams<{ id?: string }>();
 
   const packages = useQuery({ queryKey: qk.promotion(), queryFn: boostApi.packages, staleTime: 30_000 });
   const boosts = useQuery({ queryKey: qk.promotionBoosts(), queryFn: boostApi.myBoosts, staleTime: 15_000 });
@@ -104,8 +110,13 @@ export default function PromotionScreen() {
       const res = await boostApi.checkout(pkg.id);
       if ('free' in res) {
         void queryClient.invalidateQueries({ queryKey: qk.promotion() });
-        // `res.message` is the server's own confirmation, shown as it arrives.
-        Alert.alert(t('promotion.buy.applied'), res.message);
+        // The server now sends the boost as it stands after activation — say
+        // when it ends, in our words, rather than its English "Boost applied".
+        const endAt = res.boost?.endAt;
+        Alert.alert(
+          t('promotion.buy.applied'),
+          endAt ? t('promotion.buy.appliedUntil', { date: formatI18nDate(endAt, t) }) : t('promotion.buy.appliedBody'),
+        );
         return;
       }
       // Only reachable if the owner repriced the package between this screen
@@ -157,6 +168,7 @@ export default function PromotionScreen() {
           onBuy={buy}
           refreshing={refreshing}
           onRefresh={refreshAll}
+          linkedId={linkedId}
         />
       )}
     </SafeAreaView>
@@ -164,7 +176,7 @@ export default function PromotionScreen() {
 }
 
 function PromotionBody({
-  c, pkgData, boostData, canSpend, buying, onBuy, refreshing, onRefresh,
+  c, pkgData, boostData, canSpend, buying, onBuy, refreshing, onRefresh, linkedId,
 }: {
   c: ReturnType<typeof themeColors>;
   pkgData: BoostPackagesResponse;
@@ -174,8 +186,10 @@ function PromotionBody({
   onBuy: (pkg: BoostPackage) => void;
   refreshing: boolean;
   onRefresh: () => void;
+  linkedId?: string;
 }) {
   const { t } = useTranslation();
+  const hasFree = pkgData.packages.some((p) => p.pricePaise === 0);
   /**
    * The packages this build may offer. With `IN_APP_PLAN_PURCHASES` off that
    * is the FREE ones only — a paid package is not greyed out or priced, it is
@@ -226,9 +240,27 @@ function PromotionBody({
    * a purchase that would in fact have worked.
    */
   const noLocation = reachQueries.some((q) => apiErrorCode(q.error) === 'PARTNER_LOCATION_MISSING');
+  /**
+   * P3: a society partner shown only inside its society cannot buy a boost —
+   * the server refuses with `BOOST_NOT_FOR_SOCIETY_ONLY` (§6-5), so the same
+   * sentence is said up front and the buy buttons are off.
+   */
+  const myReach = useMyReach().data;
+  const canManageReach = usePartnerEntitlements().can('SETTINGS', 'READ');
+  const societyOnly = isSocietyPartner(myReach) && myReach.reach === 'SOCIETY_ONLY';
 
   return (
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+      {societyOnly && (
+        <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
+          <Text testID="boost-society-only" style={{ color: palette.coral[600], fontWeight: '600' }}>{t('errors.BOOST_NOT_FOR_SOCIETY_ONLY')}</Text>
+          {canManageReach && (
+            <Button mode="text" compact icon="account-search-outline" onPress={() => router.push('/settings/reach')} style={{ alignSelf: 'flex-start' }}>
+              {t('society.reach.title')}
+            </Button>
+          )}
+        </Card>
+      )}
       {!pkgData.boostAvailable && (
         <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
           {IN_APP_PLAN_PURCHASES ? (
@@ -264,11 +296,16 @@ function PromotionBody({
             <Text style={{ color: c.primary, fontWeight: '600', fontSize: 13 }}>
               {t('promotion.current.daysLeft', { count: boostData.current.daysRemaining })}
             </Text>
+            <TaxLines c={c} boost={boostData.current} />
           </Card>
         </>
       )}
 
       <SectionLabel c={c}>{t('promotion.screen.packagesLabel')}</SectionLabel>
+      {/* The free-offer rules, said before the tap rather than after a refusal. */}
+      {hasFree && pkgData.partnersEnabled && (
+        <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('promotion.free.rules')}</Text>
+      )}
       {noLocation && (
         <Card c={c} style={{ backgroundColor: c.surfaceVariant }}>
           <Text style={{ color: c.textPrimary, fontWeight: '600' }}>{t('promotion.noLocation.title')}</Text>
@@ -304,7 +341,7 @@ function PromotionBody({
                   label={IN_APP_PLAN_PURCHASES ? t('promotion.pkg.buy') : t('promotion.pkg.apply')}
                   onPress={() => onBuy(pkg)}
                   loading={buying === pkg.id}
-                  disabled={buying !== null || !pkgData.boostAvailable}
+                  disabled={buying !== null || !pkgData.boostAvailable || societyOnly}
                   fullWidth={false}
                   style={styles.buyBtn}
                 />
@@ -326,9 +363,17 @@ function PromotionBody({
       {boostData.history.length > 0 ? (
         <Card c={c} style={{ padding: 0 }}>
           {boostData.history.map((b, i) => (
-            <View key={b.id} style={[styles.historyRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider }]}>
+            <View
+              key={b.id}
+              style={[
+                styles.historyRow,
+                i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.divider },
+                b.id === linkedId && { backgroundColor: c.surfaceVariant },
+              ]}
+            >
               <View style={{ flex: 1 }}>
                 <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{b.package.label}</Text>
+                <TaxLines c={c} boost={b} />
                 {/* `formatI18nDate`, never `toLocaleDateString`: this app runs
                     on Hermes and Android's ICU coverage cannot be relied on —
                     the full account is in `src/i18n/index.ts`. `b.status` is
@@ -408,6 +453,24 @@ function ReachLine({
         </Text>
       )}
     </>
+  );
+}
+
+/**
+ * The GST on a paid boost — "Includes CGST 9%: ₹x" lines, or "No GST charged".
+ * Nothing for a free boost or one from before GST was recorded (`tax: null`).
+ * One short line each, so Hindi wraps line by line.
+ */
+function TaxLines({ c, boost }: { c: ReturnType<typeof themeColors>; boost: PartnerBoostView }) {
+  const { t } = useTranslation();
+  const lines = boostTaxLines(boost.tax, formatPaise);
+  if (!lines.length) return null;
+  return (
+    <View style={{ marginTop: 2 }}>
+      {lines.map((l) => (
+        <Text key={l.key} style={{ color: c.textSecondary, fontSize: 11 }}>{t(l.key, l.values)}</Text>
+      ))}
+    </View>
   );
 }
 

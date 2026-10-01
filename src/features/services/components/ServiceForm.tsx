@@ -14,6 +14,9 @@ import {
   MIN_DURATION_MIN, MAX_DURATION_MIN, MIN_SERVICE_CAPACITY, MAX_SERVICE_CAPACITY,
 } from '../types';
 import { durationLabel } from '../duration';
+import { useCategoryModules } from '../../p2/useCategoryModules';
+import { p2BodyPart, p2DraftFromRow, p2Problem, P2ServiceDraft } from '../p2Fields';
+import { ServiceP2Fields } from './ServiceP2Fields';
 
 /**
  * One service, added or changed — the mobile twin of the web `ServiceDialog`.
@@ -108,6 +111,12 @@ export function ServiceForm({
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
 
+  // P2 (buffer / SAC / GST / repair job): drawn and sent ONLY while APPOINTMENTS or JOBS is on.
+  const categoryModules = useCategoryModules();
+  const showP2 = categoryModules.has('APPOINTMENTS') || categoryModules.has('JOBS');
+  const jobsOn = categoryModules.has('JOBS');
+  const [p2, setP2] = useState<P2ServiceDraft>(() => p2DraftFromRow(initial));
+
   /** A category the service holds but the loaded list cannot name — see the chip row. */
   const orphanCategory = Boolean(draft.categoryId) && !categories.some((cat) => cat._id === draft.categoryId);
 
@@ -149,6 +158,8 @@ export function ServiceForm({
     if (draft.priceType === 'FIXED' && (advancePaise || 0) > (pricePaise || 0)) {
       return t('services.form.advanceOverPrice');
     }
+    const p2Key = p2Problem(p2, showP2);
+    if (p2Key) return t(p2Key);
     return null;
   })();
 
@@ -186,6 +197,8 @@ export function ServiceForm({
       visitChargePaise: travels ? (visitPaise || 0) : 0,
       isActive: draft.isActive,
       sortOrder: Number(draft.sortOrder) || 0,
+      // `{}` while neither module is on — today's body, byte for byte.
+      ...p2BodyPart(p2, initial, showP2, jobsOn),
     });
   };
 
@@ -422,6 +435,8 @@ export function ServiceForm({
           </Text>
         </View>
       )}
+
+      {showP2 && <ServiceP2Fields c={c} value={p2} onChange={setP2} jobs={jobsOn} disabled={!canManage} />}
 
       <View style={styles.switchBox}>
         <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('services.form.offered')}</Text>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { ordersApi, KnownOrderVerb, OrderReturnLine, OrderReturnResult } from './api';
 import { OrderListFilters, PartnerOrder } from './types';
+import type { DocumentRx } from '../billing/types';
 import { qk } from '../../lib/queryKeys';
 
 export function useOrders(filters: OrderListFilters) {
@@ -25,6 +26,8 @@ export interface TransitionInput {
   id: string;
   verb: KnownOrderVerb;
   text?: string;
+  /** P2 PHARMACY: the prescription an `accept` of a Schedule H/H1 order needs. */
+  rx?: DocumentRx;
 }
 
 /**
@@ -37,7 +40,9 @@ export interface TransitionInput {
 export function useOrderTransition() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, verb, text }: TransitionInput) => ordersApi.transition(id, verb, text),
+    mutationFn: ({ id, verb, text, rx }: TransitionInput) => (rx
+      ? ordersApi.transition(id, verb, text, rx)
+      : ordersApi.transition(id, verb, text)),
     onSuccess: (updated: PartnerOrder) => {
       queryClient.setQueryData(qk.orders.detail(updated.id), updated);
       void queryClient.invalidateQueries({ queryKey: qk.orders.all() });

@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   useColorScheme,
   StatusBar,
+  Linking,
+  Alert,
 } from 'react-native';
 import { Text, Modal, Portal, Divider, Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +20,7 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { useAuth, LoginResult } from '../../src/context/AuthContext';
+import { SessionNoticeBanner } from '../../src/features/owners/components/SessionNoticeBanner';
 import { ProfileInfo } from '../../src/api/auth.api';
 import { apiErrorMessage } from '../../src/api/axios';
 import { AppButton } from '../../src/components/AppButton';
@@ -27,7 +30,11 @@ import { Hero } from '../../src/components/Hero';
 import { ContextPicker } from '../../src/components/ContextPicker';
 import { LoadingOverlay } from '../../src/components/LoadingOverlay';
 import { themeColors } from '../../src/constants/colors';
+import { WEB_PANEL_URL } from '../../src/constants/app';
 import { useLanguage } from '../../src/i18n/useLanguage';
+
+/** The public support page on the website (no sign-in needed). */
+const PUBLIC_SUPPORT_URL = `${WEB_PANEL_URL}/support`;
 
 /**
  * This screen FOLLOWS THE SYSTEM THEME, like every other screen in the app.
@@ -104,7 +111,7 @@ export default function LoginScreen() {
   const { toggle } = useLanguage();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const { login, selectContext, requestLoginOtp, loginWithGoogle } = useAuth();
+  const { login, selectContext, requestLoginOtp, loginWithGoogle, sessionNotice, clearSessionNotice } = useAuth();
 
   const [isLoading, setIsLoading] = useState(false);
   const [googling, setGoogling] = useState(false);
@@ -167,6 +174,7 @@ export default function LoginScreen() {
   const {
     control,
     handleSubmit,
+    getValues,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -175,6 +183,12 @@ export default function LoginScreen() {
 
   const showSnack = (message: string, error = false) =>
     setSnackbar({ visible: true, message, error });
+
+  const openHelp = () => {
+    Linking.openURL(PUBLIC_SUPPORT_URL).catch(() =>
+      Alert.alert(t('auth.login.helpFailedTitle'), t('auth.login.helpFailedBody', { url: PUBLIC_SUPPORT_URL })),
+    );
+  };
 
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
@@ -194,15 +208,10 @@ export default function LoginScreen() {
         setContextModal(true);
         return;
       }
-      // A partner created by the signup wizard has NO password —
-      // `registerPartnerPublic` opens the identity passwordless and the server
-      // answers 401 with `useOtp: true`. Reporting that as a failed sign-in
-      // would lock every self-registered partner out of their own app, so the
-      // code is sent and the OTP screen is opened instead.
-      if (result.requiresOtp) {
-        await sendCode(data.identifier);
-        return;
-      }
+      // One coded answer for every failure (INVALID_CREDENTIALS) — its sentence
+      // already points at the one-time-code button right under this one. The
+      // old `useOtp` auto-switch is gone with the flag: the server no longer
+      // says which accounts have a password.
       showSnack(result.error ?? t('auth.login.loginFailed'), true);
     } finally {
       setIsLoading(false);
@@ -338,6 +347,12 @@ export default function LoginScreen() {
               {t('auth.login.subtitle')}
             </Text>
 
+            {/* Why the last session ended, when the partner must be told: their
+                access to the business ended (handed over / removed / archived). */}
+            {sessionNotice ? (
+              <SessionNoticeBanner c={c} notice={sessionNotice} onDismiss={clearSessionNotice} />
+            ) : null}
+
             {/* Labelled in the OTHER language, always — a reader who cannot read
                 the current one has to be able to read the way out of it. */}
             <TouchableOpacity onPress={toggle} style={styles.languageLink} activeOpacity={0.7}>
@@ -403,6 +418,30 @@ export default function LoginScreen() {
                 icon="login"
                 style={styles.signInButton}
               />
+
+              {/*
+                The one-time-code way in, ALWAYS on the password form. The
+                server answers every failed password with the same
+                INVALID_CREDENTIALS (it will not say an account is
+                passwordless), so this button is how a passwordless partner —
+                every partner the signup wizard created — gets in, and it has to
+                be visible without a failed attempt first.
+              */}
+              <AppButton
+                label={t('auth.login.otpButton')}
+                onPress={() => sendCode(getValues('identifier'))}
+                loading={!!sendingCode}
+                icon="message-lock-outline"
+                mode="outlined"
+              />
+              {/* Says what it is doing while it does it. A bare spinner here
+                  is what left partners staring at a screen with no idea
+                  whether anything had been sent. */}
+              <Text style={[styles.hint, { color: c.textSecondary }]}>
+                {sendingCode
+                  ? t('auth.login.sendingCode', { target: sendingCode })
+                  : t('auth.login.otpHint')}
+              </Text>
             </View>
 
             {/* Google — absent entirely from a build with no client id, the
@@ -420,46 +459,25 @@ export default function LoginScreen() {
             ) : null}
 
             {/*
-              This link and the register link below are what make the rest of
-              the auth flow REACHABLE at all: without them the 5-step signup
-              wizard has no entry point, and a partner whose identity is
-              passwordless (which is every partner who registered in the app) has
-              no way to reach the code screen.
+              The register link is what makes the 5-step signup wizard
+              REACHABLE at all — it has no other entry point.
             */}
-            <Controller
-              control={control}
-              name="identifier"
-              render={({ field: { value } }) => (
-                <TouchableOpacity
-                  onPress={() => sendCode(value)}
-                  disabled={!!sendingCode}
-                  style={styles.otpLink}
-                  activeOpacity={0.7}
-                >
-                  {/* Says what it is doing while it does it. A bare spinner here
-                      is what left partners staring at a screen with no idea
-                      whether anything had been sent. */}
-                  <Text
-                    style={[
-                      styles.linkText,
-                      styles.centred,
-                      { color: sendingCode ? c.textSecondary : c.primary },
-                    ]}
-                  >
-                    {sendingCode
-                      ? t('auth.login.sendingCode', { target: sendingCode })
-                      : t('auth.login.otpLink')}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-
             <View style={styles.footer}>
               <TouchableOpacity onPress={() => router.push('/(auth)/register')} activeOpacity={0.7}>
                 <Text style={[styles.footerText, { color: c.textSecondary }]}>
                   {t('auth.login.newHere')}
                   <Text style={[styles.footerLink, { color: c.primary }]}>{t('auth.login.register')}</Text>
                 </Text>
+              </TouchableOpacity>
+              {/* Help for somebody who cannot sign in. The in-app Help screens
+                  are signed-in only, so this opens the PUBLIC support page. */}
+              <TouchableOpacity
+                onPress={openHelp}
+                style={styles.helpLink}
+                activeOpacity={0.7}
+                accessibilityRole="link"
+              >
+                <Text style={[styles.linkText, { color: c.primary }]}>{t('auth.login.help')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -552,7 +570,8 @@ const styles = StyleSheet.create({
   forgotLink: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 8, paddingVertical: 4 },
   languageLink: { alignSelf: 'flex-start', marginTop: -18, marginBottom: 20, paddingVertical: 4 },
   signInButton: { marginTop: 8 },
-  otpLink: { alignSelf: 'stretch', paddingVertical: 14 },
+  hint: { fontSize: 13, textAlign: 'center', marginTop: 2 },
+  helpLink: { marginTop: 14, paddingVertical: 6, paddingHorizontal: 12 },
   linkText: { fontWeight: '600', fontSize: 14 },
   centred: { textAlign: 'center' },
   googleRow: { marginTop: 12 },

@@ -9,12 +9,20 @@ import { toHref } from '../../../src/features/billing/routeHref';
 import { Card, ChipRow, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
 import { LANGUAGE_NATIVE_NAME, Language, SUPPORTED } from '../../../src/i18n';
 import { useLanguage } from '../../../src/i18n/useLanguage';
+import { useAuth } from '../../../src/context/AuthContext';
+import { isOwnerSession } from '../../../src/features/owners/access';
+import { useMyReach } from '../../../src/features/society/hooks';
+import { isSocietyPartner } from '../../../src/features/society/logic';
 
 export default function SettingsHubScreen() {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const { can, entitlements, moduleState } = usePartnerEntitlements();
   const { language, setLanguage } = useLanguage();
+  const { profile } = useAuth();
+  const owner = isOwnerSession(profile);
+  /** P3: "Who can find you" exists only for a business that joined through its society. */
+  const societyPartner = isSocietyPartner(useMyReach().data);
   const level = can('SETTINGS', 'FULL') ? t('settings.hub.levelManage') : t('settings.hub.levelViewOnly');
 
   /**
@@ -165,6 +173,18 @@ export default function SettingsHubScreen() {
           subtitle={verificationSubtitle}
           onPress={() => router.push('/settings/verification')}
         />
+        {societyPartner ? (
+          <>
+            <Divider />
+            <Row
+              c={c}
+              icon="account-search-outline"
+              title={t('more.rows.reach')}
+              subtitle={t('more.rows.reachBlurb')}
+              onPress={() => router.push('/settings/reach')}
+            />
+          </>
+        ) : null}
       </Card>
 
       <SectionLabel c={c}>{t('settings.hub.alertsSection')}</SectionLabel>
@@ -186,6 +206,16 @@ export default function SettingsHubScreen() {
           title={t('settings.hub.modules')}
           subtitle={t('settings.hub.modulesSub')}
           onPress={() => router.push('/settings/modules')}
+        />
+        <Divider />
+        {/* P2 — pharmacy, subscriptions & tuition, appointments, jobs: off by
+            default, switched on here per business (CONTRACT-partner-P2 §5). */}
+        <Row
+          c={c}
+          icon="storefront-edit-outline"
+          title={t('p2.settings.title')}
+          subtitle={t('p2.settings.hubSub')}
+          onPress={() => router.push('/settings/business-types')}
         />
       </Card>
 
@@ -217,6 +247,32 @@ export default function SettingsHubScreen() {
           onChange={setLanguage}
         />
       </Card>
+
+      {/* Owners only (CONTRACT-partner-P0 §6.1/§6.3): ownership and the one
+          irreversible-by-you action. Staff never see this section. */}
+      {owner ? (
+        <>
+          <SectionLabel c={c}>{t('settings.hub.ownershipSection')}</SectionLabel>
+          <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
+            <Row
+              c={c}
+              icon="account-key-outline"
+              title={t('settings.hub.owners')}
+              subtitle={t('settings.hub.ownersSub')}
+              onPress={() => router.push('/owners')}
+            />
+            <Divider />
+            <Row
+              c={c}
+              icon="archive-outline"
+              title={t('settings.hub.archive')}
+              subtitle={t('settings.hub.archiveSub')}
+              onPress={() => router.push('/settings/archive')}
+              danger
+            />
+          </Card>
+        </>
+      ) : null}
     </Screen>
   );
 }

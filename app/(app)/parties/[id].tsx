@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, FlatList, Linking, StyleSheet, useColorScheme, View } from 'react-native';
-import { IconButton, Text } from 'react-native-paper';
+import { IconButton, Snackbar, Text } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -13,14 +13,18 @@ import { formatPaise } from '../../../src/lib/money';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { Card, EmptyBlock, ErrorBlock, Loading, Row, Screen } from '../../../src/features/more/ui';
 import { formatI18nDate } from '../../../src/i18n';
+import { KhataPanel } from '../../../src/features/khata/components/KhataPanel';
+import { SupplierPanel } from '../../../src/features/purchases/components/SupplierPanel';
+import { TwoPane } from '../../../src/features/p1/ui';
 
 export default function PartyDetailScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { t } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { can } = usePartnerEntitlements();
+  const { can, hasModule } = usePartnerEntitlements();
   const canManage = can('CUSTOMERS', 'FULL');
+  const [toast, setToast] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const [recomputing, setRecomputing] = useState(false);
 
@@ -155,6 +159,16 @@ export default function PartyDetailScreen() {
               {p.gstin && <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('parties.detail.gstin', { gstin: p.gstin })}</Text>}
             </Card>
 
+            {/* P1 (screens S2, S14, S15): the supplier side and the khata side, side by side on a tablet. */}
+            {hasModule('INVOICING') && (
+              <TwoPane
+                left={p.kind !== 'SUPPLIER' ? <KhataPanel c={c} party={p} canManage={canManage} onMessage={setToast} /> : null}
+                right={p.kind !== 'CUSTOMER' && can('PURCHASES_VIEW', 'READ')
+                  ? <SupplierPanel c={c} partyId={p._id} canManage={can('PURCHASES_MANAGE', 'FULL')} />
+                  : undefined}
+              />
+            )}
+
             {canManage && (
               <Row
                 c={c}
@@ -177,6 +191,7 @@ export default function PartyDetailScreen() {
           )
         }
       />
+      <Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3500}>{toast}</Snackbar>
     </Screen>
   );
 }

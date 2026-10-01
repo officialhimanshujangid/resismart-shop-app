@@ -87,6 +87,13 @@ export interface PartnerServiceRow {
   sortOrder: number;
   createdAt?: string;
   updatedAt?: string;
+  // ── P2 (APPOINTMENTS / JOBS) — all optional, absent on every other business.
+  /** Minutes kept free after the visit (0–120). */
+  bufferMin?: number;
+  sac?: string;
+  taxRatePercent?: number;
+  /** A repair job: a quote goes out first (JOBS). */
+  isJob?: boolean;
 }
 
 /** What the create/edit form sends. Matches `createPartnerServiceSchema`/`updatePartnerServiceSchema`. */
@@ -112,6 +119,14 @@ export interface ServiceFormInput {
   visitChargePaise: number;
   isActive: boolean;
   sortOrder: number;
+  /**
+   * P2 fields — sent ONLY while APPOINTMENTS or JOBS is on (see `p2Fields.ts`);
+   * `null` (edit only) clears one (`$unset`).
+   */
+  bufferMin?: number | null;
+  sac?: string | null;
+  taxRatePercent?: number | null;
+  isJob?: boolean | null;
 }
 
 export interface ServiceListFilters {
