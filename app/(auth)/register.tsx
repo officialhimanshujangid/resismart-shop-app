@@ -61,6 +61,15 @@ import {
  *
  * ── Why it is RESUMABLE, and what that actually means ─────────────────────
  *
+ * >>> OWNER-0310 — the business is created at the END OF STEP 2, as on the web
+ * wizard (`register-partner/page.tsx#registerBusiness`). Steps 1 and 2 are held
+ * in this screen (`SignupDraft`) while there is no business yet; step 1 only
+ * verifies the email and phone, and nothing exists on the server until step 2's
+ * "Create my business" posts the real address, city, state, pincode and map pin
+ * to `register-public`. A partner who leaves after step 1 leaves nothing behind.
+ * The paragraph below predates that and is kept for the resume rules it explains.
+ * <<< OWNER-0310
+ *
  * `POST /partners/register-public` creates the business at step 1 and opens a
  * login identity for it. Everything after that is four more screens with a
  * document upload in the middle, so the partner who puts the phone down halfway
@@ -122,11 +131,69 @@ const defaultWeek = (): DayTiming[] =>
     windows: day !== 0 ? [{ from: '09:00', to: '21:00' }] : [],
   }));
 
+// >>> OWNER-0310
+/**
+ * Steps 1 and 2 before the business exists — held HERE, in the screen, because
+ * each step component unmounts when the partner moves on, and step 2's create
+ * needs step 1's identity and receipts. Same shape as the web wizard's
+ * pre-account draft. The OTP receipts live here too: `register-public` is the
+ * only thing that consumes them.
+ */
+interface SignupDraft {
+  name: string;
+  phone: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  emailToken?: string;
+  phoneToken?: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  latText: string;
+  lngText: string;
+  /** Set once `register-public` answered 201 — a second press must sign in, not create again. */
+  created: boolean;
+}
+
+const emptySignup = (): SignupDraft => ({
+  name: '',
+  phone: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  address: '',
+  city: '',
+  state: '',
+  pincode: '',
+  latText: '',
+  lngText: '',
+  created: false,
+});
+
+/** The web wizard's `passwordErrors` rule (min 6, both equal). */
+const MIN_PASSWORD = 6;
+
+/** The step-2 rules of `onboardingStep2Schema` (web + server), mirrored. */
+const locationValid = (v: { address: string; city: string; state: string; pincode: string }, hasPin: boolean) =>
+  v.address.trim().length >= 5 &&
+  v.address.trim().length <= 300 &&
+  v.city.trim().length > 0 &&
+  v.city.trim().length <= 80 &&
+  v.state.trim().length > 0 &&
+  v.state.trim().length <= 80 &&
+  /^\d{6}$/.test(v.pincode.trim()) &&
+  hasPin;
+// <<< OWNER-0310
+
 export default function RegisterScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const { isAuthenticated, logout } = useAuth();
+  // >>> OWNER-0310 — `requestLoginOtp` moved up here with the create (end of step 2).
+  const { isAuthenticated, logout, requestLoginOtp } = useAuth();
+  // <<< OWNER-0310
   const queryClient = useQueryClient();
 
   const { status, loading: statusLoading } = useOnboardingStatus({ enabled: isAuthenticated });
@@ -184,6 +251,104 @@ export default function RegisterScreen() {
   );
 
   const goNext = useCallback(() => setStep((s) => Math.min(5, s + 1)), []);
+
+  // >>> OWNER-0310
+  const [signup, setSignup] = useState<SignupDraft>(emptySignup);
+  const patchSignup = useCallback((p: Partial<SignupDraft>) => setSignup((d) => ({ ...d, ...p })), []);
+
+  /**
+   * The session for the business that was just created. The identity is the
+   * one verified on step 1, so the way in is a login code to that phone, handled
+   * by `verify-otp`; when that screen verifies, `(auth)/_layout` lands back here
+   * signed in and the resume effect above opens step 3.
+   */
+  const signInAfterCreate = useCallback(async (d: SignupDraft) => {
+    const otp = await requestLoginOtp(d.phone.trim());
+    if (!otp.success || !otp.delivery) {
+      show(t('auth.register.createdSignIn'), true);
+      setTimeout(() => router.replace('/(auth)/login'), 2000);
+      return;
+    }
+    router.push({
+      pathname: '/(auth)/verify-otp',
+      params: {
+        identifier: d.phone.trim(),
+        reason: 'new-account',
+        // The delivery report travels with the navigation: the code screen has
+        // to name the transport, and it cannot ask again without sending a
+        // second code.
+        message: otp.delivery.message,
+        deliveredVia: otp.delivery.deliveredVia,
+        alternatives: otp.delivery.alternatives.join(','),
+        whatsappAvailable: otp.delivery.whatsappAvailable ? '1' : '0',
+        // Both contacts were OTP-verified into the same identity on step 1, so
+        // the inbox is a real way in if neither WhatsApp nor SMS arrives.
+        email: d.email.trim(),
+      },
+    });
+  }, [requestLoginOtp, show, t]);
+
+  /**
+   * End of step 2, signed out: the ONLY place the business is created — the
+   * web wizard's `registerBusiness`, with the same coded-refusal handling.
+   */
+  const registerBusiness = useCallback(async (d: SignupDraft, at: { lat: number; lng: number }) => {
+    // Already created (they came back from the code screen): sign in, never create twice.
+    if (d.created) {
+      setBusy(true);
+      try { await signInAfterCreate(d); } finally { setBusy(false); }
+      return;
+    }
+    // Re-checked here, not only on step 1: this is the call that stores the
+    // password, and step 2 can be reached by jumping back and forth.
+    if (d.name.trim().length < 2 || d.password.length < MIN_PASSWORD || d.confirmPassword !== d.password) {
+      setStep(1);
+      return;
+    }
+    if (!d.emailToken || !d.phoneToken) {
+      setStep(1);
+      show(t('auth.register.verifyBothFirst'), true);
+      return;
+    }
+    setBusy(true);
+    try {
+      await partnerApi.register({
+        name: d.name.trim(),
+        address: d.address.trim(),
+        contactNumber: d.phone.trim(),
+        adminEmail: d.email.trim(),
+        city: d.city.trim(),
+        state: d.state.trim(),
+        pincode: d.pincode.trim(),
+        latitude: at.lat,
+        longitude: at.lng,
+        emailVerificationToken: d.emailToken,
+        phoneVerificationToken: d.phoneToken,
+        // Not trimmed — spaces are part of a password.
+        password: d.password,
+      });
+      // The receipts are spent; the flag makes a second press sign in instead.
+      const done = { ...d, created: true, emailToken: undefined, phoneToken: undefined };
+      setSignup(done);
+      await signInAfterCreate(done);
+    } catch (e) {
+      const code = apiErrorCode(e);
+      // A lapsed or mismatched receipt: drop both receipts and go back to the
+      // step with the codes on it, with the reason and what to do.
+      if (code === 'PARTNER_SIGNUP_EMAIL_NOT_VERIFIED' || code === 'PARTNER_SIGNUP_PHONE_NOT_VERIFIED') {
+        setSignup((s) => ({ ...s, emailToken: undefined, phoneToken: undefined }));
+        setStep(1);
+        show(`${apiErrorMessage(e)} ${t('auth.register.verifyAgain')}`, true);
+        return;
+      }
+      // The business name and the phone are on step 1 as well.
+      if (code === 'PARTNER_NAME_TAKEN' || code === 'PARTNER_SIGNUP_PHONE_INVALID') setStep(1);
+      show(apiErrorMessage(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }, [show, signInAfterCreate, t]);
+  // <<< OWNER-0310
 
   /**
    * Every step is reachable once the business exists, in any order.
@@ -278,10 +443,27 @@ export default function RegisterScreen() {
                 refreshStatus(next);
                 goNext();
               }}
+              // >>> OWNER-0310 — signed out, step 1 only verifies; nothing is created.
+              signup={signup}
+              patchSignup={patchSignup}
+              onContinue={goNext}
+              // <<< OWNER-0310
             />
           )}
           {step === 2 && (
-            <StepLocation c={c} busy={busy} setBusy={setBusy} show={show} onSaved={(n) => { refreshStatus(n); goNext(); }} />
+            <StepLocation
+              c={c}
+              busy={busy}
+              setBusy={setBusy}
+              show={show}
+              onSaved={(n) => { refreshStatus(n); goNext(); }}
+              // >>> OWNER-0310 — signed out, step 2 is where the business is created.
+              isAuthenticated={isAuthenticated}
+              signup={signup}
+              patchSignup={patchSignup}
+              onCreate={(loc, at) => void registerBusiness({ ...signup, ...loc }, at)}
+              // <<< OWNER-0310
+            />
           )}
           {step === 3 && (
             <StepWhat c={c} busy={busy} setBusy={setBusy} show={show} onSaved={(n) => { refreshStatus(n); goNext(); }} />
@@ -300,6 +482,14 @@ export default function RegisterScreen() {
               </Text>
             </TouchableOpacity>
           )}
+
+          {/* >>> OWNER-0310 — signed out on step 2: back to step 1 (nothing is lost; the draft is held above). */}
+          {step === 2 && !isAuthenticated && (
+            <TouchableOpacity onPress={() => setStep(1)} style={styles.footerLink} disabled={busy}>
+              <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.backAStep')}</Text>
+            </TouchableOpacity>
+          )}
+          {/* <<< OWNER-0310 */}
 
           {/* The two ways off this screen, and they only exist once there is a
               session — signed out, the "Sign in" link above is the way out and
@@ -455,22 +645,39 @@ function StepIdentity({
   show,
   isAuthenticated,
   onSaved,
-}: StepProps & { isAuthenticated: boolean }) {
+  // >>> OWNER-0310
+  signup,
+  patchSignup,
+  onContinue,
+}: StepProps & {
+  isAuthenticated: boolean;
+  signup: SignupDraft;
+  patchSignup: (p: Partial<SignupDraft>) => void;
+  onContinue: () => void;
+}) {
   const { t } = useTranslation();
-  const { requestLoginOtp } = useAuth();
+  // `requestLoginOtp` moved to the screen: the sign-in now follows the create at step 2.
+  // <<< OWNER-0310
   const { data: existing } = useQuery({
     queryKey: qk.partner.me(),
     queryFn: () => partnerApi.me(),
     enabled: isAuthenticated,
   });
 
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // >>> OWNER-0310 — `resumeName` is the signed-in (resumed) branch's own box.
+  // Signed out, the identity and the receipts live in the screen's draft, so
+  // they survive moving to step 2 and back. Nothing here talks to
+  // `register-public` any more.
+  const [resumeName, setResumeName] = useState('');
+  const { name, phone, email, password, confirmPassword } = signup;
+  const setName = (v: string) => patchSignup({ name: v });
+  const setPhone = (v: string) => patchSignup({ phone: v });
+  const setEmail = (v: string) => patchSignup({ email: v });
+  const setPassword = (v: string) => patchSignup({ password: v });
+  const setConfirmPassword = (v: string) => patchSignup({ confirmPassword: v });
+  const tokens = { email: signup.emailToken, phone: signup.phoneToken };
+  // <<< OWNER-0310
   // >>> SITE-SYNC — typed twice, as on the web wizard (`passwordErrors`: min 6, both equal).
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const MIN_PASSWORD = 6;
   const passwordShort = password.length > 0 && password.length < MIN_PASSWORD;
   const passwordMismatch = confirmPassword.length > 0 && confirmPassword !== password;
   // <<< SITE-SYNC
@@ -487,12 +694,14 @@ function StepIdentity({
   const [sendingPhone, setSendingPhone] = useState<OtpVia | null>(null);
   const [emailCode, setEmailCode] = useState('');
   const [phoneCode, setPhoneCode] = useState('');
-  const [tokens, setTokens] = useState<{ email?: string; phone?: string }>({});
   const [googling, setGoogling] = useState(false);
+  // >>> OWNER-0310 — the receipts moved to the screen's draft (see `tokens` above).
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
-    if (existing?.partner) setName((n) => n || existing.partner.name);
+    if (existing?.partner) setResumeName((n) => n || existing.partner.name);
   }, [existing]);
+  // <<< OWNER-0310
 
   // Resumed and already signed in: the account exists, so this step is only the
   // business name. Everything else on it is account identity, which is changed
@@ -501,15 +710,17 @@ function StepIdentity({
     return (
       <View style={styles.step}>
         <StepHeading c={c} title={t('auth.register.resumeTitle')} blurb={t('auth.register.resumeBlurb')} />
-        <AppInput label={t('auth.register.businessName')} value={name} onChangeText={setName} leftIcon="store-outline" />
+        {/* >>> OWNER-0310 — `resumeName`: this branch's own box, not the signup draft. */}
+        <AppInput label={t('auth.register.businessName')} value={resumeName} onChangeText={setResumeName} leftIcon="store-outline" />
         <AppButton
           label={t('auth.register.saveAndContinue')}
           loading={busy}
-          disabled={name.trim().length < 2}
+          disabled={resumeName.trim().length < 2}
           onPress={async () => {
             setBusy(true);
             try {
-              const res = await partnerApi.saveStep({ step: 1, body: { name: name.trim() } });
+              const res = await partnerApi.saveStep({ step: 1, body: { name: resumeName.trim() } });
+              // <<< OWNER-0310
               onSaved(res.onboarding);
             } catch (e) {
               show(apiErrorMessage(e), true);
@@ -542,10 +753,9 @@ function StepIdentity({
     try {
       const idToken = await getGoogleIdToken(t);
       const res = await authApi.googleVerifyContact(idToken);
-      setEmail(res.data.email);
-      // `prev`, not `t` — `t` is the translator in this scope, and the very
-      // next line calls it.
-      setTokens((prev) => ({ ...prev, email: res.data.verificationToken }));
+      // >>> OWNER-0310 — the address and its receipt go into the screen's draft together.
+      patchSignup({ email: res.data.email, emailToken: res.data.verificationToken });
+      // <<< OWNER-0310
       show(t('auth.register.googleVerified'));
     } catch (e) {
       if (e instanceof GoogleCancelled) return;
@@ -643,10 +853,13 @@ function StepIdentity({
     try {
       // `Promise.all` is safe here only because both helpers resolve — neither
       // throws — so one leg failing can no longer discard the other.
+      // >>> OWNER-0310 — a leg that already holds its receipt (Google, or verified
+      // before a trip to step 2) needs no code at all.
       await Promise.all([
-        resendAll || !emailDelivery ? sendEmailCode() : Promise.resolve(true),
-        resendAll || !phoneDelivery?.deliveredVia ? sendPhoneCode() : Promise.resolve(true),
+        !tokens.email && (resendAll || !emailDelivery) ? sendEmailCode() : Promise.resolve(true),
+        !tokens.phone && (resendAll || !phoneDelivery?.deliveredVia) ? sendPhoneCode() : Promise.resolve(true),
       ]);
+      // <<< OWNER-0310
     } finally {
       setBusy(false);
     }
@@ -657,71 +870,42 @@ function StepIdentity({
     return res.data.verificationToken;
   };
 
-  const createAccount = async () => {
-    setBusy(true);
+  // >>> OWNER-0310
+  /**
+   * Step 1's last action: turn the two typed codes into receipts and move on.
+   * NOTHING is created here — `register-public` is sent at the end of step 2,
+   * with the real address (the screen's `registerBusiness`). Verified on the
+   * press rather than as each box fills, so a wrong code is reported once, next
+   * to the button that was pressed. A leg that verifies is kept even when the
+   * other fails, so the partner never re-enters a code that already worked.
+   * (The lapsed-receipt handling — PARTNER_SIGNUP_*_NOT_VERIFIED — moved with
+   * the create to `registerBusiness`, which drops both receipts and comes back here.)
+   */
+  const verifyAndContinue = async () => {
+    setVerifying(true);
     try {
-      // Verified here rather than as each box fills, so a wrong code is reported
-      // once, next to the button that was pressed.
       const emailToken = tokens.email ?? (await verify('EMAIL', email.trim(), emailCode));
+      if (!tokens.email) patchSignup({ emailToken });
       const phoneToken = tokens.phone ?? (await verify('PHONE', phone.trim(), phoneCode));
-      setTokens({ email: emailToken, phone: phoneToken });
-
-      await partnerApi.register({
-        name: name.trim(),
-        contactNumber: phone.trim(),
-        address: 'To be confirmed in step 2',
-        adminEmail: email.trim(),
-        password,
-        emailVerificationToken: emailToken,
-        phoneVerificationToken: phoneToken,
-      });
-
-      // The business exists but there is no session, and steps 2–5 need one.
-      const otp = await requestLoginOtp(phone.trim());
-      if (!otp.success || !otp.delivery) {
-        show(t('auth.register.createdSignIn'), true);
-        setTimeout(() => router.replace('/(auth)/login'), 2000);
-        return;
-      }
-      router.push({
-        pathname: '/(auth)/verify-otp',
-        params: {
-          identifier: phone.trim(),
-          reason: 'new-account',
-          // The delivery report travels with the navigation: the code screen has
-          // to name the transport, and it cannot ask again without sending a
-          // second code.
-          message: otp.delivery.message,
-          deliveredVia: otp.delivery.deliveredVia,
-          alternatives: otp.delivery.alternatives.join(','),
-          whatsappAvailable: otp.delivery.whatsappAvailable ? '1' : '0',
-          // The sign-in code is a LOGIN code, not a phone verification, and this
-          // address was just OTP-verified into the same identity — so if neither
-          // WhatsApp nor SMS reaches the handset, the inbox is a real way in.
-          // (Which is exactly why the phone VERIFICATION above offers no such
-          // thing: that step has to prove the number itself.)
-          email: email.trim(),
-        },
-      });
+      patchSignup({ emailToken, phoneToken });
+      onContinue();
     } catch (e) {
-      // >>> SITE-SYNC — a lapsed or mismatched receipt (by CODE): drop both receipts and
-      // the typed codes and go back to "send codes", with the reason and what to do.
-      const code = apiErrorCode(e);
-      if (code === 'PARTNER_SIGNUP_EMAIL_NOT_VERIFIED' || code === 'PARTNER_SIGNUP_PHONE_NOT_VERIFIED') {
-        setTokens({});
-        setEmailCode('');
-        setPhoneCode('');
-        setEmailDelivery(null);
-        setPhoneDelivery(null);
-        show(`${apiErrorMessage(e)} ${t('auth.register.verifyAgain')}`, true);
-        return;
-      }
-      // <<< SITE-SYNC
       show(apiErrorMessage(e), true);
     } finally {
-      setBusy(false);
+      setVerifying(false);
     }
   };
+
+  /** "Change email or phone": the receipts belong to the old values, so they go too. */
+  const resetContacts = () => {
+    patchSignup({ emailToken: undefined, phoneToken: undefined });
+    setEmailCode('');
+    setPhoneCode('');
+    setEmailDelivery(null);
+    setPhoneDelivery(null);
+  };
+  const verified = !!tokens.email && !!tokens.phone;
+  // <<< OWNER-0310
 
   const canSend =
     name.trim().length >= 2 && phone.trim().length >= 7 && /.+@.+\..+/.test(email)
@@ -732,7 +916,10 @@ function StepIdentity({
    * flag was flipped optimistically and that is precisely how a partner ended up
    * typing into a code box for a message no transport had accepted.
    */
-  const sent = !!emailDelivery && !!phoneDelivery?.deliveredVia;
+  // >>> OWNER-0310 — a leg with a receipt counts as done (Google, or verified earlier).
+  const sent =
+    (!!tokens.email || !!emailDelivery) && (!!tokens.phone || !!phoneDelivery?.deliveredVia);
+  // <<< OWNER-0310
 
   return (
     <View style={styles.step}>
@@ -742,7 +929,10 @@ function StepIdentity({
         blurb={t('auth.register.step1Blurb')}
       />
 
-      <AppInput label={t('auth.register.businessName')} value={name} onChangeText={setName} leftIcon="store-outline" disabled={sent} />
+      {/* >>> OWNER-0310 — the name stays editable once verified (a PARTNER_NAME_TAKEN
+          from step 2 lands here); a verified email/phone is locked to its receipt
+          and changed only through "Change email or phone". */}
+      <AppInput label={t('auth.register.businessName')} value={name} onChangeText={setName} leftIcon="store-outline" disabled={sent && !verified} />
       <AppInput
         label={t('auth.register.mobile')}
         value={phone}
@@ -750,6 +940,7 @@ function StepIdentity({
         keyboardType="phone-pad"
         leftIcon="phone-outline"
         autoCapitalize="none"
+        disabled={!!tokens.phone}
       />
       <AppInput
         label={t('auth.register.email')}
@@ -758,7 +949,9 @@ function StepIdentity({
         keyboardType="email-address"
         autoCapitalize="none"
         leftIcon="email-outline"
+        disabled={!!tokens.email}
       />
+      {/* <<< OWNER-0310 */}
       <AppInput
         label={t('auth.register.password')}
         value={password}
@@ -780,8 +973,18 @@ function StepIdentity({
       />
       {/* <<< SITE-SYNC */}
 
-      {!sent ? (
+      {/* >>> OWNER-0310 — both receipts held: step 1 is done, nothing is created yet. */}
+      {verified ? (
         <>
+          <Text style={[styles.note, { color: c.textSecondary }]}>{t('auth.register.contactsVerified')}</Text>
+          <AppButton label={t('auth.register.continue')} disabled={!canSend} onPress={onContinue} />
+          <TouchableOpacity onPress={resetContacts} style={styles.footerLink}>
+            <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.changeContacts')}</Text>
+          </TouchableOpacity>
+        </>
+      ) : !sent ? (
+        <>
+      {/* <<< OWNER-0310 */}
           <AppButton
             label={t('auth.register.sendCodes')}
             loading={busy}
@@ -826,37 +1029,53 @@ function StepIdentity({
               />
             </View>
           ) : null}
+          {/* >>> OWNER-0310 — Google already vouched for an address: the way to change it. */}
+          {tokens.email || tokens.phone ? (
+            <TouchableOpacity onPress={resetContacts} style={styles.footerLink}>
+              <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.changeContacts')}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {/* <<< OWNER-0310 */}
         </>
       ) : (
         <>
           {/* The server's own sentence for the email leg, then ours for what
               the two codes are FOR. The phone leg says where it went in the
               notice below the boxes, next to the buttons that can move it. */}
-          <Text style={[styles.note, { color: c.textSecondary }]}>{emailDelivery}</Text>
+          {/* >>> OWNER-0310 — only the legs still missing a receipt ask for a code;
+              the button verifies them and moves to step 2 — it creates nothing. */}
+          {emailDelivery && !tokens.email ? (
+            <Text style={[styles.note, { color: c.textSecondary }]}>{emailDelivery}</Text>
+          ) : null}
           <Text style={[styles.note, { color: c.textSecondary }]}>
             {t('auth.register.bothVerified')}
           </Text>
-          <AppInput
-            label={t('auth.register.emailCode')}
-            value={emailCode}
-            onChangeText={setEmailCode}
-            keyboardType="numeric"
-            leftIcon="email-check-outline"
-          />
-          <AppInput
-            label={t('auth.register.phoneCode')}
-            value={phoneCode}
-            onChangeText={setPhoneCode}
-            keyboardType="numeric"
-            leftIcon="cellphone-check"
-          />
+          {!tokens.email ? (
+            <AppInput
+              label={t('auth.register.emailCode')}
+              value={emailCode}
+              onChangeText={setEmailCode}
+              keyboardType="numeric"
+              leftIcon="email-check-outline"
+            />
+          ) : null}
+          {!tokens.phone ? (
+            <AppInput
+              label={t('auth.register.phoneCode')}
+              value={phoneCode}
+              onChangeText={setPhoneCode}
+              keyboardType="numeric"
+              leftIcon="cellphone-check"
+            />
+          ) : null}
           <AppButton
-            label={t('auth.register.createBusiness')}
-            loading={busy}
-            disabled={emailCode.length !== 6 || phoneCode.length !== 6
-              || password.length < MIN_PASSWORD || confirmPassword !== password /* SITE-SYNC */}
-            onPress={createAccount}
+            label={t('auth.register.verifyAndContinue')}
+            loading={verifying}
+            disabled={(!tokens.email && emailCode.length !== 6) || (!tokens.phone && phoneCode.length !== 6)
+              || !canSend || busy}
+            onPress={() => void verifyAndContinue()}
           />
+          {/* <<< OWNER-0310 */}
           {/* Under the code inputs, where somebody who is watching the wrong app
               will look. Still no email fallback — see the note in the other
               branch. */}
@@ -910,16 +1129,54 @@ function StepIdentity({
  * map writes into them, not beside them, so one value decides whether this step
  * may be completed.
  */
-function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
+// >>> OWNER-0310
+/**
+ * Two modes, one form. SIGNED IN (a resumed partner): the step is saved with the
+ * onboarding PUT, as it always was. SIGNED OUT (a new signup): there is no
+ * business yet — "Create my business" hands the real address and pin to the
+ * screen's `registerBusiness`, which is the only place `register-public` is sent.
+ * Signed out, the boxes start from and write back to the screen's draft, so a
+ * trip back to step 1 loses nothing.
+ */
+function StepLocation({
+  c,
+  busy,
+  setBusy,
+  show,
+  onSaved,
+  isAuthenticated,
+  signup,
+  patchSignup,
+  onCreate,
+}: StepProps & {
+  isAuthenticated: boolean;
+  signup: SignupDraft;
+  patchSignup: (p: Partial<SignupDraft>) => void;
+  onCreate: (
+    loc: Pick<SignupDraft, 'address' | 'city' | 'state' | 'pincode' | 'latText' | 'lngText'>,
+    at: { lat: number; lng: number },
+  ) => void;
+}) {
   const { t } = useTranslation();
-  const { data: existing } = useQuery({ queryKey: qk.partner.me(), queryFn: () => partnerApi.me() });
+  // Signed out there is no partner to read — asking would only 401.
+  const { data: existing } = useQuery({
+    queryKey: qk.partner.me(),
+    queryFn: () => partnerApi.me(),
+    enabled: isAuthenticated,
+  });
 
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [pincode, setPincode] = useState('');
-  const [latText, setLatText] = useState('');
-  const [lngText, setLngText] = useState('');
+  const [address, setAddress] = useState(() => (isAuthenticated ? '' : signup.address));
+  const [city, setCity] = useState(() => (isAuthenticated ? '' : signup.city));
+  const [state, setState] = useState(() => (isAuthenticated ? '' : signup.state));
+  const [pincode, setPincode] = useState(() => (isAuthenticated ? '' : signup.pincode));
+  const [latText, setLatText] = useState(() => (isAuthenticated ? '' : signup.latText));
+  const [lngText, setLngText] = useState(() => (isAuthenticated ? '' : signup.lngText));
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+    patchSignup({ address, city, state, pincode, latText, lngText });
+  }, [isAuthenticated, patchSignup, address, city, state, pincode, latText, lngText]);
+  // <<< OWNER-0310
 
   // Shared with Settings → Address & map pin, which asks for the same pair and
   // has to accept exactly what this does. See `lib/geo`.
@@ -981,12 +1238,9 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
 
   // `coords` is already null for out-of-range, half-typed and (0, 0), so there
   // is nothing left to re-check about it here.
-  const valid =
-    address.trim().length >= 5 &&
-    city.trim().length > 0 &&
-    state.trim().length > 0 &&
-    /^\d{6}$/.test(pincode.trim()) &&
-    coords !== null;
+  // >>> OWNER-0310 — the web/server `onboardingStep2Schema` rules, max lengths included.
+  const valid = locationValid({ address, city, state, pincode }, coords !== null);
+  // <<< OWNER-0310
 
   return (
     <View style={styles.step}>
@@ -1038,6 +1292,23 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
         leftIcon="mailbox-outline"
       />
 
+      {/* >>> OWNER-0310 — signed out: this button is where the business is created. */}
+      {!isAuthenticated ? (
+        <>
+          <Text style={[styles.note, { color: c.textSecondary }]}>
+            {signup.created ? t('auth.register.createdSignIn') : t('auth.register.createNote')}
+          </Text>
+          <AppButton
+            label={signup.created ? t('auth.register.signInToContinue') : t('auth.register.createBusiness')}
+            loading={busy}
+            disabled={!valid || busy}
+            onPress={() => {
+              if (!coords) return;
+              onCreate({ address, city, state, pincode, latText, lngText }, coords);
+            }}
+          />
+        </>
+      ) : (
       <AppButton
         label={t('auth.register.saveAndContinue')}
         loading={busy}
@@ -1065,6 +1336,8 @@ function StepLocation({ c, busy, setBusy, show, onSaved }: StepProps) {
           }
         }}
       />
+      )}
+      {/* <<< OWNER-0310 */}
     </View>
   );
 }

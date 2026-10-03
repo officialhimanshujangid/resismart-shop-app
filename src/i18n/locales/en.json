@@ -572,7 +572,7 @@
       "googleFailed": "Could not verify with Google.",
       "createdSignIn": "Your business is created. Please sign in to finish setting it up.",
       "step1Title": "Start your business profile",
-      "step1Blurb": "Five short steps. Everything is saved as you go, so you can stop and come back.",
+      "step1Blurb": "Five short steps. Your business is created at step 2; after that, everything is saved as you go.",
       "mobile": "Mobile number",
       "email": "Email address",
       "password": "Password",
@@ -631,7 +631,14 @@
       "confirmPassword": "Confirm password",
       "passwordTooShort": "Use at least {{min}} characters.",
       "passwordMismatch": "Both passwords must match.",
-      "verifyAgain": "Send the codes again and enter the new ones."
+      "verifyAgain": "Send the codes again and enter the new ones.",
+      "verifyAndContinue": "Verify and continue",
+      "contactsVerified": "Your email and phone are verified. Next, add your business address.",
+      "changeContacts": "Change email or phone",
+      "continue": "Continue",
+      "createNote": "Your business is created only when you tap the button below. Nothing is saved before that.",
+      "verifyBothFirst": "Verify your email and phone in step 1 first.",
+      "signInToContinue": "Sign in to finish setting up"
     },
     "google": {
       "needsDevBuild": "Google sign-in needs a development build of this app, not Expo Go.",

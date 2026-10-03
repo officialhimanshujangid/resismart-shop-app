@@ -384,6 +384,14 @@ export interface RegisterPartnerPayload {
   /** Both come from `POST /auth/otp/verify` with purpose PARTNER_REGISTRATION. */
   emailVerificationToken: string;
   phoneVerificationToken: string;
+  // >>> OWNER-0310 — the real step-2 location, sent with the create (as the web
+  // wizard does), so the business never exists with a placeholder address.
+  city: string;
+  state: string;
+  pincode: string;
+  latitude: number;
+  longitude: number;
+  // <<< OWNER-0310
 }
 
 export interface RegisterPartnerResponse {
@@ -543,7 +551,9 @@ export const partnerApi = {
 
   // --- the signup wizard ---
 
-  /** Unauthenticated. Creates the business in DRAFT at step 1 and the login identities. */
+  // >>> OWNER-0310
+  /** Unauthenticated. Creates the business in DRAFT at the END OF STEP 2 (with the real address) and the login identities. */
+  // <<< OWNER-0310
   register: (payload: RegisterPartnerPayload) =>
     apiClient.post<RegisterPartnerResponse>('/partners/register-public', payload).then((r) => r.data),
 
