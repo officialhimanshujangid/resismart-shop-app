@@ -144,7 +144,7 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
         <Text style={{ color: c.textDisabled, fontSize: 12.5 }}>{t('catalog.images.noPhotos')}</Text>
       ) : null}
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripScroll /* >>> WEB-UI */} contentContainerStyle={styles.strip}>
         {value.map((url, i) => (
           <View key={url} style={[styles.thumbBox, { borderColor: c.divider, backgroundColor: c.surfaceVariant }]}>
             <Image source={{ uri: url }} style={styles.thumb} resizeMode="cover" />
@@ -213,6 +213,9 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
 
 const styles = StyleSheet.create({
   root: { gap: 6 },
+  // >>> WEB-UI — the photo strip never grows past its thumbnails on web.
+  stripScroll: { flexGrow: 0, flexShrink: 0 },
+  // <<< WEB-UI
   strip: { gap: 8, paddingVertical: 2 },
   thumbBox: {
     width: 82, height: 82, borderRadius: radii.sm, borderWidth: StyleSheet.hairlineWidth,

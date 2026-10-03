@@ -71,6 +71,13 @@ export interface CreateDocumentPayload {
   confirmDuplicateSupplierNo?: boolean;
   /** P2 PHARMACY: the prescription for a Schedule H/H1 sale (TAX_INVOICE / DELIVERY_CHALLAN). */
   rx?: DocumentRx;
+  /**
+   * Commerce C3 (TAX_INVOICE only): a typed coupon and/or the shop's automatic
+   * offers, priced onto the draft by the server. On an update `couponCode: null`
+   * removes the coupon; absent keeps it. Line discounts sent are MANUAL only.
+   */
+  couponCode?: string | null;
+  applyAutoOffers?: boolean;
 }
 
 export interface ConvertDocumentPayload {
@@ -136,14 +143,20 @@ export const documentsApi = {
    * identified by the draft it issues, so both call sites derive a key that is
    * stable across every attempt at that one draft rather than minting per try.
    */
-  issue: (id: string, idempotencyKey: string, opts?: { overrideCreditLimit?: boolean }) =>
+  // MP1-COMPLETE — P2: `refundTo` (Commerce C4, `issueDocumentSchema` → `refundToCreditFields`)
+  // on a credit note / sales return, only when the caller chose (store credit on).
+  issue: (id: string, idempotencyKey: string, opts?: { overrideCreditLimit?: boolean; refundTo?: 'CASH_OR_KHATA' | 'STORE_CREDIT' }) =>
     apiClient
       .post<ApiEnvelope<PartnerDocumentRecord> & { message: string; warnings?: IssueWarning[] }>(
         `/partners/me/documents/${id}/issue`,
         // P1 §4.4: `overrideCreditLimit` only after a BLOCK refusal the role may
         // override. The body is part of the idempotency fingerprint, so the
         // caller sends it under a DIFFERENT key (see `draftStore.syncDraft`).
-        opts?.overrideCreditLimit ? { overrideCreditLimit: true } : {},
+        // Neither key set = `{}`, exactly the old body.
+        {
+          ...(opts?.overrideCreditLimit ? { overrideCreditLimit: true } : {}),
+          ...(opts?.refundTo ? { refundTo: opts.refundTo } : {}),
+        },
         withIdempotency(idempotencyKey),
       )
       .then((r) => ({

@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View, useColorScheme } from 'react-n
 import {
   ActivityIndicator, Button, Checkbox, Divider, SegmentedButtons, Snackbar, Surface, Text, TextInput,
 } from 'react-native-paper';
+import { FitSegments } from '../../../src/components/FitSegments'; // >>> WEB-UI
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -300,12 +301,14 @@ export default function NewPaymentScreen() {
               outlineStyle={{ borderRadius: radii.field }}
             />
           </View>
-          <SegmentedButtons
+          {/* >>> WEB-UI — five modes: each segment as wide as its word, row scrolls if needed. */}
+          <FitSegments
             value={mode}
             onValueChange={(v) => setMode(v as PaymentMode)}
             density="small"
             buttons={PAYMENT_MODES.map((m) => ({ value: m, label: t(PAYMENT_MODE_LABEL_KEY[m]) }))}
           />
+          {/* <<< WEB-UI */}
           <TextInput
             mode="outlined"
             label={t('payments.new.reference')}

@@ -10,12 +10,14 @@ import { rentApi } from './api';
  * `File`/`Directory` API, the same plumbing as `features/billing/pdf.ts`.
  * Fetched fresh every time: a bill's paid status changes what the page shows.
  */
-const RENT_DIR = new Directory(Paths.cache, 'society-rent');
+// MP1-QA: built on first use, not at import (on web it throws at module load).
+const rentDir = (): Directory => new Directory(Paths.cache, 'society-rent');
 
 const safeName = (label: string) => `${label.replace(/[^a-zA-Z0-9-_ ]/g, '').trim() || 'rent-bill'}.pdf`;
 
 export async function shareRentPdf(id: string, label: string): Promise<void> {
   const bytes = await rentApi.pdfBytes(id);
+  const RENT_DIR = rentDir();
   if (!RENT_DIR.exists) RENT_DIR.create({ intermediates: true, idempotent: true });
   const file = new File(RENT_DIR, safeName(label));
   file.create({ overwrite: true });

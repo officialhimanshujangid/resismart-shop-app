@@ -146,10 +146,14 @@ export interface OrderReturnPayload {
   lines: OrderReturnLine[];
   /** Required, 3–300 chars — matches `returnItemsSchema`. */
   reason: string;
+  /** Commerce C4 (`refundToCreditFields`): sent only when the shop has store credit on. */
+  refundTo?: 'CASH_OR_KHATA' | 'STORE_CREDIT';
 }
 
 /** `{ order, creditNote }` — `order.controller.ts#returnItems`'s success body. */
 export interface OrderReturnResult {
   order: PartnerOrder;
   creditNote: PartnerDocumentRecord;
+  /** Commerce C4: paise refunded as store credit, when any was. */
+  refundedToCredit?: number;
 }

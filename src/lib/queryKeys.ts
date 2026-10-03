@@ -233,4 +233,27 @@ export const qk = {
   helpModule: (module: string, lang: string) => ['help', 'module', module, lang] as const,
   helpRoute: (path: string, lang: string) => ['help', 'route', path, lang] as const,
   helpSearch: (q: string, lang: string) => ['help', 'search', q, lang] as const,
+
+  /**
+   * Commerce C3–C6 (CONTRACT-commerce §8–§11). One `commerce` root so a settings
+   * save (which can switch a feature on or off) refreshes every commerce screen
+   * with one prefix invalidation. Counter holds sit under `billing` as well as
+   * here: a resumed hold becomes a bill.
+   */
+  commerce: {
+    all: () => ['commerce'] as const,
+    settings: () => ['commerce', 'settings'] as const,
+    offers: (filters?: Record<string, string | number | undefined>) => ['commerce', 'offers', filters ?? {}] as const,
+    offer: (id: string) => ['commerce', 'offer', id] as const,
+    redemptions: (id: string, page: number) => ['commerce', 'offer', id, 'redemptions', page] as const,
+    wallets: (filters?: Record<string, string | number | undefined>) => ['commerce', 'wallets', filters ?? {}] as const,
+    wallet: (partyId: string) => ['commerce', 'wallet', partyId] as const,
+    statement: (partyId: string, bucket: string, page: number) => ['commerce', 'wallet', partyId, 'statement', bucket, page] as const,
+    broadcasts: (status?: string) => ['commerce', 'broadcasts', status ?? ''] as const,
+    audience: (segment: string) => ['commerce', 'audience', segment] as const,
+    insights: (part: string, query?: Record<string, string | number | undefined>) => ['commerce', 'insights', part, query ?? {}] as const,
+    holds: () => ['commerce', 'holds'] as const,
+    quickKeys: () => ['commerce', 'quickKeys'] as const,
+    variants: (productId: string) => ['catalog', 'variants', productId] as const,
+  },
 } as const;

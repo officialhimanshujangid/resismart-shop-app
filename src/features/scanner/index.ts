@@ -70,7 +70,16 @@ export { useRememberedScanMethod } from './scanMethod';
 
 export { lookupProductByBarcode } from './api';
 
-export { RETAIL_BARCODE_TYPES, EXTENDED_BARCODE_TYPES, SUPPORTED_BARCODE_TYPES } from './types';
+export { RETAIL_BARCODE_TYPES, EXTENDED_BARCODE_TYPES, SUPPORTED_BARCODE_TYPES, CARTON_BARCODE_TYPES } from './types'; // >>> SCANNER (+CARTON)
 export type {
   SupportedBarcodeType, ScanHit, ScannedProduct, BarcodeLookupResult, ProductScanOutcome, ScanMethod,
+  ProductScanRejection, // >>> SCANNER
 } from './types';
+
+// >>> SCANNER — the shared normaliser / classifier / gate (identical copy of
+// backend/src/utils/scan-core.ts and frontend/src/lib/scan-core.ts).
+export {
+  canonicalBarcode, classifyScan, sameBarcode, barcodeLookupKeys, ScanGate, SCAN_GATE_DEFAULTS,
+} from './scanCore';
+export type { ClassifiedScan, ScanKind, GateDecision, ScanGateOptions } from './scanCore';
+// <<< SCANNER

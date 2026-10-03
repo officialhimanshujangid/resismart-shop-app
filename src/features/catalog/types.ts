@@ -101,6 +101,25 @@ export interface Product {
   drugSchedule?: 'H' | 'H1' | 'X';
   composition?: string;
   manufacturer?: string;
+  // Commerce C3/C6 (CONTRACT-commerce §1.3) — present only when set.
+  /** A non-sellable parent whose sizes / types are the products sold (C6). */
+  isVariantParent?: boolean;
+  variantParentId?: string;
+  variantLabel?: string;
+  variantAttributes?: Array<{ name: string; value: string }>;
+  /** List rows only, on a parent. */
+  variantCount?: number;
+  /** getOne only, on a parent. */
+  variants?: Product[];
+  /** A bundle (C3): selling it moves these components' stock. */
+  bundleComponents?: Array<{ productId: string; qty: number }>;
+  // >>> MP1-COMPLETE — Commerce C1 product page + quantity rules (`productCommerceFieldsSchema`); absent when unset.
+  description?: string;
+  highlights?: string[];
+  qtyStep?: number;
+  minQty?: number;
+  maxQty?: number;
+  // <<< MP1-COMPLETE
 }
 
 export interface ProductListFilters {
@@ -143,6 +162,19 @@ export interface ProductFormInput {
   images: string[];
   categoryId?: string | null;
   isActive: boolean;
+  /**
+   * Commerce C3 (feature BUNDLES): the items one unit of this product is made
+   * of. `null` on an update turns a bundle back into a plain product; absent
+   * leaves it alone. The server keeps a bundle's own stock at 0 (untracked).
+   */
+  bundleComponents?: Array<{ productId: string; qty: number }> | null;
+  // >>> MP1-COMPLETE — Commerce C1 (`productCommerceFieldsSchema`): absent = leave alone, `null` = clear.
+  description?: string | null;
+  highlights?: string[] | null;
+  qtyStep?: number | null;
+  minQty?: number | null;
+  maxQty?: number | null;
+  // <<< MP1-COMPLETE
 }
 
 export interface CreateProductInput extends ProductFormInput {

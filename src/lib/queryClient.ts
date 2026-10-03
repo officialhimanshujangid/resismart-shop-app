@@ -1,5 +1,6 @@
 import { QueryClient, onlineManager } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
+import { Platform } from 'react-native';
 import axios from 'axios';
 
 /**
@@ -36,12 +37,18 @@ import axios from 'axios';
  * sync trigger, kept identical on purpose so the two cannot disagree about
  * whether the phone is on the network.
  */
-onlineManager.setEventListener((setOnline) =>
-  NetInfo.addEventListener((state) => {
-    const reachable = state.isInternetReachable;
-    setOnline(reachable === null ? state.isConnected !== false : reachable);
-  }),
-);
+// >>> WEB-UI In a browser NetInfo's reachability probe is a cross-origin fetch the
+// browser blocks, so it reported "offline" while the network was fine. On web,
+// react-query keeps its own window online/offline events. Phones unchanged.
+if (Platform.OS !== 'web') {
+  onlineManager.setEventListener((setOnline) =>
+    NetInfo.addEventListener((state) => {
+      const reachable = state.isInternetReachable;
+      setOnline(reachable === null ? state.isConnected !== false : reachable);
+    }),
+  );
+}
+// <<< WEB-UI
 
 const retryPolicy = (failureCount: number, error: unknown): boolean => {
   if (failureCount >= 2) return false;

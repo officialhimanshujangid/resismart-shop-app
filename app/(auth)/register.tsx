@@ -36,6 +36,9 @@ import {
   OnboardingStatus,
 } from '../../src/api/partner.api';
 import { apiErrorMessage } from '../../src/api/axios';
+// >>> SITE-SYNC — the signup's coded refusals (PARTNER_WIRE_CODES), branched on by code.
+import { apiErrorCode } from '../../src/api/axios';
+// <<< SITE-SYNC
 import { AppButton } from '../../src/components/AppButton';
 import { getGoogleIdToken, isGoogleAvailable, GoogleCancelled } from '../../src/lib/google';
 import { AppInput } from '../../src/components/AppInput';
@@ -465,6 +468,12 @@ function StepIdentity({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // >>> SITE-SYNC — typed twice, as on the web wizard (`passwordErrors`: min 6, both equal).
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const MIN_PASSWORD = 6;
+  const passwordShort = password.length > 0 && password.length < MIN_PASSWORD;
+  const passwordMismatch = confirmPassword.length > 0 && confirmPassword !== password;
+  // <<< SITE-SYNC
   /**
    * The two legs are tracked SEPARATELY because they fail separately.
    *
@@ -695,6 +704,19 @@ function StepIdentity({
         },
       });
     } catch (e) {
+      // >>> SITE-SYNC — a lapsed or mismatched receipt (by CODE): drop both receipts and
+      // the typed codes and go back to "send codes", with the reason and what to do.
+      const code = apiErrorCode(e);
+      if (code === 'PARTNER_SIGNUP_EMAIL_NOT_VERIFIED' || code === 'PARTNER_SIGNUP_PHONE_NOT_VERIFIED') {
+        setTokens({});
+        setEmailCode('');
+        setPhoneCode('');
+        setEmailDelivery(null);
+        setPhoneDelivery(null);
+        show(`${apiErrorMessage(e)} ${t('auth.register.verifyAgain')}`, true);
+        return;
+      }
+      // <<< SITE-SYNC
       show(apiErrorMessage(e), true);
     } finally {
       setBusy(false);
@@ -702,7 +724,8 @@ function StepIdentity({
   };
 
   const canSend =
-    name.trim().length >= 2 && phone.trim().length >= 7 && /.+@.+\..+/.test(email) && password.length >= 6;
+    name.trim().length >= 2 && phone.trim().length >= 7 && /.+@.+\..+/.test(email)
+    && password.length >= MIN_PASSWORD && confirmPassword === password; // SITE-SYNC: confirmed
 
   /**
    * Both codes are genuinely out. DERIVED, never set by hand — the old boolean
@@ -743,7 +766,19 @@ function StepIdentity({
         secureTextEntry
         autoCapitalize="none"
         leftIcon="lock-outline"
+        error={passwordShort ? t('auth.register.passwordTooShort', { min: MIN_PASSWORD }) : undefined}
       />
+      {/* >>> SITE-SYNC — confirm the password, as the web wizard does. */}
+      <AppInput
+        label={t('auth.register.confirmPassword')}
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        secureTextEntry
+        autoCapitalize="none"
+        leftIcon="lock-check-outline"
+        error={passwordMismatch ? t('auth.register.passwordMismatch') : undefined}
+      />
+      {/* <<< SITE-SYNC */}
 
       {!sent ? (
         <>
@@ -818,7 +853,8 @@ function StepIdentity({
           <AppButton
             label={t('auth.register.createBusiness')}
             loading={busy}
-            disabled={emailCode.length !== 6 || phoneCode.length !== 6}
+            disabled={emailCode.length !== 6 || phoneCode.length !== 6
+              || password.length < MIN_PASSWORD || confirmPassword !== password /* SITE-SYNC */}
             onPress={createAccount}
           />
           {/* Under the code inputs, where somebody who is watching the wrong app

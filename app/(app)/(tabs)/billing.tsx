@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, useColorScheme, View } from 'react-native';
-import { ActivityIndicator, Button, Searchbar, SegmentedButtons, Surface, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Searchbar, Surface, Text } from 'react-native-paper';
+import { FitSegments } from '../../../src/components/FitSegments'; // >>> WEB-UI
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -109,8 +110,17 @@ export default function BillingScreen() {
       ? t('billing.list.noConnection')
       : null;
 
-  return (
-    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
+  /**
+   * >>> WEB-UI — everything above the bills scrolls WITH them.
+   *
+   * The hero, the usage bar, "New invoice", the search box and both filters
+   * used to stay fixed while only the list scrolled, which left a ~640dp phone
+   * with room for about one and a half bills. They are the list's header now.
+   * It is an ELEMENT rebuilt each render, not a component function, so React
+   * keeps the same search box mounted and typing never loses focus.
+   */
+  const listHeader = (
+    <View>
       <Hero
         action={<HelpButton c={c} variant="hero" />}
         isDark={isDark}
@@ -163,8 +173,10 @@ export default function BillingScreen() {
         inputStyle={{ fontSize: 14 }}
       />
 
+      {/* >>> WEB-UI — FitSegments: each segment as wide as its words, so
+          "Unpaid" is never cut to "Unp…" on a narrow phone. */}
       <View style={styles.filterRow}>
-        <SegmentedButtons
+        <FitSegments
           value={direction}
           onValueChange={(v) => setDirection(v as 'ALL' | DocumentDirection)}
           buttons={[
@@ -177,36 +189,47 @@ export default function BillingScreen() {
       </View>
 
       <View style={styles.filterRow}>
-        <SegmentedButtons
+        <FitSegments
           value={filter}
           onValueChange={(v) => setFilter(v as FilterKey)}
           buttons={FILTERS.map((f) => ({ value: f.value, label: t(f.labelKey) }))}
           density="small"
         />
       </View>
+      {/* <<< WEB-UI */}
+    </View>
+  );
 
-      {loadError ? (
-        <ErrorBlock c={c} message={loadError} onRetry={onRefresh} />
-      ) : query.isPending ? (
-        <ActivityIndicator style={{ marginTop: 32 }} />
-      ) : rows.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('billing.list.emptyTitle')}</Text>
-          <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
-            {canManage ? t('billing.list.emptyManage') : t('billing.list.emptyRead')}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={rows}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={query.isFetching} onRefresh={onRefresh} />}
-          renderItem={({ item }) => (
-            <DocumentRow item={item} c={c} isGstRegistered={isGstRegistered} onPress={() => router.push(toHref(`/(app)/billing/${item._id}`))} />
-          )}
-        />
-      )}
+  return (
+    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
+      {/* >>> WEB-UI — one list for the whole screen; the error / loading /
+          empty states sit in the space under the header. */}
+      <FlatList
+        data={loadError || query.isPending ? [] : rows}
+        keyExtractor={(item) => item._id}
+        ListHeaderComponent={listHeader}
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={query.isFetching && !query.isPending} onRefresh={onRefresh} />}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item }) => (
+          <DocumentRow item={item} c={c} isGstRegistered={isGstRegistered} onPress={() => router.push(toHref(`/(app)/billing/${item._id}`))} />
+        )}
+        ListEmptyComponent={
+          loadError ? (
+            <ErrorBlock c={c} message={loadError} onRetry={onRefresh} />
+          ) : query.isPending ? (
+            <ActivityIndicator style={{ marginTop: 32 }} />
+          ) : (
+            <View style={styles.empty}>
+              <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('billing.list.emptyTitle')}</Text>
+              <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
+                {canManage ? t('billing.list.emptyManage') : t('billing.list.emptyRead')}
+              </Text>
+            </View>
+          )
+        }
+      />
+      {/* <<< WEB-UI */}
     </SafeAreaView>
   );
 }
@@ -222,7 +245,7 @@ function DocumentRow({
 }) {
   const { t } = useTranslation();
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={onPress} style={styles.rowWrap /* >>> WEB-UI */}>
       <Surface style={[styles.row, { backgroundColor: c.surface }]} elevation={1}>
         <View style={styles.rowTop}>
           <Text style={[styles.rowNumber, { color: c.textPrimary }]}>
@@ -254,7 +277,11 @@ const styles = StyleSheet.create({
   newInvoiceButton: { borderRadius: radii.field },
   search: { marginHorizontal: 20, marginTop: 12, borderRadius: radii.field },
   filterRow: { paddingHorizontal: 20, marginTop: 10 },
-  list: { padding: 20, paddingTop: 10, gap: 10 },
+  // >>> WEB-UI — the header is inside the list now, so the 20dp side padding
+  // moved onto each bill (`rowWrap`); the gap still gives 10dp above the first.
+  list: { paddingBottom: 20, gap: 10 },
+  rowWrap: { marginHorizontal: 20 },
+  // <<< WEB-UI
   row: { borderRadius: radii.card, padding: 14 },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowNumber: { fontSize: 14, fontWeight: '600' },

@@ -101,6 +101,19 @@ export default function PaymentsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
+      {/* >>> WEB-UI — the whole screen scrolls as one list: the hero and the
+          In/Out row are the list's header, so the payments are not squeezed
+          under them; loading / error / empty sit under the header. */}
+        <FlatList
+          data={query.isPending || query.isError ? [] : rows}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={query.isFetching && !query.isPending && page === 1} onRefresh={onRefresh} />}
+          onEndReachedThreshold={0.4}
+          onEndReached={loadMore}
+          ListFooterComponent={query.isFetching && page > 1 ? <ActivityIndicator style={{ marginVertical: 16 }} /> : null}
+          ListHeaderComponent={
+            <View>
       <Hero
         action={<HelpButton c={c} variant="hero" />}
         isDark={isDark}
@@ -139,30 +152,26 @@ export default function PaymentsScreen() {
           />
         )}
       </View>
-
-      {query.isPending ? (
-        <Loading c={c} label={t('payments.list.loading')} />
-      ) : query.isError ? (
-        <ErrorBlock c={c} message={apiErrorMessage(query.error, t('payments.list.loadFailed'))} onRetry={() => void query.refetch()} />
-      ) : rows.length === 0 ? (
-        <EmptyBlock
-          c={c}
-          icon="wallet-outline"
-          title={direction === 'IN' ? t('payments.list.emptyInTitle') : t('payments.list.emptyOutTitle')}
-          body={direction === 'IN'
-            ? t('payments.list.emptyInBody')
-            : t('payments.list.emptyOutBody')}
-        />
-      ) : (
-        <FlatList
-          data={rows}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={query.isFetching && page === 1} onRefresh={onRefresh} />}
-          onEndReachedThreshold={0.4}
-          onEndReached={loadMore}
-          ListFooterComponent={query.isFetching && page > 1 ? <ActivityIndicator style={{ marginVertical: 16 }} /> : null}
+            </View>
+          }
+          ListEmptyComponent={
+            query.isPending ? (
+              <Loading c={c} label={t('payments.list.loading')} />
+            ) : query.isError ? (
+              <ErrorBlock c={c} message={apiErrorMessage(query.error, t('payments.list.loadFailed'))} onRetry={() => void query.refetch()} />
+            ) : (
+              <EmptyBlock
+                c={c}
+                icon="wallet-outline"
+                title={direction === 'IN' ? t('payments.list.emptyInTitle') : t('payments.list.emptyOutTitle')}
+                body={direction === 'IN'
+                  ? t('payments.list.emptyInBody')
+                  : t('payments.list.emptyOutBody')}
+              />
+            )
+          }
           renderItem={({ item }) => (
+            <View style={styles.item}>
             <PaymentRow
               item={item}
               c={c}
@@ -172,9 +181,10 @@ export default function PaymentsScreen() {
               cancelling={cancellingId === item._id}
               onCancel={() => cancelPayment(item)}
             />
+            </View>
           )}
         />
-      )}
+      {/* <<< WEB-UI */}
 
       <Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3500}>
         {toast}
@@ -260,7 +270,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8,
   },
-  list: { padding: 16, paddingTop: 4, gap: 10, paddingBottom: 32 },
+  // >>> WEB-UI — the header is inside the list now; side padding moved onto each row.
+  list: { gap: 10, paddingBottom: 32 },
+  item: { paddingHorizontal: 16 },
+  // <<< WEB-UI
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radii.card, padding: 14 },
   rowIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   partyName: { fontSize: 14, fontWeight: '600' },

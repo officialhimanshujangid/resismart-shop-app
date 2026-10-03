@@ -12,6 +12,10 @@ import { useOrderReturnEligibility, remainingQty } from '../returnEligibility';
 import { newIdempotencyKey } from '../../../lib/idempotency';
 import { apiErrorMessage } from '../../../api/axios';
 import { themeColors, radii } from '../../../constants/colors';
+// Commerce C4: "Refund as store credit" — only when the shop has store credit on.
+import { useCommerceAccess } from '../../commerce/access';
+import { useCommerceSettings } from '../../commerce/hooks';
+import { SwitchRow } from '../../commerce/components/ui';
 
 interface RecordReturnModalProps {
   /** The order to return items for. Rendered only while non-null. */
@@ -49,14 +53,23 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
   // this same submit — never regenerated inside the mutation, which is what
   // would let a retried tap on a flaky connection raise a second credit note.
   const idempotencyKeyRef = useRef<string | null>(null);
+  const commerce = useCommerceAccess();
+  const walletOn = commerce.has('WALLET');
+  const settings = useCommerceSettings(walletOn && commerce.settings.canView);
+  const creditDefault = settings.data?.settings.wallet.refundToCreditDefault ?? false;
+  const [toCredit, setToCredit] = useState(false);
 
   useEffect(() => {
     setQtyByItem({});
     setReason('');
     setTouchedReason(false);
     setServerError(null);
+    setToCredit(creditDefault);
     idempotencyKeyRef.current = order ? newIdempotencyKey('return') : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id]);
+  // The shop's default can arrive after the sheet opened.
+  useEffect(() => { setToCredit(creditDefault); }, [creditDefault]);
 
   const returnedByItem = eligibility.data?.returnedByItem ?? new Map<string, number>();
 
@@ -87,7 +100,11 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
     if (!idempotencyKeyRef.current) idempotencyKeyRef.current = newIdempotencyKey('return');
     setServerError(null);
     mutation.mutate(
-      { id: order.id, lines, reason: trimmedReason, idempotencyKey: idempotencyKeyRef.current },
+      {
+        id: order.id, lines, reason: trimmedReason, idempotencyKey: idempotencyKeyRef.current,
+        // Said explicitly only when store credit is on; otherwise the body is exactly the old one.
+        ...(walletOn ? { refundTo: toCredit ? 'STORE_CREDIT' as const : 'CASH_OR_KHATA' as const } : {}),
+      },
       {
         onSuccess: (result) => onSuccess(result),
         onError: (e: unknown) => setServerError(apiErrorMessage(e)),
@@ -198,6 +215,18 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
               <HelperText type="error" visible={touchedReason && reasonTooShort}>
                 {t('orders.return.reasonTooShort')}
               </HelperText>
+
+              {walletOn ? (
+                <SwitchRow
+                  c={c}
+                  label={t('commerce.wallet.return.toCredit')}
+                  hint={toCredit ? t('commerce.wallet.return.toCreditOn') : t('commerce.wallet.return.toCreditOff')}
+                  value={toCredit}
+                  onValueChange={setToCredit}
+                  disabled={mutation.isPending}
+                  testID="return-to-credit"
+                />
+              ) : null}
 
               {serverError && (
                 <View style={[styles.errorBox, { backgroundColor: c.error + '18', borderColor: c.error }]}>

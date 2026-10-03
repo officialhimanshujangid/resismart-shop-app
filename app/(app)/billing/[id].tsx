@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import {
-  Button, Dialog, Divider, IconButton, Menu, Portal, RadioButton, SegmentedButtons, Snackbar, Surface, Text, TextInput,
+  Button, Dialog, Divider, IconButton, Menu, Portal, RadioButton, Snackbar, Surface, Text, TextInput,
 } from 'react-native-paper';
+import { FitSegments } from '../../../src/components/FitSegments'; // >>> WEB-UI
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,6 +31,10 @@ import { formatI18nDate } from '../../../src/i18n';
 import { canManageDocType } from '../../../src/features/p1/access';
 import { AccountPicker } from '../../../src/features/money/components/AccountPicker';
 import { PurchaseDocActions } from '../../../src/features/purchases/components/PurchaseDocActions';
+// >>> MP1-COMPLETE — P2: "Refund as" (Commerce C4) when issuing a credit note / sales return draft.
+import { RefundToChoice, useRefundTo } from '../../../src/features/billing/components/RefundToChoice';
+import { asksRefundTo, refundToBody } from '../../../src/features/billing/refundTo';
+// <<< MP1-COMPLETE
 
 /**
  * The channels `sendDocumentSchema` accepts server-side — `documentsApi.send`
@@ -180,16 +185,23 @@ export default function DocumentDetailScreen() {
    * new request, since a document can only be issued once.
    */
   const issueIntentKey = useRef<string | null>(null);
+  // >>> MP1-COMPLETE — P2: the choice is part of the issue body, so a changed choice is a new intent (new key).
+  const refundChoice = useRefundTo();
+  const issueRefundTo = doc
+    ? refundToBody({ walletOn: refundChoice.walletOn, type: doc.type, partyId: doc.partyId, refundTo: refundChoice.value }).refundTo
+    : undefined;
   useEffect(() => {
     issueIntentKey.current = null;
-  }, [doc?._id]);
+  }, [doc?._id, issueRefundTo]);
+  // <<< MP1-COMPLETE
 
   const handleIssue = useCallback(async () => {
     if (!doc) return;
     setBusy('issue');
     if (!issueIntentKey.current) issueIntentKey.current = newIdempotencyKey('issue');
     try {
-      const { document } = await documentsApi.issue(doc._id, issueIntentKey.current);
+      // MP1-COMPLETE — P2: `{ refundTo }` only when asked and chosen; otherwise the old empty body.
+      const { document } = await documentsApi.issue(doc._id, issueIntentKey.current, issueRefundTo ? { refundTo: issueRefundTo } : undefined);
       queryClient.setQueryData(qk.billing.document(doc._id), document);
       invalidate();
     } catch (e: unknown) {
@@ -197,7 +209,7 @@ export default function DocumentDetailScreen() {
     } finally {
       setBusy(null);
     }
-  }, [doc, queryClient, invalidate, t]);
+  }, [doc, queryClient, invalidate, t, issueRefundTo]); // MP1-COMPLETE: + refundTo
 
   /**
    * Throw a DRAFT away.
@@ -706,6 +718,14 @@ export default function DocumentDetailScreen() {
           </Surface>
         )}
 
+        {/* >>> MP1-COMPLETE — P2: how this credit note / sales return pays the customer back (sent at issue). */}
+        {isDraft && canManage && asksRefundTo({ walletOn: refundChoice.walletOn, type: doc.type, partyId: doc.partyId }) && (
+          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1} testID="doc-refund-to">
+            <RefundToChoice c={c} value={refundChoice.value} onChange={refundChoice.choose} disabled={!!busy} />
+          </Surface>
+        )}
+        {/* <<< MP1-COMPLETE */}
+
         {isDraft && (
           <Surface style={[styles.card, { backgroundColor: c.surfaceVariant }]} elevation={0}>
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
@@ -876,12 +896,15 @@ export default function DocumentDetailScreen() {
               onChangeText={setPayAmount}
               outlineStyle={{ borderRadius: radii.field }}
             />
-            <SegmentedButtons
+            {/* >>> WEB-UI — five modes do not fit a phone at equal widths; each
+                segment is as wide as its word and the row scrolls if needed. */}
+            <FitSegments
               value={payMode}
               onValueChange={(v) => setPayMode(v as PaymentMode)}
               density="small"
               buttons={PAYMENT_MODES.map((m) => ({ value: m, label: t(PAYMENT_MODE_LABEL_KEY[m]) }))}
             />
+            {/* <<< WEB-UI */}
             <AccountPicker c={c} value={payAccountId} onChange={setPayAccountId} />
             <TextInput
               mode="outlined"

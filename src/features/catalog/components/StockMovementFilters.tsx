@@ -25,7 +25,7 @@ export function StockMovementFilters({
 
   return (
     <View style={styles.wrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll /* >>> WEB-UI */} contentContainerStyle={styles.chips}>
         {chips.map((chip) => {
           const active = (value.type ?? '') === chip.key;
           return (
@@ -76,7 +76,11 @@ export function StockMovementFilters({
 
 const styles = StyleSheet.create({
   wrap: { gap: 4 },
-  chips: { gap: 8, paddingVertical: 2, paddingRight: 8 },
+  // >>> WEB-UI — the strip is only as tall as a chip (a browser lets a
+  // horizontal scroller grow and stretches its children).
+  chipScroll: { flexGrow: 0, flexShrink: 0 },
+  chips: { gap: 8, paddingVertical: 2, paddingRight: 8, alignItems: 'center' },
+  // <<< WEB-UI
   chip: { borderRadius: radii.pill, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
   chipText: { fontSize: 12, fontWeight: '600' },
   dates: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },

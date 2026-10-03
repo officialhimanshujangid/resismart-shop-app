@@ -72,6 +72,14 @@ function keysForKind(kind: string | undefined): QueryKey[] {
   // P2 business-type modules: every P2 screen keys under ['p2', …].
   if (P2_KINDS.has(kind)) keys.push(['p2']);
   if (kind === 'APPOINTMENT_REMINDER' || kind.startsWith('JOB_')) keys.push(qk.bookings.all());
+  // Commerce (CONTRACT-commerce §12.1): the four new kinds. WALLET moves a
+  // customer's balance; PARTNER_OFFER is a sent offer message (the weekly
+  // meter); BACK_IN_STOCK changes the "waiting for stock" demand;
+  // DELIVERY_ASSIGNED is an order given to a rider.
+  if (kind === 'WALLET') keys.push(['commerce', 'wallet'], ['commerce', 'wallets']);
+  if (kind === 'PARTNER_OFFER') keys.push(['commerce', 'broadcasts']);
+  if (kind === 'BACK_IN_STOCK') keys.push(['commerce', 'insights']);
+  if (kind === 'DELIVERY_ASSIGNED') keys.push(qk.orders.all(), ['commerce', 'myDeliveries']);
 
   return keys;
 }

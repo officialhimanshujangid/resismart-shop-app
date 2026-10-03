@@ -11,6 +11,7 @@ import { ORDER_VERB_LABEL_KEYS } from '../backend-mirror';
 import { OrderStatusChip } from './OrderStatusChip';
 import { themeColors, radii } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
+import { slotText } from '../../commerce/format';
 
 /**
  * "5m ago" / "2h ago" / "3 Aug" — short, because this sits on a crowded row.
@@ -103,6 +104,22 @@ export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps)
           </Text>
         </View>
 
+        {/* Commerce C2: the delivery slot and the rider, only when the order has them. */}
+        {order.deliverySlot || order.delivery?.staffName ? (
+          <View style={styles.c2Row}>
+            {order.deliverySlot ? (
+              <Text style={[styles.c2Chip, { color: c.info, borderColor: `${c.info}55` }]} numberOfLines={1}>
+                {slotText(order.deliverySlot, t)}
+              </Text>
+            ) : null}
+            {order.delivery?.staffName ? (
+              <Text style={[styles.c2Chip, { color: c.success, borderColor: `${c.success}55` }]} numberOfLines={1}>
+                {t('commerce.fulfilment.riderChip', { name: order.delivery.staffName })}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.bottomRow}>
           <View style={styles.metaRow}>
             <MaterialCommunityIcons
@@ -130,6 +147,8 @@ export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps)
 }
 
 const styles = StyleSheet.create({
+  c2Row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  c2Chip: { fontSize: 11.5, fontWeight: '700', borderWidth: 1, borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2, maxWidth: '100%' },
   card: {
     borderRadius: radii.card,
     borderWidth: StyleSheet.hairlineWidth,

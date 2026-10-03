@@ -13,6 +13,9 @@ import { ErrorBlock } from '../../../src/features/more/ui';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { useProducts, useProductCategories, ProductCard, UsageMeterBar } from '../../../src/features/catalog';
 import type { Product } from '../../../src/features/catalog';
+// Commerce C6: print barcode labels for several items at once.
+import { ProductPickerSheet } from '../../../src/features/commerce/components/ui';
+import { LabelsSheet } from '../../../src/features/commerce/components/LabelsSheet';
 
 /**
  * The catalog list. Gate 3 (`CATALOG_VIEW` READ) got this far —
@@ -40,6 +43,10 @@ export default function CatalogListScreen() {
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<Product[]>([]);
+  /** C6 labels: pick items (sheet 1), then copies / layout (sheet 2). */
+  const [labelPicking, setLabelPicking] = useState(false);
+  const [labelItems, setLabelItems] = useState<Array<{ productId: string; name: string }>>([]);
+  const [labelsOpen, setLabelsOpen] = useState(false);
 
   // `handle`, not `t` — the local used to shadow the translator.
   useEffect(() => {
@@ -141,6 +148,14 @@ export default function CatalogListScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
+      {/* >>> WEB-UI — the whole screen scrolls as one list: the hero, search
+          and chips are the list's header (an element, so the search box keeps
+          its focus), and the products are no longer squeezed under them. */}
+      <FlatList
+        data={rows}
+        keyExtractor={(p) => p._id}
+        ListHeaderComponent={
+          <View>
       <Hero
         isDark={isDark}
         rounded={false}
@@ -170,6 +185,7 @@ export default function CatalogListScreen() {
         data={chips}
         keyExtractor={(item) => item._id ?? 'all'}
         showsHorizontalScrollIndicator={false}
+        style={styles.chipList /* >>> WEB-UI — never grows to fill the column on web */}
         contentContainerStyle={styles.chipRow}
         renderItem={({ item }) => {
           const active = item._id === categoryId;
@@ -183,25 +199,39 @@ export default function CatalogListScreen() {
           );
         }}
         ListFooterComponent={
-          <Pressable
-            onPress={() => setLowStockOnly((v) => !v)}
-            style={[
-              styles.chip,
-              styles.lowStockChip,
-              { backgroundColor: lowStockOnly ? c.warning : c.surfaceVariant, borderColor: lowStockOnly ? c.warning : c.divider },
-            ]}
-          >
-            <MaterialCommunityIcons name="alert-outline" size={13} color={lowStockOnly ? '#fff' : c.textSecondary} />
-            <Text style={{ color: lowStockOnly ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600', marginLeft: 4 }}>
-              {t('catalog.list.lowStock')}
-            </Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row' }}>
+            <Pressable
+              onPress={() => setLowStockOnly((v) => !v)}
+              style={[
+                styles.chip,
+                styles.lowStockChip,
+                { backgroundColor: lowStockOnly ? c.warning : c.surfaceVariant, borderColor: lowStockOnly ? c.warning : c.divider },
+              ]}
+            >
+              <MaterialCommunityIcons name="alert-outline" size={13} color={lowStockOnly ? '#fff' : c.textSecondary} />
+              <Text style={{ color: lowStockOnly ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600', marginLeft: 4 }}>
+                {t('catalog.list.lowStock')}
+              </Text>
+            </Pressable>
+            {rows.length > 0 ? (
+              <Pressable
+                onPress={() => { setLabelItems([]); setLabelPicking(true); }}
+                accessibilityRole="button"
+                style={[styles.chip, styles.lowStockChip, { backgroundColor: c.surfaceVariant, borderColor: c.divider }]}
+                testID="catalog-print-labels"
+              >
+                <MaterialCommunityIcons name="printer-outline" size={13} color={c.textSecondary} />
+                <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '600', marginLeft: 4 }}>
+                  {t('commerce.labels.print')}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         }
       />
-
-      <FlatList
-        data={rows}
-        keyExtractor={(p) => p._id}
+          </View>
+        }
+        // <<< WEB-UI
         renderItem={({ item }) => (
           <ProductCard product={item} onPress={() => router.push({ pathname: '/catalog/[id]', params: { id: item._id } })} />
         )}
@@ -214,7 +244,9 @@ export default function CatalogListScreen() {
           ) : null
         }
         ListEmptyComponent={
-          loadError ? (
+          // >>> WEB-UI — centred in the space under the header.
+          <View style={styles.emptyFill}>
+          {loadError ? (
             <ErrorBlock c={c} message={loadError} onRetry={() => void productsQuery.refetch()} />
           ) : productsQuery.isLoading ? (
             <ActivityIndicator color={c.primary} />
@@ -226,9 +258,24 @@ export default function CatalogListScreen() {
                 {t(canManage ? 'catalog.list.emptyManage' : 'catalog.list.emptyRead')}
               </Text>
             </View>
-          )
+          )}
+          </View>
+          // <<< WEB-UI
         }
       />
+
+      <ProductPickerSheet
+        visible={labelPicking}
+        title={t('commerce.labels.pickTitle')}
+        multi
+        hideParents
+        picked={labelItems.map((i) => i.productId)}
+        onPick={(p) => setLabelItems((x) => (x.some((i) => i.productId === p._id)
+          ? x.filter((i) => i.productId !== p._id)
+          : [...x, { productId: p._id, name: p.name }]))}
+        onDismiss={() => { setLabelPicking(false); if (labelItems.length) setLabelsOpen(true); }}
+      />
+      <LabelsSheet visible={labelsOpen} onDismiss={() => setLabelsOpen(false)} items={labelItems} />
 
       {canManage && (
         <View style={[styles.footer, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
@@ -261,11 +308,17 @@ export default function CatalogListScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   search: { marginHorizontal: 14, marginTop: 10, borderRadius: radii.field },
+  // >>> WEB-UI
+  chipList: { flexGrow: 0, flexShrink: 0 },
+  // <<< WEB-UI
   chipRow: { paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center' },
   chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth, marginRight: 8 },
   lowStockChip: { flexDirection: 'row', alignItems: 'center' },
   listPad: { paddingBottom: 12 },
-  emptyGrow: { flexGrow: 1, justifyContent: 'center' },
+  // >>> WEB-UI — the header is inside the list; only the empty block is centred.
+  emptyGrow: { flexGrow: 1 },
+  emptyFill: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
+  // <<< WEB-UI
   emptyBox: { alignItems: 'center', gap: 6, paddingHorizontal: 32 },
   emptyTitle: { fontSize: 15, fontWeight: '600', marginTop: 4 },
   emptyBody: { fontSize: 13, textAlign: 'center' },

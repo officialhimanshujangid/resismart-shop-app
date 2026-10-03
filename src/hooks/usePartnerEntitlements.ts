@@ -5,6 +5,7 @@ import { qk } from '../lib/queryKeys';
 import { PARTNER_MODULES, PartnerModule, PartnerAccessModule } from '../types/api-contract.generated';
 import { normaliseRoleLimits, PartnerRoleLimits } from '../features/p1/access';
 import { isP2Module, type P2Module } from '../features/p2/modules';
+import { isCommerceFeature } from '../features/commerce/features';
 
 /**
  * One place the partner app asks "may I?", fed by `GET /partners/me/entitlements`.
@@ -238,6 +239,10 @@ function normalise(raw: PartnerEntitlementsPayload | undefined): PartnerEntitlem
     // server), so nothing here changes for a business that never opted in.
     ...(Array.isArray(raw.categoryModules)
       ? { categoryModules: raw.categoryModules.filter((m): m is P2Module => isP2Module(m)) }
+      : {}),
+    // Commerce: only the feature names this build knows; absent stays absent.
+    ...(Array.isArray(raw.commerceFeatures)
+      ? { commerceFeatures: raw.commerceFeatures.filter((f) => isCommerceFeature(f)) }
       : {}),
   };
 }

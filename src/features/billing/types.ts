@@ -432,6 +432,16 @@ export interface PartnerDocumentRecord {
   billedById?: string;
   /** P2 PHARMACY: the prescription on a Schedule H/H1 sale. */
   rx?: DocumentRx;
+  // ── Commerce C3/C6 (CONTRACT-commerce §8, §16) — absent unless the counter asked for them.
+  /** What the offers took off this bill, per offer (customer terms, incl. tax). */
+  offers?: Array<{ offerId: string; kind: 'COUPON' | 'AUTO'; code?: string; name: string; benefitType: string; discountPaise: number }>;
+  /**
+   * What the counter asked for, and the OFFER part of each line's `discountPaise`
+   * (line basis). Subtract it before sending lines back — see `manualDiscountLines`.
+   */
+  offerRequest?: { couponCode?: string; applyAutoOffers?: boolean; lineOfferPaise?: number[] };
+  /** Points redeemed at the counter checkout and each line's points share of its discount. */
+  loyaltyRequest?: { points: number; lineRedeemPaise: number[] };
 }
 
 /** A warning an issue answered with (`warnings[]`, §4.4) — the bill WAS issued. */
@@ -547,6 +557,8 @@ export interface InvoiceDraft {
   issueWarnings?: IssueWarning[];
   /** P2 PHARMACY: the prescription (Schedule H/H1 sale). Absent on every other bill. */
   rx?: DocumentRx;
+  /** MP1-COMPLETE — P2: credit note / sales return refunded as chosen (sent on `issue`; absent = shop default). */
+  refundTo?: 'CASH_OR_KHATA' | 'STORE_CREDIT';
   status: DraftSyncStatus;
   /** Set the instant `create` succeeds, persisted before `issue` is ever attempted. */
   serverDraftId?: string;
@@ -579,4 +591,6 @@ export interface AddDraftInput {
   itcEligible?: boolean;
   /** P2 PHARMACY: the prescription for a Schedule H/H1 sale. */
   rx?: DocumentRx;
+  /** MP1-COMPLETE — P2: credit note / sales return only, and only when the shop keeps store credit. */
+  refundTo?: 'CASH_OR_KHATA' | 'STORE_CREDIT';
 }

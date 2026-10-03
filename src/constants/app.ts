@@ -1,5 +1,21 @@
 // OLD (suspended Render): export const API_BASE_URL = 'https://resismart-backend-q0lf.onrender.com/api/v1';
-export const API_BASE_URL = 'https://resismart-backend-67ua.onrender.com/api/v1';
+
+/**
+ * LOCAL-API: opened in a browser on this computer (`expo start --web`,
+ * http://localhost:8082) → the local backend, so new backend work can be checked
+ * before deploy. Phones / store builds have no `window.location` on localhost
+ * and keep `EXPO_PUBLIC_API_URL` or production. `EXPO_PUBLIC_LOCAL_API_URL`
+ * overrides the local address.
+ */
+function isLocalWebPreview(): boolean {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+  const host = window.location?.hostname ?? '';
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
+export const API_BASE_URL = isLocalWebPreview()
+  ? process.env.EXPO_PUBLIC_LOCAL_API_URL || 'http://localhost:8000/api/v1'
+  : process.env.EXPO_PUBLIC_API_URL || 'https://resismart-backend-67ua.onrender.com/api/v1';
 
 /**
  * The WEB OAuth client id — the audience every Google ID token is checked

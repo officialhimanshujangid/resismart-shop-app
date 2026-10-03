@@ -18,14 +18,18 @@ import { qk } from '../../../src/lib/queryKeys';
 import { Kpi, findKpi, findSeries, formatKpiValue } from '../../../src/api/analytics.api';
 import { Hero, GlassStat } from '../../../src/components/Hero';
 import { HelpButton } from '../../../src/features/help/HelpButton';
-import { TodayShortcuts } from '../../../src/features/p1/TodayShortcuts';
 import { P2TodayShortcuts } from '../../../src/features/p2/P2Shortcuts';
+// >>> SHORTCUTS — the grid replaces the P1 pill row (`features/p1/TodayShortcuts`): its three
+// actions (Add expense, Khata, Close the day) are tiles in it, gated like their screens.
+import { TodayShortcutGrid } from '../../../src/features/today/ShortcutGrid';
+// <<< SHORTCUTS
 import { MiniBars } from '../../../src/components/charts';
 import { HomeSocietyBanner } from '../../../src/features/society/components/HomeSocietyBanner';
 import { useMyReach } from '../../../src/features/society/hooks';
 import { useMyRent } from '../../../src/features/rent/hooks';
 import { rentAccess } from '../../../src/features/rent/logic';
 import { RentTodayCard } from '../../../src/features/rent/components/RentTodayCard';
+import { PauseOrdersCard } from '../../../src/features/commerce/components/PauseOrdersCard';
 
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal, CodeRefusal } from '../../../src/features/bookings/components/BookingActionModal';
@@ -199,6 +203,7 @@ export default function TodayScreen() {
     void queryClient.invalidateQueries({ queryKey: qk.today() });
     void queryClient.invalidateQueries({ queryKey: qk.partner.reach() });
     void queryClient.invalidateQueries({ queryKey: qk.rent.all() });
+    void queryClient.invalidateQueries({ queryKey: qk.commerce.settings() });
   }, [queryClient]);
 
   const banner = ((): TodayBanner | null => {
@@ -427,6 +432,9 @@ export default function TodayScreen() {
         {/* P4: "Rent ₹35,400 due 5 Oct" — only with a lease and something due. */}
         <RentTodayCard c={c} list={myRent.data} />
 
+        {/* Commerce C1: the one-tap Pause orders — only for someone who may pause; nothing otherwise. */}
+        <PauseOrdersCard c={c} />
+
         {banner && (
           <Surface
             style={[
@@ -462,6 +470,12 @@ export default function TodayScreen() {
             )}
           </Surface>
         )}
+
+        {/* >>> SHORTCUTS: the most-used jobs, one tap each — near the top, above
+            the long lists. Each tile gated like its destination; nothing drawn
+            when none qualify. Hidden behind a warning banner like the rest. */}
+        {ready && !blocked && <TodayShortcutGrid c={c} />}
+        {/* <<< SHORTCUTS */}
 
         {/* The 14-day sales trend, reusing the shared bar chart on a solid card
             beneath the hero — the shape a proprietor reads as "how did each day
@@ -566,7 +580,6 @@ export default function TodayScreen() {
           </Surface>
         )}
 
-        {ready && !blocked && <TodayShortcuts c={c} />}
         {ready && !blocked && <P2TodayShortcuts c={c} />}
 
         {ready && !blocked && showBookings && (

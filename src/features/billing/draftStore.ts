@@ -157,10 +157,15 @@ async function syncDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
      * refused as a key reused for another request.
      */
     const override = currentDraft(draft.id, draft).overrideCreditLimit === true;
+    // MP1-COMPLETE — P2: the draft's own `refundTo` (fixed when it was queued), so every
+    // retry sends the same body under the same derived key.
+    const refundTo = currentDraft(draft.id, draft).refundTo;
     const { document, warnings } = await documentsApi.issue(
       serverDraftId,
       `${draft.idempotencyKey}-issue${override ? '-override' : ''}`,
-      override ? { overrideCreditLimit: true } : undefined,
+      override || refundTo
+        ? { ...(override ? { overrideCreditLimit: true } : {}), ...(refundTo ? { refundTo } : {}) }
+        : undefined,
     );
     patchDraft(draft.id, {
       status: 'SYNCED',
@@ -291,6 +296,8 @@ async function addDraft(input: AddDraftInput): Promise<InvoiceDraft> {
     supplierInvoiceDate: input.supplierInvoiceDate,
     itcEligible: input.itcEligible,
     ...(input.rx ? { rx: input.rx } : {}),
+    // MP1-COMPLETE — P2: only on a credit note / sales return the screen asked about.
+    ...(input.refundTo ? { refundTo: input.refundTo } : {}),
     status: 'PENDING',
   };
   setDrafts([draft, ...drafts]);

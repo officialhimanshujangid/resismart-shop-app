@@ -190,6 +190,23 @@ export default function PartiesListScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
+      {/* >>> WEB-UI — the whole screen scrolls as one list: the hero, tabs,
+          search and the hidden toggle are the list's header now (an element,
+          so the search box keeps its focus), and the parties are not squeezed
+          into a strip under them. Loading / error / empty sit under the header. */}
+        <FlatList
+          data={rows}
+          keyExtractor={(p) => p._id}
+          renderItem={(info) => <View style={styles.item}>{renderItem(info)}</View>}
+          contentContainerStyle={styles.listContent}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          onRefresh={() => { setPage(1); void query.refetch(); }}
+          refreshing={query.isRefetching && page === 1}
+          onEndReachedThreshold={0.4}
+          onEndReached={loadMore}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
+            <View style={styles.header}>
       <Hero
         isDark={isDark}
         eyebrow={t('parties.list.eyebrow')}
@@ -222,28 +239,19 @@ export default function PartiesListScreen() {
           <Switch value={showHidden} onValueChange={setShowHidden} color={c.primary} />
         </View>
       </View>
-
-      {query.isPending && rows.length === 0 ? (
-        <Loading c={c} />
-      ) : query.isError && rows.length === 0 ? (
-        <ErrorBlock c={c} message={apiErrorMessage(query.error, t('parties.list.loadFailed'))} onRetry={() => query.refetch()} />
-      ) : (
-        <FlatList
-          data={rows}
-          keyExtractor={(p) => p._id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          onRefresh={() => { setPage(1); void query.refetch(); }}
-          refreshing={query.isRefetching && page === 1}
-          onEndReachedThreshold={0.4}
-          onEndReached={loadMore}
+            </View>
+          }
           ListFooterComponent={
             query.isFetching && page > 1 ? (
               <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
             ) : null
           }
           ListEmptyComponent={
+            query.isPending && rows.length === 0 ? (
+              <Loading c={c} />
+            ) : query.isError && rows.length === 0 ? (
+              <ErrorBlock c={c} message={apiErrorMessage(query.error, t('parties.list.loadFailed'))} onRetry={() => query.refetch()} />
+            ) : (
             <EmptyBlock
               c={c}
               icon="account-group-outline"
@@ -262,9 +270,10 @@ export default function PartiesListScreen() {
                     : t('parties.list.emptyBody')
               }
             />
+            )
           }
         />
-      )}
+      {/* <<< WEB-UI */}
 
       {/* No Add button while looking at hidden parties — the action that belongs
           on that list is "show again", and it is on each row. */}
@@ -287,7 +296,12 @@ const styles = StyleSheet.create({
   hero: { marginHorizontal: 16, marginTop: 8, marginBottom: 8 },
   controls: { paddingHorizontal: 16, gap: 10, paddingBottom: 4 },
   search: { borderRadius: radii.field, elevation: 0 },
-  listContent: { padding: 16, paddingBottom: 96, flexGrow: 1 },
+  // >>> WEB-UI — the header is inside the list now: the side padding moved onto
+  // each row, and the 16dp under the controls onto the header.
+  listContent: { paddingBottom: 96, flexGrow: 1 },
+  header: { paddingBottom: 16 },
+  item: { paddingHorizontal: 16 },
+  // <<< WEB-UI
   row: { borderRadius: radii.card },
   rowTouchable: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
   name: { fontSize: 15, fontWeight: '600' },

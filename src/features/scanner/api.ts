@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { apiClient, ApiEnvelope } from '../../api/axios';
 import { BarcodeLookupResult, ScannedProduct } from './types';
+import { canonicalBarcode } from './scanCore'; // >>> SCANNER
 
 /**
  * `GET /partners/me/products/by-barcode/:code` — one indexed hit
@@ -22,7 +23,10 @@ import { BarcodeLookupResult, ScannedProduct } from './types';
  * their connection comes back and the real lookup would have found the row.
  */
 export async function lookupProductByBarcode(code: string): Promise<BarcodeLookupResult> {
-  const normalized = code.trim().toUpperCase();
+  // >>> SCANNER — the canonical spelling (UPC-A → EAN-13, UPC-E expanded, AIM /
+  // GS1 prefix and control bytes gone), identical to what the server stores.
+  const normalized = canonicalBarcode(code);
+  // <<< SCANNER
   if (!normalized) return { found: false, barcode: '' };
 
   try {

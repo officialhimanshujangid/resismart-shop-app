@@ -163,6 +163,28 @@ export function paramFromLink(link: string | null | undefined, name: string): st
   return undefined;
 }
 
+/** Commerce web pages → the app's `commerce/` screens (an id-shaped tail opens the item). */
+export function commerceDestination(path: string): NotificationDestination | undefined {
+  const offerId = pathId(path, '/dashboard/partner/offers');
+  if (offerId) return { href: `/commerce/offers/${offerId}` as Href };
+  if (path === '/dashboard/partner/offers') return { href: '/commerce/offers' as Href };
+  const partyId = pathId(path, '/dashboard/partner/wallet');
+  if (partyId) return { href: `/commerce/wallet/${partyId}` as Href };
+  if (path === '/dashboard/partner/wallet') return { href: '/commerce/wallet' as Href };
+  if (path === '/dashboard/partner/broadcasts' || path.startsWith('/dashboard/partner/broadcasts/')) {
+    return { href: '/commerce/broadcasts' as Href };
+  }
+  if (path === '/dashboard/partner/insights' || path === '/dashboard/partner/commerce-insights') {
+    return { href: '/commerce/insights' as Href };
+  }
+  if (path === '/dashboard/partner/online-shop' || path === '/dashboard/partner/commerce') {
+    return { href: '/commerce/settings' as Href };
+  }
+  // C2 `partnerDeliveryAssigned` → `/dashboard/partner/my-deliveries?id=…`.
+  if (path === '/dashboard/partner/my-deliveries') return { href: '/commerce/deliveries' as Href };
+  return undefined;
+}
+
 /** `base?id=<id>` when there is an id, else `base`. */
 const withId = (base: string, id: string | undefined): Href =>
   (id ? `${base}?id=${encodeURIComponent(id)}` : base) as Href;
@@ -250,8 +272,22 @@ export function notificationDestination(frame: {
       break;
   }
 
+  /**
+   * Commerce C3–C6 (CONTRACT-commerce §14): the web partner pages' links, and
+   * below them the four new kinds. No `requires`: every `commerce/` screen
+   * decides for itself (module + role row + feature) and draws "not for your
+   * role" / "switched off" in place, like the stack routes above.
+   */
+  const commerce = commerceDestination(path);
+  if (commerce) return commerce;
+
   const kind = frame.kind ?? '';
   if (!kind) return undefined;
+  if (kind === 'PARTNER_OFFER') return { href: '/commerce/broadcasts' as Href };
+  if (kind === 'WALLET') return { href: '/commerce/wallet' as Href };
+  if (kind === 'BACK_IN_STOCK') return { href: '/commerce/insights' as Href };
+  // C2 (a rider's new delivery): the rider's own list (a rider may hold no Orders tab at all).
+  if (kind === 'DELIVERY_ASSIGNED') return { href: '/commerce/deliveries' as Href };
   // P1: before the ORDER/INVOICE prefixes below, which none of these share.
   if (kind.startsWith('PARTNER_LOW_STOCK')) return { href: '/stock/reorder', requires: 'CATALOG' };
   if (kind.startsWith('PARTNER_KHATA')) return { href: '/khata', requires: 'INVOICING' };

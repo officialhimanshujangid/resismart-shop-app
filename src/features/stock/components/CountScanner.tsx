@@ -63,7 +63,9 @@ export function CountScanner({
             </View>
           ))}
         </View>
-        <BarcodeScannerView active={visible} onResult={onResult} hint={t('stock.count.scanHint')} />
+        {/* >>> SCANNER — counting identical tins: the camera's same-code wait is 1 s
+            here (2 s elsewhere), and a carton's full ITF-14 is accepted. */}
+        <BarcodeScannerView active={visible} onResult={onResult} hint={t('stock.count.scanHint')} cartonCodes sameCodeWaitMs={1000} />
       </Modal>
     </Portal>
   );

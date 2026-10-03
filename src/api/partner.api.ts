@@ -256,6 +256,12 @@ export interface PartnerEntitlementsPayload {
    * server that predates P2) for everybody who never opted in.
    */
   categoryModules?: string[];
+  /**
+   * Commerce (CONTRACT-commerce §2): the online-shop features this shop switched
+   * on. ABSENT (not `[]`) when none — the payload is then identical to before.
+   * Menus only; every route checks the feature again on the server.
+   */
+  commerceFeatures?: string[];
 }
 
 // ----------------------------------------------------------------- onboarding

@@ -6,13 +6,25 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
-import { apiErrorMessage, isUpgradeRequired } from '../../../src/api/axios';
+import { apiErrorMessage, isUpgradeRequired, apiErrorCode, apiErrorParams } from '../../../src/api/axios'; // MP1-COMPLETE: + code/params
 import { parseRupeesToPaise } from '../../../src/lib/money';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { PRODUCT_UNITS, ProductUnit } from '../../../src/types/api-contract.generated';
 import { useCreateProduct, useProductCategories, CategoryPicker, ProductImages, UsageMeterBar } from '../../../src/features/catalog';
 import { BarcodeScannerView, ProductScanOutcome } from '../../../src/features/scanner';
+// Commerce C3: "This is a bundle" — only when the shop switched Bundles on.
+import { useCommerceAccess } from '../../../src/features/commerce/access';
+import { BundleEditor } from '../../../src/features/commerce/components/BundleCard';
+import { SwitchRow } from '../../../src/features/commerce/components/ui';
+import { bundleProblem } from '../../../src/features/commerce/logic';
+import type { BundleComponent } from '../../../src/features/commerce/types';
+// >>> MP1-COMPLETE — P1: online-shop page + quantity rules (C1 product fields).
+import { ProductCommerceFields } from '../../../src/features/catalog/components/ProductCommerceFields';
+import {
+  EMPTY_SHOP_FIELDS, ShopFieldKey, ShopFieldsForm, shopFieldOfError, shopFieldsBody, shopFieldsOn, shopFieldsProblems,
+} from '../../../src/features/catalog/commerceFields';
+// <<< MP1-COMPLETE
 
 /**
  * New product. `?barcode=` and `?returnTo=` are the scanner's contract — see
@@ -61,6 +73,16 @@ export default function CreateProductScreen() {
   const [images, setImages] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [scannerOpen, setScannerOpen] = useState(false);
+  const commerceAccess = useCommerceAccess();
+  const bundlesOn = commerceAccess.has('BUNDLES');
+  // >>> MP1-COMPLETE — P1
+  const shopOn = shopFieldsOn(commerceAccess);
+  const [shopFields, setShopFields] = useState<ShopFieldsForm>(EMPTY_SHOP_FIELDS);
+  const [shopErrors, setShopErrors] = useState<Partial<Record<ShopFieldKey, string>>>({});
+  // <<< MP1-COMPLETE
+  const [isBundle, setIsBundle] = useState(false);
+  const [components, setComponents] = useState<BundleComponent[]>([]);
+  const [componentNames, setComponentNames] = useState<Record<string, string>>({});
 
   const canManage = can('CATALOG_MANAGE', 'FULL');
 
@@ -145,8 +167,20 @@ export default function CreateProductScreen() {
     if (lowStockAt.trim() && (!Number.isFinite(lowStockNum) || (lowStockNum as number) < 0)) {
       nextErrors.lowStockAt = t('catalog.form.wholeNumber');
     }
+    const bundle = bundlesOn && isBundle;
+    if (bundle) {
+      const problem = bundleProblem(components);
+      if (problem !== 'NONE') nextErrors.bundle = t(`commerce.bundles.err.${problem}`);
+    }
 
     setErrors(nextErrors);
+    // >>> MP1-COMPLETE — P1: the shop-page fields are checked with the rest (server rules, said sooner).
+    const shopProblems = shopOn ? shopFieldsProblems(shopFields, unit) : {};
+    const nextShopErrors: Partial<Record<ShopFieldKey, string>> = {};
+    for (const [k, p] of Object.entries(shopProblems)) if (p) nextShopErrors[k as ShopFieldKey] = t(p.key, p.params);
+    setShopErrors(nextShopErrors);
+    if (Object.keys(nextShopErrors).length > 0) return;
+    // <<< MP1-COMPLETE
     if (Object.keys(nextErrors).length > 0 || sellPaise === null) return;
 
     createProduct.mutate(
@@ -160,9 +194,11 @@ export default function CreateProductScreen() {
         sellPaise,
         taxRatePercent: taxRateNum,
         taxInclusive,
-        stockQty: stockQtyNum,
-        lowStockAt: lowStockNum,
-        trackStock,
+        // A bundle keeps no stock of its own (C-9): selling it moves its items' stock.
+        stockQty: bundle ? 0 : stockQtyNum,
+        lowStockAt: bundle ? undefined : lowStockNum,
+        trackStock: bundle ? false : trackStock,
+        ...(bundle ? { bundleComponents: components } : {}),
         // Was a hardcoded `images: []` — which is why every item in every
         // partner's catalogue was a line of text to the residents browsing it.
         // These URLs are the ones `POST /upload` returned and are stored
@@ -171,6 +207,8 @@ export default function CreateProductScreen() {
         images,
         categoryId,
         isActive: true,
+        // MP1-COMPLETE — P1: only the boxes filled in (an empty box sends nothing).
+        ...(shopOn ? shopFieldsBody(shopFields) : {}),
       },
       {
         onSuccess: goBackToOrigin,
@@ -179,6 +217,9 @@ export default function CreateProductScreen() {
             Alert.alert(t('catalog.form.planLimitTitle'), apiErrorMessage(e));
             return;
           }
+          // MP1-COMPLETE — P1: COMMERCE_FIELD_INVALID {field} marks that box with the server's sentence.
+          const badField = shopFieldOfError(apiErrorCode(e), apiErrorParams(e));
+          if (badField) setShopErrors({ [badField]: apiErrorMessage(e) });
           Alert.alert(t('catalog.form.createFailed'), apiErrorMessage(e));
         },
       },
@@ -263,17 +304,54 @@ export default function CreateProductScreen() {
       </View>
       <AppInput label={t('catalog.form.hsn')} value={hsnCode} onChangeText={setHsnCode} />
 
-      <View style={[styles.switchBox, { marginTop: 4 }]}>
-        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.trackStock')}</Text>
-        <Switch value={trackStock} onValueChange={setTrackStock} />
-      </View>
+      {bundlesOn ? (
+        <View style={[styles.bundleBox, { borderColor: c.divider }]}>
+          <SwitchRow
+            c={c}
+            label={t('commerce.bundles.isBundle')}
+            hint={t('commerce.bundles.isBundleHint')}
+            value={isBundle}
+            onValueChange={setIsBundle}
+            testID="create-is-bundle"
+          />
+          {isBundle ? (
+            <BundleEditor
+              c={c}
+              value={components}
+              onChange={setComponents}
+              names={componentNames}
+              onNames={(add) => setComponentNames((n) => ({ ...n, ...add }))}
+            />
+          ) : null}
+          {errors.bundle ? <HelperText type="error" visible>{errors.bundle}</HelperText> : null}
+        </View>
+      ) : null}
 
-      {trackStock && (
+      {!(bundlesOn && isBundle) && (
+        <View style={[styles.switchBox, { marginTop: 4 }]}>
+          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.trackStock')}</Text>
+          <Switch value={trackStock} onValueChange={setTrackStock} />
+        </View>
+      )}
+
+      {trackStock && !(bundlesOn && isBundle) && (
         <View style={styles.row2}>
           <AppInput label={t('catalog.form.openingStock')} value={stockQty} onChangeText={setStockQty} keyboardType="numeric" error={errors.stockQty} style={styles.half} />
           <AppInput label={t('catalog.form.lowStockAt')} value={lowStockAt} onChangeText={setLowStockAt} keyboardType="numeric" error={errors.lowStockAt} style={styles.half} />
         </View>
       )}
+
+      {/* >>> MP1-COMPLETE — P1 */}
+      {shopOn ? (
+        <ProductCommerceFields
+          c={c}
+          unit={unit}
+          value={shopFields}
+          onChange={(patch) => setShopFields((f) => ({ ...f, ...patch }))}
+          errors={shopErrors}
+        />
+      ) : null}
+      {/* <<< MP1-COMPLETE */}
 
       {cap.atLimit && (
         <HelperText type="error" visible>
@@ -293,7 +371,8 @@ export default function CreateProductScreen() {
             <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600' }}>{t('catalog.form.scannerTitle')}</Text>
             <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel={t('catalog.form.scannerDone')} />
           </View>
-          <BarcodeScannerView active={scannerOpen} onResult={handleBarcodeScan} hint={t('catalog.form.scannerHint')} />
+          {/* >>> SCANNER — a receiving screen: a carton's full ITF-14 is accepted too. */}
+          <BarcodeScannerView active={scannerOpen} onResult={handleBarcodeScan} hint={t('catalog.form.scannerHint')} cartonCodes />
         </Modal>
       </Portal>
     </ScrollView>
@@ -310,6 +389,7 @@ const styles = StyleSheet.create({
   unitChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   deniedBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   barcodeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  bundleBox: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6, marginVertical: 6, gap: 6 },
   barcodeInput: { flex: 1 },
   scanBtn: { marginTop: 2 },
   scannerModal: { flex: 1, margin: 0 },

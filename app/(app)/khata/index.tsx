@@ -68,6 +68,17 @@ export default function KhataScreen() {
       scroll={false}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}
     >
+      {/* >>> WEB-UI — the whole screen scrolls as one list: totals, filters,
+          search and the bulk row are the list's header (an element, so the
+          search box keeps its focus); loading / error / empty sit under it. */}
+        <FlatList
+          key={wide ? 'w' : 'n'}
+          data={query.isPending || (query.isError && rows.length === 0) ? [] : rows}
+          numColumns={wide ? 2 : 1}
+          columnWrapperStyle={wide ? { gap: 10 } : undefined}
+          keyExtractor={(r) => r.partyId}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
       <View style={styles.controls}>
         {totals && (
           <StatGrid>
@@ -97,17 +108,7 @@ export default function KhataScreen() {
           </ActionRow>
         )}
       </View>
-      {query.isPending ? (
-        <Loading c={c} />
-      ) : query.isError && rows.length === 0 ? (
-        <ErrorBlock c={c} message={apiErrorMessage(query.error, t('khata.loadFailed'))} onRetry={() => query.refetch()} />
-      ) : (
-        <FlatList
-          key={wide ? 'w' : 'n'}
-          data={rows}
-          numColumns={wide ? 2 : 1}
-          columnWrapperStyle={wide ? { gap: 10 } : undefined}
-          keyExtractor={(r) => r.partyId}
+          }
           renderItem={({ item }) => (
             <View style={wide ? { flex: 1 } : undefined}>
               <KhataRowCard
@@ -129,15 +130,26 @@ export default function KhataScreen() {
           onEndReachedThreshold={0.4}
           onEndReached={() => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }}
           ListFooterComponent={query.isFetchingNextPage ? <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} /> : null}
-          ListEmptyComponent={<EmptyBlock c={c} icon="notebook-check-outline" title={t(`khata.empty.${filter}`)} />}
+          ListEmptyComponent={
+            query.isPending ? (
+              <Loading c={c} />
+            ) : query.isError && rows.length === 0 ? (
+              <ErrorBlock c={c} message={apiErrorMessage(query.error, t('khata.loadFailed'))} onRetry={() => query.refetch()} />
+            ) : (
+              <EmptyBlock c={c} icon="notebook-check-outline" title={t(`khata.empty.${filter}`)} />
+            )
+          }
         />
-      )}
+      {/* <<< WEB-UI */}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  controls: { paddingHorizontal: 16, paddingTop: 4, gap: 10 },
+  // >>> WEB-UI — the controls are the list's header now: the list's side padding
+  // covers them, and their bottom padding is the 16dp that used to sit above the list.
+  controls: { paddingTop: 4, gap: 10, paddingBottom: 16 },
   search: { borderRadius: radii.field, elevation: 0 },
-  list: { padding: 16, paddingBottom: 40, flexGrow: 1 },
+  list: { paddingHorizontal: 16, paddingBottom: 40, flexGrow: 1 },
+  // <<< WEB-UI
 });

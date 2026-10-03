@@ -29,7 +29,9 @@ import i18n from '../../i18n';
  */
 const t = (key: string, vars?: Record<string, string>): string => i18n.t(key, vars ?? {});
 
-const INVOICE_DIR = new Directory(Paths.cache, 'partner-invoices');
+// MP1-QA: built on first use, not at import — on web `new Directory(...)` throws
+// at module load and took the whole web bundle down. Same directory on phones.
+const invoiceDir = (): Directory => new Directory(Paths.cache, 'partner-invoices');
 
 function safeFileName(label: string): string {
   const cleaned = label.replace(/[^a-zA-Z0-9-_ ]/g, '').trim() || 'document';
@@ -48,6 +50,7 @@ function safeFileName(label: string): string {
 export async function downloadDocumentPdf(id: string, label: string): Promise<string> {
   const bytes = await documentsApi.pdfBytes(id);
 
+  const INVOICE_DIR = invoiceDir();
   if (!INVOICE_DIR.exists) INVOICE_DIR.create({ intermediates: true, idempotent: true });
 
   const file = new File(INVOICE_DIR, safeFileName(label));
@@ -103,6 +106,7 @@ export async function shareDocumentPdf(id: string, label: string): Promise<void>
 export async function sharePlatformInvoicePdf(id: string, label: string): Promise<void> {
   const url = await platformBillingApi.invoiceDownloadUrl(id);
 
+  const INVOICE_DIR = invoiceDir();
   if (!INVOICE_DIR.exists) INVOICE_DIR.create({ intermediates: true, idempotent: true });
 
   // Overwritten rather than appended-to: the same invoice shared twice must not

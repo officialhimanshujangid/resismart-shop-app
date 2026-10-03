@@ -63,6 +63,8 @@ export interface OrderReturnInput {
    * credit note on a flaky connection.
    */
   idempotencyKey: string;
+  /** Commerce C4: refund as store credit, or to cash / khata. Absent = the shop's default (old behaviour). */
+  refundTo?: 'CASH_OR_KHATA' | 'STORE_CREDIT';
 }
 
 /**
@@ -78,8 +80,9 @@ export interface OrderReturnInput {
 export function useOrderReturnItems() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, lines, reason, idempotencyKey }: OrderReturnInput) =>
-      ordersApi.returnItems(id, { lines, reason }, idempotencyKey),
+    mutationFn: ({ id, lines, reason, idempotencyKey, refundTo }: OrderReturnInput) =>
+      // `refundTo` only when the caller chose (Commerce C4, store credit on) — the old body otherwise.
+      ordersApi.returnItems(id, { lines, reason, ...(refundTo ? { refundTo } : {}) }, idempotencyKey),
     onSuccess: ({ order }: OrderReturnResult) => {
       queryClient.setQueryData(qk.orders.detail(order.id), order);
       void queryClient.invalidateQueries({ queryKey: qk.orders.all() });

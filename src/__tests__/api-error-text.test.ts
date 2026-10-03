@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import i18n from 'i18next';
 
 import { apiErrorMessage } from '../api/axios';
-import { codedText, resolveApiErrorText, slotsOf, type Translator } from '../lib/apiErrorText';
+import { COMMERCE_EXTRA, codedText, commerceExtraText, resolveApiErrorText, slotsOf, type Translator } from '../lib/apiErrorText';
 import en from '../i18n/locales/en.json';
 import hi from '../i18n/locales/hi.json';
 
@@ -172,7 +172,76 @@ for (const code of LEASE_PARTNER) {
   if (seg) backend.set(code, { en: field(seg, 'en') ?? '', hi: field(seg, 'hi') ?? '' });
 }
 
+/**
+ * Commerce (CONTRACT-commerce §4): BOTH audiences. The shop meets the resident
+ * codes as well — a counter coupon refused with OFFER_BELOW_MINIMUM, points
+ * short at the till, a variant parent on a bill — so the shop app carries every
+ * code in `commerce-error-codes.ts`. Whole sentences, no placeholders; seeded
+ * verbatim.
+ */
+const commerceSrc = read('commerce-error-codes.ts');
+const COMMERCE = new Map([
+  ...entries(block(commerceSrc, 'export const COMMERCE_ORDER_ERROR_CODES = {')),
+  ...entries(block(commerceSrc, 'export const COMMERCE_PARTNER_ERROR_CODES = {')),
+]);
+for (const [code, seg] of COMMERCE) {
+  backend.set(code, { en: field(seg, 'en') ?? '', hi: field(seg, 'hi') ?? '' });
+}
+
 describe('errors.<CODE> catalogue matches the backend', () => {
+  it('every commerce code (resident + partner) is in both catalogues, word for word', () => {
+    expect(COMMERCE.size).toBeGreaterThan(80);
+    expect(COMMERCE.has('OFFER_LOCKED_AFTER_USE')).toBe(true);
+    expect(COMMERCE.has('WALLET_TOPUP_ALREADY_SPENT')).toBe(true);
+    const enErr = en.errors as Record<string, string>;
+    const hiErr = hi.errors as Record<string, string>;
+    for (const code of COMMERCE.keys()) {
+      const want = backend.get(code)!;
+      expect(want.en && want.hi).toBeTruthy();
+      expect({ code, en: enErr[code], hi: hiErr[code] }).toEqual({ code, en: want.en, hi: want.hi });
+    }
+  });
+
+  it('a commerce refusal reads in the partner\'s language', async () => {
+    const e = refusal(409, { code: 'HOLD_LIMIT_REACHED', params: { max: '20' }, error: 'server English' });
+    // MP-1 (b): the number the refusal carries follows as a second sentence, as on the web.
+    expect(apiErrorMessage(e)).toBe(`${(en.errors as Record<string, string>).HOLD_LIMIT_REACHED} ${en.common.apiError.extra.holdsMax.replace('{{value}}', '20')}`);
+    expect(apiErrorMessage(e)).not.toMatch(/server English/);
+    await i18n.changeLanguage('hi');
+    expect(apiErrorMessage(e)).toBe(`${(hi.errors as Record<string, string>).HOLD_LIMIT_REACHED} ${hi.common.apiError.extra.holdsMax.replace('{{value}}', '20')}`);
+  });
+
+  // ── MP-1 (b): the web's COMMERCE_EXTRA, held to the web file — same codes, same params, same words.
+  it('the second "number" sentence uses the same codes and params as the web, and web words', () => {
+    const webSrc = readFileSync(resolve(__dirname, '../../../frontend/src/lib/commerce-error-codes.ts'), 'utf8');
+    const block = webSrc.slice(webSrc.indexOf('export const COMMERCE_EXTRA'));
+    const web = new Map([...block.matchAll(/^\s+([A-Z_]+): \{ key: '([a-zA-Z]+)', param: '([a-zA-Z]+)' \}/gm)].map((m) => [m[1], { key: m[2], param: m[3] }]));
+    expect(web.size).toBeGreaterThan(10);
+    expect(Object.fromEntries(web)).toEqual(COMMERCE_EXTRA);
+    const webEn = JSON.parse(readFileSync(resolve(__dirname, '../../../frontend/src/i18n/messages/en.json'), 'utf8')).marketplaceErrors.extra as Record<string, string>;
+    const webHi = JSON.parse(readFileSync(resolve(__dirname, '../../../frontend/src/i18n/messages/hi.json'), 'utf8')).marketplaceErrors.extra as Record<string, string>;
+    const ourEn = en.common.apiError.extra as Record<string, string>;
+    const ourHi = hi.common.apiError.extra as Record<string, string>;
+    for (const { key } of web.values()) {
+      expect({ key, en: ourEn[key] }).toEqual({ key, en: webEn[key].replace('{value}', '{{value}}') });
+      expect({ key, hi: ourHi[key] }).toEqual({ key, hi: webHi[key].replace('{value}', '{{value}}') });
+    }
+  });
+
+  it('the extra sentence: combo name, bill total, role cap — and none when the value did not arrive', () => {
+    const extra = en.common.apiError.extra;
+    const msg = (code: string, params?: Record<string, unknown>) => apiErrorMessage(refusal(409, { code, ...(params ? { params } : {}), error: 'x' }));
+    const ERR = en.errors as Record<string, string>;
+    expect(msg('BUNDLE_COMPONENT_IN_USE', { bundleName: 'Gift pack' })).toBe(`${ERR.BUNDLE_COMPONENT_IN_USE} ${extra.bundleName.replace('{{value}}', 'Gift pack')}`);
+    expect(msg('BUNDLE_COMPONENT_IN_USE', { bundleName: 'Gift pack' })).toBe('This item is part of a combo. Remove it from the combo first. Combo: Gift pack.');
+    expect(msg('SPLIT_TENDER_MISMATCH', { total: '1,250.00', sum: '1,200.00' })).toBe(`${ERR.SPLIT_TENDER_MISMATCH} Bill total: ₹1,250.00.`);
+    expect(msg('OFFER_DISCOUNT_ABOVE_ROLE_CAP', { max: '15' })).toBe(`${ERR.OFFER_DISCOUNT_ABOVE_ROLE_CAP} Your role allows up to 15% off.`);
+    expect(msg('WALLET_TOPUP_ALREADY_SPENT', { spent: '300.00' })).toBe(`${ERR.WALLET_TOPUP_ALREADY_SPENT} Already spent: ₹300.00.`);
+    expect(msg('VARIANT_LIMIT_REACHED')).toBe(ERR.VARIANT_LIMIT_REACHED);
+    expect(msg('HOLD_NOT_FOUND', { max: '20' })).toBe(ERR.HOLD_NOT_FOUND);
+    expect(commerceExtraText('BUNDLE_SHORT', { itemName: '  ' }, tr)).toBe('');
+  });
+
   it('read a plausible number of codes from each backend file', () => {
     expect(PARTNER_HI.size).toBeGreaterThan(50);
     expect(PARTNER_WIRE.size).toBeGreaterThan(0);

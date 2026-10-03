@@ -74,8 +74,10 @@ export default function CatalogLayout() {
           ),
         }}
       />
-      <Stack.Screen name="create" options={{ title: t('catalog.nav.create'), presentation: 'modal' }} />
-      <Stack.Screen name="[id]" options={{ title: t('catalog.nav.detail') }} />
+      {/* >>> MP1-COMPLETE — the "?" on add / edit product too (help for this screen via its pathname). */}
+      <Stack.Screen name="create" options={{ title: t('catalog.nav.create'), presentation: 'modal', headerRight: () => <HelpButton c={c} /> }} />
+      <Stack.Screen name="[id]" options={{ title: t('catalog.nav.detail'), headerRight: () => <HelpButton c={c} /> }} />
+      {/* <<< MP1-COMPLETE */}
       <Stack.Screen name="scan" options={{ title: t('catalog.nav.scan'), headerShown: false }} />
       <Stack.Screen name="history/[id]" options={{ title: t('stockHistory.navProduct') }} />
       <Stack.Screen name="movements" options={{ title: t('stockHistory.navShop') }} />

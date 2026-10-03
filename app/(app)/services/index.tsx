@@ -113,6 +113,15 @@ export default function ServicesListScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
+      {/* >>> WEB-UI — the whole screen scrolls as one list: the hero, usage
+          bar, search and tabs are the list's header (an element, so the
+          search box keeps its focus), and the services are not squeezed. */}
+      <FlatList
+        data={shown}
+        keyExtractor={(s) => s._id}
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <View>
       <Hero
         isDark={isDark}
         rounded={false}
@@ -155,10 +164,9 @@ export default function ServicesListScreen() {
           );
         })}
       </View>
-
-      <FlatList
-        data={shown}
-        keyExtractor={(s) => s._id}
+          </View>
+        }
+        // <<< WEB-UI
         renderItem={({ item }) => (
           <ServiceCardRow
             service={item}
@@ -171,7 +179,9 @@ export default function ServicesListScreen() {
         )}
         contentContainerStyle={shown.length === 0 ? styles.emptyGrow : styles.listPad}
         ListEmptyComponent={
-          loadError ? (
+          // >>> WEB-UI — centred in the space under the header.
+          <View style={styles.emptyFill}>
+          {loadError ? (
             <ErrorBlock c={c} message={loadError} onRetry={() => void servicesQuery.refetch()} />
           ) : servicesQuery.isLoading ? (
             <ActivityIndicator color={c.primary} />
@@ -191,7 +201,9 @@ export default function ServicesListScreen() {
                   : t('services.list.emptyOtherBody')}
               </Text>
             </View>
-          )
+          )}
+          </View>
+          // <<< WEB-UI
         }
         ListFooterComponent={
           activeCount > 0 ? (
@@ -263,7 +275,11 @@ const styles = StyleSheet.create({
   tabRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 10 },
   tabChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   listPad: { paddingBottom: 90 },
-  emptyGrow: { flexGrow: 1, justifyContent: 'center' },
+  // >>> WEB-UI — the header is inside the list; only the empty block is centred
+  // (and clear of the floating Add button).
+  emptyGrow: { flexGrow: 1, paddingBottom: 90 },
+  emptyFill: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
+  // <<< WEB-UI
   emptyBox: { alignItems: 'center', gap: 6, paddingHorizontal: 32 },
   emptyTitle: { fontSize: 15, fontWeight: '600', marginTop: 4, textAlign: 'center' },
   emptyBody: { fontSize: 13, textAlign: 'center' },

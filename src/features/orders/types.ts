@@ -100,6 +100,12 @@ export interface PartnerOrder {
     deliveryPaise: number;
     discountPaise: number;
     totalPaise: number;
+    // Commerce C1 extras (§1.2) — present only when the order was priced with them.
+    offerDiscountPaise?: number;
+    pointsDiscountPaise?: number;
+    walletPaise?: number;
+    payablePaise?: number;
+    deliveryWaivedPaise?: number;
   };
   payment: { mode: OrderPaymentMode; status: string; paidAt?: string };
   timeline: OrderTimelineEntry[];
@@ -109,6 +115,28 @@ export interface PartnerOrder {
   itemCount: number;
   createdAt: string;
   updatedAt: string;
+  // ── Commerce C1–C4 (CONTRACT-commerce §7, COMMERCE-C2-PARTNER-VIEW): only keys that are set. Never the hand-over code.
+  deliverySlot?: { date: string; from: string; to: string; startAt: string; endAt: string };
+  substitutionPreference?: 'CALL_ME' | 'SUBSTITUTE_SIMILAR' | 'REMOVE_ITEM';
+  partial?: {
+    at: string;
+    byName?: string;
+    previousTotalPaise: number;
+    changes: Array<{ productId: string; name: string; fromQty: number; toQty: number; reason: string; note?: string }>;
+  };
+  delivery?: {
+    staffId?: string;
+    staffName?: string;
+    assignedAt?: string;
+    proof?: { method: 'OTP' | 'PHOTO' | string; at: string; photoUrl?: string };
+    // >>> GAP-C-SHOP — the shop's hand-over proof rule, sent to the RIDER only
+    // (`/my-deliveries` rows, and `GET /partners/me/orders/:id` when the order is theirs).
+    proofMode?: 'NONE' | 'OTP' | 'PHOTO' | 'OTP_OR_PHOTO';
+    // <<< GAP-C-SHOP
+  };
+  offers?: Array<{ offerId: string; kind: string; code?: string; name: string; benefitType: string; discountPaise: number }>;
+  loyalty?: { pointsRedeemed: number };
+  wallet?: { appliedPaise: number };
 }
 
 export interface OrderListFilters {

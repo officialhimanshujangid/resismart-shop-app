@@ -345,6 +345,28 @@ export default function BookingsScreen() {
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
+      {/* >>> WEB-UI — the whole screen scrolls as one list: the hero, search
+          and tabs are the list's header now (an element, so the search box
+          keeps its focus), and the bookings are not squeezed under them. */}
+      <FlatList
+        data={rows}
+        keyExtractor={(b) => b.id}
+        contentContainerStyle={styles.list}
+        // `page === 1` on both: without it, fetching page four spins the
+        // pull-to-refresh indicator at the TOP of a list the partner is reading
+        // the bottom of.
+        refreshing={list.isFetching && page === 1}
+        onRefresh={() => { setPage(1); void list.refetch(); }}
+        onEndReachedThreshold={0.4}
+        onEndReached={loadMore}
+        keyboardShouldPersistTaps="handled"
+        ListFooterComponent={
+          list.isFetching && page > 1 ? (
+            <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
+          ) : null
+        }
+        ListHeaderComponent={
+          <View>
       {/* The title is `modules.BOOKINGS.label`, the same catalogue entry the tab
           bar and the More menu read — a module is called one thing in this app. */}
       <Hero isDark={isDark} action={<HelpButton c={c} variant="hero" />} rounded={false} eyebrow={t('bookings.list.eyebrow')} title={t('modules.BOOKINGS.label')} />
@@ -366,25 +388,8 @@ export default function BookingsScreen() {
           ))}
         </View>
       </View>
-
-      <FlatList
-        data={rows}
-        keyExtractor={(b) => b.id}
-        contentContainerStyle={styles.list}
-        // `page === 1` on both: without it, fetching page four spins the
-        // pull-to-refresh indicator at the TOP of a list the partner is reading
-        // the bottom of.
-        refreshing={list.isFetching && page === 1}
-        onRefresh={() => { setPage(1); void list.refetch(); }}
-        onEndReachedThreshold={0.4}
-        onEndReached={loadMore}
-        ListFooterComponent={
-          list.isFetching && page > 1 ? (
-            <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
-          ) : null
-        }
-        ListHeaderComponent={
-          linkedId && linked.data ? (
+      <View style={styles.headerBody}>
+          {linkedId && linked.data ? (
             <View style={styles.linked}>
               <Text style={[styles.linkedLabel, { color: c.textSecondary }]}>{t('bookings.list.fromNotification')}</Text>
               <BookingCard
@@ -404,9 +409,12 @@ export default function BookingsScreen() {
             </View>
           ) : linkedId && linked.isError ? (
             <Text style={[styles.linkedLabel, { color: c.error }]}>{apiErrorMessage(linked.error)}</Text>
-          ) : null
+          ) : null}
+      </View>
+          </View>
         }
         renderItem={({ item }) => (
+          <View style={styles.item}>
           <BookingCard
             booking={item}
             isDark={isDark}
@@ -418,17 +426,21 @@ export default function BookingsScreen() {
             billOfSupply={billOfSupply}
             onSendQuote={mayQuote ? () => sendQuoteFor(item) : undefined}
           />
+          </View>
         )}
         ListEmptyComponent={
-          loadError ? (
+          <View style={styles.item}>
+          {loadError ? (
             <ErrorBlock c={c} message={loadError} onRetry={() => void list.refetch()} />
           ) : list.isLoading ? null : (
             <Text style={[styles.empty, { color: c.textSecondary }]}>
               {tab === 'REQUESTED' ? t('bookings.list.emptyRequested') : t('bookings.list.empty')}
             </Text>
-          )
+          )}
+          </View>
         }
       />
+      {/* <<< WEB-UI */}
 
       <BookingActionModal
         visible={Boolean(formTarget)}
@@ -451,7 +463,12 @@ const styles = StyleSheet.create({
   search: { elevation: 0, borderRadius: radii.field },
   tabs: { flexDirection: 'row', gap: 8 },
   tabChip: {},
-  list: { padding: 20, paddingTop: 12, flexGrow: 1 },
+  // >>> WEB-UI — hero + controls are inside the list now; the 20dp side padding
+  // moved onto the header body and each card so the hero still runs edge to edge.
+  list: { paddingBottom: 20, flexGrow: 1 },
+  headerBody: { paddingHorizontal: 20, paddingTop: 12 },
+  item: { paddingHorizontal: 20 },
+  // <<< WEB-UI
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   linked: { marginBottom: 16 },
   linkedLabel: { fontSize: 13, marginBottom: 6 },

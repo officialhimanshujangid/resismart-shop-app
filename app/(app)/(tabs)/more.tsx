@@ -20,6 +20,7 @@ import { isSocietyPartner } from '../../../src/features/society/logic';
 import { useMyRent } from '../../../src/features/rent/hooks';
 import { hasLease, rentAccess } from '../../../src/features/rent/logic';
 import { useP2Doors } from '../../../src/features/p2/P2Shortcuts';
+import { commerceDoors, useCommerceAccess } from '../../../src/features/commerce/access';
 
 /**
  * The More tab: everything that is not a bottom tab.
@@ -206,6 +207,9 @@ export default function MoreScreen() {
   );
 
   const p2Doors = useP2Doors();
+  /** Commerce C3–C6 (CONTRACT-commerce §14): nothing until a feature is on, except the switch screen. */
+  const commerceAccess = useCommerceAccess();
+  const growDoors = useMemo(() => commerceDoors(commerceAccess), [commerceAccess]);
 
   const moduleRows = useMemo(
     () => menu.filter((e) => !(e.state === 'ON' && TAB_COVERED.has(e.module))),
@@ -373,6 +377,20 @@ export default function MoreScreen() {
                     <View key={door.key}>
                       <Row c={c} icon={door.icon} title={t(door.labelKey)} subtitle={t(door.blurbKey)} onPress={() => router.push(door.href)} />
                       {i < p2Doors.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
+                    </View>
+                  ))}
+                </Card>
+              </>
+            )}
+
+            {growDoors.length > 0 && (
+              <>
+                <SectionLabel c={c}>{t('commerce.doors.section')}</SectionLabel>
+                <Card c={c} style={styles.listCard}>
+                  {growDoors.map((door, i) => (
+                    <View key={door.key}>
+                      <Row c={c} icon={door.icon} title={t(door.labelKey)} subtitle={t(door.blurbKey)} onPress={() => router.push(door.href)} />
+                      {i < growDoors.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
                     </View>
                   ))}
                 </Card>

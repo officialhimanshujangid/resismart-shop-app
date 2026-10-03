@@ -5,9 +5,10 @@ import {
 import {
   ActivityIndicator, Button, Chip, Divider, IconButton, Modal, Portal, SegmentedButtons, Snackbar, Surface, Switch, Text, TextInput,
 } from 'react-native-paper';
+import { FitSegments } from '../../../src/components/FitSegments'; // >>> WEB-UI
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, usePathname, useLocalSearchParams } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { router, usePathname, useLocalSearchParams, type Href } from 'expo-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
@@ -46,6 +47,27 @@ import { PharmacyLineChip } from '../../../src/features/p2/billing/PharmacyLineC
 import { BatchPickSheet } from '../../../src/features/pharmacy/components/BatchPickSheet';
 import { RxDetailsForm, RxDetails } from '../../../src/features/pharmacy/components/RxDetailsForm';
 import { EMPTY_RX, expiryLabel, rxBody, rxProblem } from '../../../src/features/pharmacy/logic';
+// Commerce C3/C6 at the counter — inert unless the shop switched a feature on.
+import { apiErrorMessage } from '../../../src/api/axios';
+import { documentsApi, type CreateDocumentPayload } from '../../../src/features/billing/documents.api';
+import type { AddDraftInput } from '../../../src/features/billing/types';
+import { useCommerceAccess } from '../../../src/features/commerce/access';
+import { useCommerceSettings, useHolds, useQuickKeys } from '../../../src/features/commerce/hooks';
+import { defaultHoldLabel, holdLinesOf, tillLinesFromResumed } from '../../../src/features/commerce/logic';
+// >>> GAP-C-SHOP
+import { quickKeyProduct } from '../../../src/features/commerce/logic';
+// <<< GAP-C-SHOP
+import type { QuickKey, ResumeResult } from '../../../src/features/commerce/types';
+import { QuickKeysGrid } from '../../../src/features/commerce/components/QuickKeysGrid';
+import { VariantPickerSheet, type VariantChoice } from '../../../src/features/commerce/components/VariantPickerSheet';
+import { HoldNameSheet, HoldTraySheet } from '../../../src/features/commerce/components/HoldSheets';
+import { CounterCheckoutSheet, type CheckoutFeatures } from '../../../src/features/commerce/components/CounterCheckoutSheet';
+// >>> MP1-COMPLETE — P2: "Refund as" (Commerce C4) on a credit note / sales return; + the "?" help.
+import { HelpButton } from '../../../src/features/help/HelpButton';
+import { RefundToChoice, useRefundTo } from '../../../src/features/billing/components/RefundToChoice';
+import { asksRefundTo, refundToBody } from '../../../src/features/billing/refundTo';
+// <<< MP1-COMPLETE
+import { PillButton } from '../../../src/features/p1/ui';
 
 /**
  * The two-tap invoice (build spec §4 / PARTNERS_PLAN §12.5): pick a party,
@@ -284,6 +306,8 @@ export default function NewInvoiceScreen() {
    * are the same sheet and cannot both be true.
    */
   const [editingKey, setEditingKey] = useState<string | 'NEW' | null>(null);
+  /** C6: "which size?" for a scanned / searched / quick-key PARENT. */
+  const [variantPick, setVariantPick] = useState<{ parentName: string; parentId?: string; variants?: VariantChoice[] } | null>(null);
 
   /**
    * Seed the form from the job, once.
@@ -366,6 +390,13 @@ export default function NewInvoiceScreen() {
 
   const handleScanResult = useCallback(
     (outcome: ProductScanOutcome) => {
+      if (outcome.status === 'found' && outcome.product.isVariantParent) {
+        // C6 (D-8): a parent is not sold — the cashier picks the size. The camera
+        // closes for the question and is one tap away again after it.
+        setScannerOpen(false);
+        setVariantPick({ parentName: outcome.product.name, variants: (outcome.product.variants ?? []) as VariantChoice[] });
+        return;
+      }
       if (outcome.status === 'found') {
         // No de-duplication here, on purpose. The scanner's latch has already
         // decided that this `onResult` is a genuinely separate presentation of
@@ -378,17 +409,131 @@ export default function NewInvoiceScreen() {
         return; // camera stays open — continuous multi-scan, per spec
       }
       if (outcome.status === 'unknown') {
-        setScannerOpen(false);
-        // Exactly the call documented in `src/features/scanner/index.ts`'s own
-        // header — not `/(app)/catalog/create`, to match the contract the
-        // catalog agent wrote for this hand-off byte for byte.
-        router.push(toHref(`/catalog/create?barcode=${outcome.barcode}&returnTo=${encodeURIComponent(pathname)}`));
+        // >>> SCANNER — no longer jumps straight to the create form. A batch
+        // label or a smudged read used to yank the cashier out of the bill on
+        // every unknown read; now the scanner strip says "Not in your
+        // catalogue: <code>" and offers ONE "Add new product" button
+        // (`addNewFromScan` below), and the camera stays on the bill.
+        setScanError(null);
         return;
+        // <<< SCANNER
       }
       setScanError(outcome.message);
     },
-    [addOrBumpLine, pathname],
+    [addOrBumpLine],
   );
+
+  // >>> SCANNER — the one "Add new product with this barcode" offer. Exactly the
+  // hand-off documented in `src/features/scanner/index.ts` (create form, then back here).
+  const addNewFromScan = useCallback((barcode: string) => {
+    setScannerOpen(false);
+    router.push(toHref(`/catalog/create?barcode=${encodeURIComponent(barcode)}&returnTo=${encodeURIComponent(pathname)}`));
+  }, [pathname]);
+  // <<< SCANNER
+
+  // ---- Commerce at the counter (CONTRACT-commerce §8, §11): holds, quick keys, checkout ----
+  const queryClient = useQueryClient();
+  const commerce = useCommerceAccess();
+  const commerceSettings = useCommerceSettings(commerce.settings.canView && commerce.anyOn);
+  // >>> MP1-COMPLETE — P2: "Refund as" on a credit note / sales return for a named customer (WALLET on).
+  const refundChoice = useRefundTo();
+  const refundAsked = asksRefundTo({
+    walletOn: refundChoice.walletOn, type: docType, partyId: selectedParty?._id ?? jobParams.partyId,
+  });
+  // <<< MP1-COMPLETE
+  const cs = commerceSettings.data?.settings;
+  const salesSide = direction === 'SALES';
+  const holdsOn = salesSide && commerce.has('COUNTER_HOLD') && commerce.counter.canSell;
+  const holdsQuery = useHolds(holdsOn);
+  const heldCount = holdsQuery.data?.length ?? 0;
+  const quickKeysQuery = useQuickKeys(salesSide && commerce.has('QUICK_KEYS') && commerce.counter.canReadQuickKeys);
+  /**
+   * What the checkout may offer. A setting this person cannot read (no ORDERS
+   * read) is taken as ON and left to the server, which refuses with its own
+   * coded sentence (COUPONS_OFF, WALLET_OFF) — never silently skipped.
+   */
+  const checkoutFeatures: CheckoutFeatures = {
+    offers: commerce.has('OFFERS') && (cs?.offers.allowAtCounter ?? true),
+    coupons: commerce.has('OFFERS') && (cs?.offers.allowAtCounter ?? true) && (cs?.offers.couponsEnabled ?? true),
+    points: commerce.has('LOYALTY'),
+    split: commerce.has('SPLIT_TENDER'),
+    credit: commerce.has('WALLET') && (cs?.wallet.allowAtCounter ?? true),
+  };
+  const checkoutOn = salesSide && docType === 'TAX_INVOICE' && commerce.counter.canSell
+    && (checkoutFeatures.offers || checkoutFeatures.points || checkoutFeatures.split);
+  const [holdOpen, setHoldOpen] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false);
+  const [checkoutPayload, setCheckoutPayload] = useState<CreateDocumentPayload | null>(null);
+  /** The server draft the checkout made; re-used (updated) on the next open, removed when the bill goes another way. */
+  const [serverDraftId, setServerDraftId] = useState<string | null>(null);
+  const serverDraftRef = useRef<string | null>(null);
+  serverDraftRef.current = serverDraftId;
+  const [resumedCoupon, setResumedCoupon] = useState<string | undefined>(undefined);
+  const [quickBusy, setQuickBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /** Forget (and delete) a checkout draft the till no longer stands behind. Best-effort. */
+  const dropServerDraft = useCallback(() => {
+    const id = serverDraftRef.current;
+    if (id) void documentsApi.remove(id).catch(() => undefined);
+    serverDraftRef.current = null;
+    setServerDraftId(null);
+  }, []);
+
+  /** One tap on a quick key = one unit. Tax facts come from the product (cached), like a search pick. */
+  const onQuickKey = useCallback(async (k: QuickKey) => {
+    // >>> GAP-C-SHOP — the key carries the line's price, tax rate, "price includes tax" and HSN:
+    // one tap, one line, no product read. (Keys are never a sizes parent — the server drops those.)
+    const direct = quickKeyProduct(k);
+    if (direct) { addOrBumpLine(lineFromProduct(direct)); return; }
+    // <<< GAP-C-SHOP
+    // An older server's key has no tax facts: read the product as before.
+    setQuickBusy(k.productId);
+    try {
+      const p = await queryClient.fetchQuery({
+        queryKey: qk.catalog.product(k.productId),
+        queryFn: () => catalogApi.getOne(k.productId),
+        staleTime: 5 * 60 * 1000,
+      });
+      if (p.isVariantParent) setVariantPick({ parentName: p.name, parentId: p._id });
+      else addOrBumpLine(lineFromProduct(p));
+    } catch (e) {
+      setScanError(apiErrorMessage(e));
+    } finally {
+      setQuickBusy(null);
+    }
+  }, [queryClient, addOrBumpLine]);
+
+  /** A held bill back on the till, priced at today's catalogue. Lines that cannot be sold are named, not kept. */
+  const onResumed = useCallback((r: ResumeResult) => {
+    dropServerDraft();
+    const { lines: back, dropped, short } = tillLinesFromResumed(r.lines);
+    setLines(back.map((l) => ({
+      key: nextLineKey(),
+      itemId: l.itemId,
+      itemName: l.itemName,
+      hsn: l.hsn,
+      unit: l.unit,
+      qty: l.qty,
+      ratePaise: l.ratePaise,
+      ...(l.catalogRatePaise !== undefined ? { catalogRatePaise: l.catalogRatePaise } : {}),
+      discountPaise: l.discountPaise ?? 0,
+      taxRatePercent: l.taxRatePercent ?? 0,
+      taxInclusive: l.taxInclusive ?? true,
+    })));
+    setResumedCoupon(r.hold.couponCode);
+    if (r.hold.partyId) {
+      partiesApi.getOne(r.hold.partyId)
+        .then((p) => { setPartyMode('SEARCH'); setSelectedParty(p as unknown as PartnerPartyRecord); })
+        .catch(() => undefined);
+    }
+    const notes = [
+      dropped.length ? t('commerce.counter.resumedDropped', { names: dropped.join(', ') }) : '',
+      short.length ? t('commerce.counter.resumedShort', { names: short.join(', ') }) : '',
+    ].filter(Boolean);
+    if (notes.length) Alert.alert(t('commerce.counter.resumedTitle', { label: r.hold.label }), notes.join('\n\n'));
+    else setNotice(t('commerce.counter.resumedToast', { label: r.hold.label }));
+  }, [dropServerDraft, t]);
 
   /**
    * Save out of the editor sheet — a new one-off line, or an edit to an
@@ -597,55 +742,43 @@ export default function NewInvoiceScreen() {
     router.replace('/(app)/billing/drafts');
   }, [sourceType, sourceId, t, confirmDuplicateAndRetry, overrideCreditAndRetry, entitlements.isAdmin, roleLimits]);
 
-  const handleIssue = useCallback(async () => {
-    if (lines.length === 0) {
-      setErrorMessage(t('billing.new.needItem'));
-      return;
-    }
-    if (limitMessage) {
-      setErrorMessage(limitMessage);
-      return;
-    }
+  /**
+   * The checks every way of finishing this bill shares (Issue, and the commerce
+   * Checkout) — said here, before anything is queued or sent that can only fail.
+   */
+  const billProblem = useCallback((): string | null => {
+    if (lines.length === 0) return t('billing.new.needItem');
+    if (limitMessage) return limitMessage;
     if (takesSupplierBillFields(docType) && supplierInvoiceDate && documentDate && supplierInvoiceDate > documentDate) {
-      setErrorMessage(t('purchases.bill.supplierDateAfter'));
-      return;
+      return t('purchases.bill.supplierDateAfter');
     }
     if (behaviour.requiresParty && !selectedParty) {
-      setErrorMessage(t('billing.new.needSupplier', { type: t(DOCUMENT_TYPE_LABEL_KEY[docType]).toLowerCase() }));
-      return;
+      return t('billing.new.needSupplier', { type: t(DOCUMENT_TYPE_LABEL_KEY[docType]).toLowerCase() });
     }
     // This screen always ISSUES, and the server refuses to number a challan with
     // no Rule 55 reason — said here, before a draft is queued that can only fail.
     if (statesTransportReason(docType)) {
-      if (!transportReason) {
-        setErrorMessage(t('billing.new.transportReasonRequired'));
-        return;
-      }
-      if (transportReason === 'OTHER' && !transportReasonNote.trim()) {
-        setErrorMessage(t('billing.new.transportReasonNoteRequired'));
-        return;
-      }
+      if (!transportReason) return t('billing.new.transportReasonRequired');
+      if (transportReason === 'OTHER' && !transportReasonNote.trim()) return t('billing.new.transportReasonNoteRequired');
     }
     if (statesDeliveryDate(docType) && deliveryDate && documentDate && deliveryDate < documentDate) {
-      setErrorMessage(t('billing.new.deliveryBeforeDocument'));
-      return;
+      return t('billing.new.deliveryBeforeDocument');
     }
     // P2 PHARMACY: said here, before a draft is queued that can only be refused.
     if (pharmacy.scheduleXNames.length) {
-      setErrorMessage(t('errors.RX_SCHEDULE_X_NOT_ALLOWED', { itemName: pharmacy.scheduleXNames[0] }));
-      return;
+      return t('errors.RX_SCHEDULE_X_NOT_ALLOWED', { itemName: pharmacy.scheduleXNames[0] });
     }
-    const rxNeeded = pharmacy.rxDrugs.length > 0;
-    if (rxNeeded) {
+    if (pharmacy.rxDrugs.length > 0) {
       const problem = rxProblem(rx);
-      if (problem) {
-        setErrorMessage(t(problem));
-        return;
-      }
+      if (problem) return t(problem);
     }
-    setSubmitting(true);
-    setErrorMessage(null);
+    return null;
+  }, [lines.length, limitMessage, docType, supplierInvoiceDate, documentDate, behaviour.requiresParty, selectedParty,
+    transportReason, transportReasonNote, deliveryDate, pharmacy.scheduleXNames, pharmacy.rxDrugs.length, rx, t]);
 
+  /** The bill as a draft body — the one shape both Issue (offline queue) and Checkout send. */
+  const buildDraftInput = useCallback((): AddDraftInput => {
+    const rxNeeded = pharmacy.rxDrugs.length > 0;
     const partySnapshot = selectedParty
       ? {
           name: selectedParty.name,
@@ -684,7 +817,7 @@ export default function NewInvoiceScreen() {
     // a `Date`-coercible value like everything else on the wire.
     const isoOf = (d: string): string | undefined => (d ? new Date(`${d}T00:00:00`).toISOString() : undefined);
 
-    const draft = await addDraft({
+    return {
       type: docType,
       // The job's own party wins when the screen was opened from one: it is the
       // record the booking already created, and billing against anything else
@@ -707,14 +840,62 @@ export default function NewInvoiceScreen() {
       supplierInvoiceDate: billFields ? isoOf(supplierInvoiceDate) : undefined,
       itcEligible: docType === 'PURCHASE_INVOICE' && itcEligible !== null ? itcEligible : undefined,
       ...(rxNeeded ? { rx: rxBody(rx) } : {}),
-    });
+      // MP1-COMPLETE — P2: only when asked AND chosen; otherwise the draft is exactly as before.
+      ...refundToBody({
+        walletOn: refundChoice.walletOn, type: docType, partyId: selectedParty?._id ?? jobParams.partyId, refundTo: refundChoice.value,
+      }),
+    };
+  }, [lines, selectedParty, walkinName, walkinPhone, walkinState, docType, behaviour, sourceType, sourceId,
+    jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned, transportReason, transportReasonNote,
+    deliveryDate, supplierInvoiceNo, supplierInvoiceDate, itcEligible, pharmacy.active, pharmacy.rxDrugs.length, rx,
+    refundChoice.walletOn, refundChoice.value]);
+
+  const handleIssue = useCallback(async () => {
+    const problem = billProblem();
+    if (problem) {
+      setErrorMessage(problem);
+      return;
+    }
+    setSubmitting(true);
+    setErrorMessage(null);
+    // The plain path: a checkout draft opened earlier is not this bill any more.
+    dropServerDraft();
+    const draft = await addDraft(buildDraftInput());
     const settled = await retryDraft(draft.id);
     setSubmitting(false);
     await finishSettled(settled);
-  }, [lines, selectedParty, walkinName, walkinPhone, walkinState, docType, behaviour, addDraft, retryDraft,
-    sourceType, sourceId, jobParams.partyId, documentDate, dueDate, validUntil, goodsReturned,
-    transportReason, transportReasonNote, deliveryDate, t, limitMessage, supplierInvoiceNo, supplierInvoiceDate,
-    itcEligible, finishSettled, pharmacy.active, pharmacy.rxDrugs.length, pharmacy.scheduleXNames, rx]);
+  }, [billProblem, buildDraftInput, addDraft, retryDraft, finishSettled, dropServerDraft]);
+
+  /** Commerce Checkout: the same bill, priced by the server (offers), paid in parts / with points. */
+  const openCheckout = useCallback(() => {
+    const problem = billProblem();
+    if (problem) {
+      setErrorMessage(problem);
+      return;
+    }
+    setErrorMessage(null);
+    const input = buildDraftInput();
+    setCheckoutPayload({ ...input, sourceType: input.sourceType ?? 'MANUAL' });
+  }, [billProblem, buildDraftInput]);
+
+  /** A checkout finished: settle the job it was raised for (as Issue does), then open the bill. */
+  const onCheckoutDone = useCallback(async (documentId: string) => {
+    if (sourceType === 'BOOKING' && sourceId) await bookingApi.invoice(sourceId).catch(() => {});
+    if (sourceType === 'ORDER' && sourceId) await ordersApi.transition(sourceId, 'invoice').catch(() => {});
+    void queryClient.invalidateQueries({ queryKey: qk.billing.all() });
+    router.replace(toHref(`/(app)/billing/${documentId}`));
+  }, [sourceType, sourceId, queryClient]);
+
+  /** Hold: the bill is saved off the till (no number, no stock) and the till is cleared for the next customer. */
+  const afterHeld = useCallback(() => {
+    dropServerDraft();
+    setLines([]);
+    setSelectedParty(null);
+    setWalkinName('');
+    setWalkinPhone('');
+    setResumedCoupon(undefined);
+    setNotice(t('commerce.counter.heldToast'));
+  }, [dropServerDraft, t]);
 
   if (!canManage) {
     return (
@@ -734,7 +915,26 @@ export default function NewInvoiceScreen() {
       <View style={styles.topBar}>
         <IconButton icon="close" onPress={() => router.back()} accessibilityLabel={t('billing.new.close')} />
         <Text style={[styles.topBarTitle, { color: c.textPrimary }]}>{t('billing.new.title')}</Text>
-        <View style={{ width: 48 }} />
+        {/* MP1-COMPLETE — tray (when on) + the "?" help for this screen, side by side on the right. */}
+        <View style={styles.topBarRight}>
+          {holdsOn ? (
+            // C6: the held-bills tray, with how many are waiting.
+            <View>
+              <IconButton
+                icon={heldCount > 0 ? 'tray-full' : 'tray'}
+                onPress={() => setTrayOpen(true)}
+                accessibilityLabel={t('commerce.counter.trayA11y', { count: heldCount })}
+                testID="hold-tray-open"
+              />
+              {heldCount > 0 ? (
+                <View pointerEvents="none" style={[styles.trayBadge, { backgroundColor: c.secondary }]}>
+                  <Text style={{ color: c.textInverse, fontSize: 10, fontWeight: '700' }}>{heldCount > 20 ? '20' : String(heldCount)}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+          <HelpButton c={c} />
+        </View>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -749,19 +949,20 @@ export default function NewInvoiceScreen() {
             ]}
           />
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
-            <SegmentedButtons
+          {/* >>> WEB-UI — was a sideways ScrollView around equal-width segments,
+              which still cut long type names short; FitSegments sizes each
+              segment to its words and scrolls when they do not fit. */}
+            <FitSegments
               value={docType}
               onValueChange={(v) => setDocType(v as BillingScreenDocumentType)}
               density="small"
-              style={{ minWidth: '100%' }}
               buttons={typesForDirection.map((type) => ({
                 value: type,
                 // An unregistered shop's TAX_INVOICE is issued untaxed — a bill of supply.
                 label: t(documentTypeLabelKey(type, businessQuery.data?.isGstRegistered, undefined, isComposition ? 'BILL_OF_SUPPLY_COMPOSITION' : undefined)),
               }))}
             />
-          </ScrollView>
+          {/* <<< WEB-UI */}
 
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
@@ -958,6 +1159,11 @@ export default function NewInvoiceScreen() {
                 <Switch value={goodsReturned} onValueChange={setGoodsReturned} />
               </View>
             )}
+            {/* >>> MP1-COMPLETE — P2 */}
+            {refundAsked ? (
+              <RefundToChoice c={c} value={refundChoice.value} onChange={refundChoice.choose} disabled={submitting} />
+            ) : null}
+            {/* <<< MP1-COMPLETE */}
           </Surface>
 
           <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
@@ -968,6 +1174,18 @@ export default function NewInvoiceScreen() {
               </Button>
             </View>
 
+            {/* C6 quick keys: one tap = one unit. Only when the shop set some. */}
+            {salesSide && (quickKeysQuery.data?.length ?? 0) > 0 ? (
+              <View style={{ gap: 6 }}>
+                <QuickKeysGrid c={c} keys={quickKeysQuery.data ?? []} onTap={(k) => void onQuickKey(k)} busyId={quickBusy} />
+                {commerce.counter.canSell ? (
+                  <Pressable onPress={() => router.push('/commerce/quick-keys' as Href)} accessibilityRole="link" hitSlop={8} style={{ alignSelf: 'flex-end', minHeight: 32, justifyContent: 'center' }}>
+                    <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>{t('commerce.counter.editQuickKeys')}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+
             <TextInput
               mode="outlined"
               placeholder={t('billing.new.searchCatalogue')}
@@ -977,15 +1195,25 @@ export default function NewInvoiceScreen() {
               outlineStyle={{ borderRadius: radii.field }}
               left={<TextInput.Icon icon="magnify" />}
             />
-            {productResults.map((p) => (
-              <Pressable key={p._id} onPress={() => addOrBumpLine(lineFromProduct(p))} style={styles.resultRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.resultName, { color: c.textPrimary }]}>{p.name}</Text>
-                  <Text style={[styles.resultMeta, { color: c.textSecondary }]}>{t('billing.new.perUnit', { price: formatPaise(p.sellPaise), unit: p.unit })}</Text>
-                </View>
-                <IconButton icon="plus-circle-outline" size={20} onPress={() => addOrBumpLine(lineFromProduct(p))} />
-              </Pressable>
-            ))}
+            {productResults.map((p) => {
+              // C6: a parent asks "which size?" instead of going on the bill (it is not sellable).
+              const pick = () => (p.isVariantParent
+                ? setVariantPick({ parentName: p.name, parentId: p._id })
+                : addOrBumpLine(lineFromProduct(p)));
+              return (
+                <Pressable key={p._id} onPress={pick} style={styles.resultRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.resultName, { color: c.textPrimary }]}>{p.name}</Text>
+                    <Text style={[styles.resultMeta, { color: c.textSecondary }]}>
+                      {p.isVariantParent
+                        ? t('commerce.counter.sizesCount', { count: p.variantCount ?? 0 })
+                        : t('billing.new.perUnit', { price: formatPaise(p.sellPaise), unit: p.unit })}
+                    </Text>
+                  </View>
+                  <IconButton icon={p.isVariantParent ? 'chevron-right-circle-outline' : 'plus-circle-outline'} size={20} onPress={pick} />
+                </Pressable>
+              );
+            })}
 
             {lines.length > 0 && (
               <>
@@ -1206,18 +1434,98 @@ export default function NewInvoiceScreen() {
 
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
         <UsageMeter capacity={invoiceCapacity} c={c} />
+        {/*
+          C6 / C3 at the counter: Hold (park this customer) and, when the shop has
+          offers / points / split payment on, Checkout is the main action and the
+          plain Issue (which also works offline) stays one tap away. Pills size to
+          their label and wrap — nothing is stretched at 320dp.
+        */}
+        {lines.length > 0 && (holdsOn || checkoutOn) ? (
+          <View style={styles.counterActions}>
+            {holdsOn ? (
+              <PillButton c={c} tone="outline" icon="pause-circle-outline" label={t('commerce.counter.hold')} onPress={() => setHoldOpen(true)} disabled={submitting} testID="hold-open" />
+            ) : null}
+            {checkoutOn ? (
+              <PillButton
+                c={c}
+                tone="outline"
+                icon="file-check-outline"
+                label={t('commerce.counter.issueOnly')}
+                onPress={() => void handleIssue()}
+                disabled={submitting || invoiceCapacity.atLimit || !!limitMessage}
+                testID="issue-plain"
+              />
+            ) : null}
+          </View>
+        ) : null}
         <Button
           mode="contained"
-          onPress={handleIssue}
+          onPress={checkoutOn ? openCheckout : handleIssue}
           loading={submitting}
           disabled={submitting || lines.length === 0 || invoiceCapacity.atLimit || !!limitMessage}
           style={{ borderRadius: radii.field, marginTop: 8 }}
+          testID="bill-primary"
         >
-          {docType === 'TAX_INVOICE'
-            ? t('billing.new.issueInvoice', { amount: formatPaise(totals.grandPaise) })
-            : t('billing.new.saveAndIssue')}
+          {checkoutOn
+            ? t('commerce.counter.checkoutAmount', { amount: formatPaise(totals.grandPaise) })
+            : docType === 'TAX_INVOICE'
+              ? t('billing.new.issueInvoice', { amount: formatPaise(totals.grandPaise) })
+              : t('billing.new.saveAndIssue')}
         </Button>
       </View>
+
+      {/* ── Commerce at the counter (sheets render nothing until opened) */}
+      {variantPick ? (
+        <VariantPickerSheet
+          visible={!!variantPick}
+          parentName={variantPick.parentName}
+          parentId={variantPick.parentId}
+          variants={variantPick.variants}
+          onPick={(v) => addOrBumpLine(lineFromProduct(v))}
+          onDismiss={() => setVariantPick(null)}
+        />
+      ) : null}
+      {holdsOn ? (
+        <>
+          <HoldNameSheet
+            visible={holdOpen}
+            defaultLabel={defaultHoldLabel(selectedParty?.name ?? (walkinName.trim() || undefined), new Date(), t)}
+            build={() => {
+              const partyId = selectedParty?._id ?? jobParams.partyId;
+              return { lines: holdLinesOf(lines), ...(partyId ? { partyId } : {}), ...(resumedCoupon ? { couponCode: resumedCoupon } : {}) };
+            }}
+            onDismiss={() => setHoldOpen(false)}
+            onHeld={afterHeld}
+          />
+          <HoldTraySheet
+            visible={trayOpen}
+            onDismiss={() => setTrayOpen(false)}
+            onResumed={onResumed}
+            warning={lines.length ? t('commerce.counter.trayReplaces') : undefined}
+          />
+        </>
+      ) : null}
+      {checkoutPayload ? (
+        <CounterCheckoutSheet
+          visible={!!checkoutPayload}
+          onDismiss={() => setCheckoutPayload(null)}
+          payload={checkoutPayload}
+          draftId={serverDraftId}
+          onDraftId={setServerDraftId}
+          partyId={checkoutPayload.partyId}
+          initialCoupon={resumedCoupon}
+          features={checkoutFeatures}
+          canViewWallet={commerce.wallet.canView}
+          onDone={(documentId) => {
+            setCheckoutPayload(null);
+            setServerDraftId(null);
+            void onCheckoutDone(documentId);
+          }}
+        />
+      ) : null}
+      <Snackbar visible={!!notice} onDismiss={() => setNotice(null)} duration={2500}>
+        {notice}
+      </Snackbar>
 
       <Portal>
         <Modal
@@ -1237,6 +1545,7 @@ export default function NewInvoiceScreen() {
           <BarcodeScannerView
             active={scannerOpen}
             onResult={handleScanResult}
+            onAddNew={addNewFromScan /* >>> SCANNER */}
             hint={t('billing.new.scanHint')}
           />
         </Modal>
@@ -1343,7 +1652,9 @@ function TotalLine({ label, value, c }: { label: string; value: number; c: Retur
 const styles = StyleSheet.create({
   root: { flex: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
-  topBarTitle: { fontSize: 16, fontWeight: '600' },
+  topBarTitle: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
+  // MP1-COMPLETE — at least the close button's width, so the title stays centred.
+  topBarRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 48, paddingRight: 4 },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
   card: { borderRadius: radii.card, padding: 14, gap: 10 },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -1382,6 +1693,8 @@ const styles = StyleSheet.create({
   totalHint: { fontSize: 11 },
   errorCard: { borderRadius: radii.card, padding: 12 },
   bottomBar: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth },
+  counterActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  trayBadge: { position: 'absolute', top: 6, right: 6, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   scannerModal: { flex: 1, margin: 0 },
   scannerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingTop: 8 },
   deniedBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },

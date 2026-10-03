@@ -46,9 +46,15 @@ interface OrderDetailModalProps {
   onAction: (verb: KnownOrderVerb) => void;
   /** M5 — opens the record-return sheet for this order. Only ever called while the button below is actually shown. */
   onRecordReturn: () => void;
+  /** Commerce C1–C4: the order's slot / rider / changes / offers block, drawn under the status row. */
+  extra?: React.ReactNode;
+  /** Commerce C2: extra actions (accept with changes, give to a rider, packing slip), drawn above the verb buttons. */
+  extraActions?: React.ReactNode;
 }
 
-export function OrderDetailModal({ order, loading, error, onRetry, pending, canManage, onClose, onAction, onRecordReturn }: OrderDetailModalProps) {
+export function OrderDetailModal({
+  order, loading, error, onRetry, pending, canManage, onClose, onAction, onRecordReturn, extra, extraActions,
+}: OrderDetailModalProps) {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const visible = loading || Boolean(order) || Boolean(error);
@@ -150,6 +156,8 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
                   {order.slotPreference ? t('orders.detail.slotSuffix', { slot: order.slotPreference }) : ''}
                 </Text>
               </View>
+
+              {extra}
 
               <Section title={t('orders.detail.customer')} c={c}>
                 <Text style={[styles.customerName, { color: c.textPrimary }]}>{order.customer.name}</Text>
@@ -277,6 +285,10 @@ export function OrderDetailModal({ order, loading, error, onRetry, pending, canM
               </Section>
             </ScrollView>
 
+            {extraActions ? (
+              <View style={[styles.extraActions, { borderTopColor: c.divider, backgroundColor: c.surface }]}>{extraActions}</View>
+            ) : null}
+
             {verbs.length > 0 && (
               <View style={[styles.footer, { borderTopColor: c.divider, backgroundColor: c.surface }]}>
                 {verbs.map((verb) => (
@@ -378,6 +390,7 @@ const styles = StyleSheet.create({
   footerBtn: { flex: 1, paddingVertical: 12, borderRadius: radii.card, alignItems: 'center', justifyContent: 'center' },
   footerBtnLabel: { color: '#fff', fontWeight: '600', fontSize: 13 },
   returnFooter: { padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  extraActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 2, borderTopWidth: StyleSheet.hairlineWidth },
   returnBtn: {
     paddingVertical: 11, borderRadius: radii.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5,
   },

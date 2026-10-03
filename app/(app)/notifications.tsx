@@ -55,6 +55,11 @@ function iconForKind(kind: string): string {
   if (kind.startsWith('PARTNER_BOOST')) return 'rocket-launch-outline';
   if (kind.startsWith('PARTNER_INVOICE') || kind.startsWith('PARTNER_PAYMENT')) return 'receipt';
   if (kind.startsWith('PARTNER_PLAN')) return 'card-account-details-outline';
+  // Commerce (CONTRACT-commerce §12.1), before the PARTNER_ catch-all.
+  if (kind === 'PARTNER_OFFER') return 'bullhorn-outline';
+  if (kind === 'WALLET') return 'wallet-giftcard';
+  if (kind === 'BACK_IN_STOCK') return 'package-variant';
+  if (kind === 'DELIVERY_ASSIGNED') return 'truck-delivery-outline';
   if (kind.startsWith('PARTNER_')) return 'shield-check-outline';
   return 'bell-outline';
 }

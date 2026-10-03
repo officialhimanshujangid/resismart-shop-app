@@ -183,7 +183,8 @@ export default function ReceiveAgainstPoScreen() {
             <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600' }}>{t('purchases.receive.scanTitle')}</Text>
             <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel={t('common.done')} />
           </View>
-          <BarcodeScannerView active={scannerOpen} onResult={onScan} hint={t('purchases.receive.scanHint')} />
+          {/* >>> SCANNER — stock in: a carton's full ITF-14 is accepted too. */}
+          <BarcodeScannerView active={scannerOpen} onResult={onScan} hint={t('purchases.receive.scanHint')} cartonCodes />
         </Modal>
       </Portal>
 

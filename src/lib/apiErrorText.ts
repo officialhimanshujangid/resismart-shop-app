@@ -63,6 +63,49 @@ export function localiseParams(params: Record<string, unknown> | undefined, tr: 
   return out;
 }
 
+/**
+ * MP-1 wording parity — the number a commerce refusal carries, said as a short
+ * SECOND sentence after the coded one, exactly like the web
+ * (`frontend/src/lib/commerce-error-codes.ts` COMMERCE_EXTRA →
+ * `marketplaceErrors.extra.<key>`). Same codes, same param names (checked
+ * against `backend/src/services/commerce/*`), same words
+ * (`common.apiError.extra.<key>`, `{{value}}`). Money params arrive as rupee
+ * strings already ("1,250.00"); counts as digit strings.
+ *
+ * DELIVERY_OTP_WRONG is in the web list too; the hand-over sheet still says
+ * its own "N tries left" line, so the sentence here only shows where the
+ * generic message is used.
+ */
+export const COMMERCE_EXTRA: Readonly<Record<string, { key: string; param: string }>> = {
+  ORDER_BELOW_MINIMUM: { key: 'shortBy', param: 'shortBy' },
+  OFFER_BELOW_MINIMUM: { key: 'minimum', param: 'minimum' },
+  WALLET_CREDIT_SHORT: { key: 'creditBalance', param: 'balance' },
+  POINTS_SHORT: { key: 'pointsBalance', param: 'points' },
+  POINTS_BELOW_MINIMUM: { key: 'pointsMin', param: 'min' },
+  POINTS_ABOVE_LIMIT: { key: 'pointsMax', param: 'max' },
+  OFFER_DISCOUNT_ABOVE_ROLE_CAP: { key: 'percentCap', param: 'max' },
+  HOLD_LIMIT_REACHED: { key: 'holdsMax', param: 'max' },
+  VARIANT_LIMIT_REACHED: { key: 'variantsMax', param: 'max' },
+  DELIVERY_OTP_WRONG: { key: 'attemptsLeft', param: 'attemptsLeft' },
+  WALLET_CREDIT_ALREADY_SPENT: { key: 'creditSpent', param: 'spent' },
+  WALLET_TOPUP_ALREADY_SPENT: { key: 'creditSpent', param: 'spent' },
+  SPLIT_TENDER_MISMATCH: { key: 'billTotal', param: 'total' },
+  BUNDLE_COMPONENT_IN_USE: { key: 'bundleName', param: 'bundleName' },
+  BUNDLE_SHORT: { key: 'shortItem', param: 'itemName' },
+};
+
+/** The second "number" sentence for a commerce refusal, or `''` when the code has none or the value did not arrive. */
+export function commerceExtraText(code: string | undefined, params: Record<string, unknown> | undefined, tr: Translator): string {
+  const extra = code ? COMMERCE_EXTRA[code] : undefined;
+  if (!extra) return '';
+  const raw = params?.[extra.param];
+  if (raw === null || raw === undefined || typeof raw === 'object') return '';
+  const value = String(raw).trim();
+  if (!value) return '';
+  const key = `common.apiError.extra.${extra.key}`;
+  return tr.exists(key) ? tr.t(key, { value }) : '';
+}
+
 /** Our sentence for a code, or `undefined` when we have none or cannot fill it. */
 export function codedText(code: string | undefined, params: Record<string, unknown> | undefined, tr: Translator): string | undefined {
   if (!code || code.includes('.')) return undefined;
@@ -74,7 +117,9 @@ export function codedText(code: string | undefined, params: Record<string, unkno
   const template = tr.t(key, { lng: 'en', skipInterpolation: true });
   const missing = slotsOf(template).filter((s) => !(s in values));
   if (missing.length) return undefined;
-  return tr.t(key, values);
+  const text = tr.t(key, values);
+  const extra = commerceExtraText(code, params, tr);
+  return extra ? `${text} ${extra}` : text;
 }
 
 export type ResolvedErrorText =

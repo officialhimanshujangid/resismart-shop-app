@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, useColorScheme, Linking, Platform } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { IconButton, Text, TextInput, ActivityIndicator } from 'react-native-paper';
+import { Button, IconButton, Text, TextInput, ActivityIndicator } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 
 import { useProductScanner } from './useProductScanner';
 import { useRememberedScanMethod } from './scanMethod';
-import { RETAIL_BARCODE_TYPES, EXTENDED_BARCODE_TYPES, ProductScanOutcome } from './types';
+import {
+  RETAIL_BARCODE_TYPES, EXTENDED_BARCODE_TYPES, CARTON_BARCODE_TYPES, ProductScanOutcome, ProductScanRejection,
+} from './types';
 import { themeColors, radii } from '../../constants/colors';
 
 /**
@@ -48,9 +50,33 @@ export interface BarcodeScannerViewProps {
    * reaching back into the constant.
    */
   extendedSymbologies?: boolean;
+  // >>> SCANNER
+  /**
+   * When given, a code the catalogue does not know shows ONE "Add new product
+   * with this barcode" button on the result strip (instead of the screen
+   * jumping to a form on every unknown read). The caller navigates.
+   */
+  onAddNew?: (barcode: string) => void;
+  /**
+   * Also read a carton's ITF-14 (full 14 digits + valid check digit only).
+   * Receiving screens — catalogue, product create/edit, stock count, stock in —
+   * NOT the billing counter.
+   */
+  cartonCodes?: boolean;
+  /** Camera: how long the SAME code waits after its add before it counts again. 2 s; the stock count uses 1 s. */
+  sameCodeWaitMs?: number;
+  // <<< SCANNER
 }
 
-export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies = false }: BarcodeScannerViewProps) {
+// >>> SCANNER — the strip under the camera: what was read, and what it was.
+type ScanStatus =
+  | { tone: 'ok' | 'warn'; text: string; addBarcode?: string }
+  | null;
+// <<< SCANNER
+
+export function BarcodeScannerView({
+  active, onResult, hint, extendedSymbologies = false, onAddNew, cartonCodes = false, sameCodeWaitMs,
+}: BarcodeScannerViewProps) {
   // `hint` has NO `t(…)` default parameter — a translator called in a default
   // would resolve once at module load and freeze the language. The fallback is
   // applied with `??` inside the render below instead.
@@ -61,22 +87,54 @@ export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies
   const [manualCode, setManualCode] = useState('');
   const { method, setMethod, loaded: methodLoaded } = useRememberedScanMethod('camera');
 
+  // >>> SCANNER — "Scanned: 8901234567890 — Milk 1L", a green frame flash on
+  // accept, and a clear sentence for a code that is not a product.
+  const [status, setStatus] = useState<ScanStatus>(null);
+  const [flash, setFlash] = useState(false);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
+
+  const handleResult = useCallback((outcome: ProductScanOutcome) => {
+    if (outcome.status === 'found') {
+      setStatus({ tone: 'ok', text: t('components.scanner.scannedFound', { code: outcome.hit.code, name: outcome.product.name }) });
+    } else if (outcome.status === 'unknown') {
+      setStatus({ tone: 'warn', text: t('components.scanner.scannedUnknown', { code: outcome.barcode }), addBarcode: outcome.barcode });
+    } else {
+      setStatus(null); // the caller shows the network error
+    }
+    onResult(outcome);
+  }, [onResult, t]);
+
   const { handleBarcodeScanned, submitManualCode, looking } = useProductScanner({
     enabled: active,
-    onResult,
+    allowTwoD: extendedSymbologies,
+    allowItf: cartonCodes || extendedSymbologies,
+    gate: sameCodeWaitMs ? { cooldownMs: sameCodeWaitMs } : undefined,
+    onResult: handleResult,
+    onRejected: (r: ProductScanRejection) => setStatus({ tone: 'warn', text: t(`components.scanner.reject.${r.reason}`) }),
+    onAccepted: () => {
+      setFlash(true);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setFlash(false), 600);
+    },
   });
+  // <<< SCANNER
 
   // Memoised because `barcodeScannerSettings` is a new object on every render
   // otherwise, and this component re-renders on the torch toggle, on `looking`
   // and on every keystroke in the manual field — handing the native camera a
   // fresh settings object each time is work for nothing on the one screen that
   // is already busy decoding frames.
+  // >>> SCANNER — + ITF-14 on receiving screens (`cartonCodes`), never on billing.
   const barcodeTypes = useMemo(
     () => (extendedSymbologies
       ? [...RETAIL_BARCODE_TYPES, ...EXTENDED_BARCODE_TYPES]
-      : [...RETAIL_BARCODE_TYPES]),
-    [extendedSymbologies],
+      : cartonCodes
+        ? [...RETAIL_BARCODE_TYPES, ...CARTON_BARCODE_TYPES]
+        : [...RETAIL_BARCODE_TYPES]),
+    [extendedSymbologies, cartonCodes],
   );
+  // <<< SCANNER
 
   // Ask once on mount. `permission === null` is "we haven't asked yet" — a
   // camera screen that never asks is a camera screen that never works, and the
@@ -175,8 +233,29 @@ export function BarcodeScannerView({ active, onResult, hint, extendedSymbologies
         )}
 
         {cameraGranted && (
-          <View pointerEvents="none" style={styles.frameGuide} />
+          <View pointerEvents="none" style={[styles.frameGuide, flash && styles.frameGuideHit]} />
         )}
+
+        {/* >>> SCANNER — what was read; one Add button for an unknown code. */}
+        {status && (
+          <View style={[styles.statusStrip, status.tone === 'ok' ? styles.statusOk : styles.statusWarn]}>
+            <Text style={styles.statusText} numberOfLines={2}>{status.text}</Text>
+            {status.addBarcode && onAddNew && (
+              <Button
+                mode="contained"
+                compact
+                icon="plus"
+                buttonColor="#fff"
+                textColor="#1F2937"
+                onPress={() => { const b = status.addBarcode!; setStatus(null); onAddNew(b); }}
+                accessibilityLabel={t('components.scanner.addNew')}
+              >
+                {t('components.scanner.addNewShort')}
+              </Button>
+            )}
+          </View>
+        )}
+        {/* <<< SCANNER */}
       </View>
 
       <View style={[styles.manualArea, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
@@ -242,6 +321,17 @@ const styles = StyleSheet.create({
     position: 'absolute', left: '12%', right: '12%', top: '32%', bottom: '38%',
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.75)', borderRadius: radii.md,
   },
+  // >>> SCANNER
+  frameGuideHit: { borderColor: '#22C55E', borderWidth: 4 },
+  statusStrip: {
+    position: 'absolute', left: 12, right: 12, bottom: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 8,
+  },
+  statusOk: { backgroundColor: 'rgba(21,128,61,0.92)' },
+  statusWarn: { backgroundColor: 'rgba(180,83,9,0.94)' },
+  statusText: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  // <<< SCANNER
   permissionCard: {
     flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24,
   },

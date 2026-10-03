@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
-import { apiErrorMessage } from '../../../src/api/axios';
+import { apiErrorMessage, apiErrorCode, apiErrorParams } from '../../../src/api/axios'; // MP1-COMPLETE: + code/params
 import { ErrorBlock } from '../../../src/features/more/ui';
 import { parseRupeesToPaise, paiseToInput, formatPaise } from '../../../src/lib/money';
 import { AppInput } from '../../../src/components/AppInput';
@@ -24,6 +24,18 @@ import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { stockApi } from '../../../src/features/stock/api';
 import { OpeningStockDialog } from '../../../src/features/stock/components/OpeningStockDialog';
 import { useCategoryModules } from '../../../src/features/p2/useCategoryModules';
+// Commerce C3 bundles / C6 sizes & labels — each card draws nothing unless it applies.
+import { VariantsCard } from '../../../src/features/commerce/components/VariantsCard';
+import { BundleCard } from '../../../src/features/commerce/components/BundleCard';
+import { LabelsSheet } from '../../../src/features/commerce/components/LabelsSheet';
+// >>> MP1-COMPLETE — P1: online-shop page + quantity rules (C1 product fields).
+import { useCommerceAccess } from '../../../src/features/commerce/access';
+import { ProductCommerceFields } from '../../../src/features/catalog/components/ProductCommerceFields';
+import {
+  EMPTY_SHOP_FIELDS, ShopFieldKey, ShopFieldsForm, shopFieldOfError, shopFieldsBody, shopFieldsFormOf, shopFieldsOn,
+  shopFieldsProblems,
+} from '../../../src/features/catalog/commerceFields';
+// <<< MP1-COMPLETE
 
 export default function ProductDetailScreen() {
   const { t } = useTranslation();
@@ -70,6 +82,18 @@ export default function ProductDetailScreen() {
   const [images, setImages] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [stockTarget, setStockTarget] = useState<StockAdjustTarget | null>(null);
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  /** C3/C6: a bundle and a sizes parent keep no stock of their own — never send `trackStock: true` for them. */
+  const noOwnStock = !!productQuery.data?.isVariantParent || !!productQuery.data?.bundleComponents?.length;
+  // >>> MP1-COMPLETE — P1
+  const commerceAccess = useCommerceAccess();
+  const shopOn = shopFieldsOn(commerceAccess, productQuery.data);
+  const [shopFields, setShopFields] = useState<ShopFieldsForm>(EMPTY_SHOP_FIELDS);
+  const [shopErrors, setShopErrors] = useState<Partial<Record<ShopFieldKey, string>>>({});
+  useEffect(() => {
+    if (productQuery.data) setShopFields(shopFieldsFormOf(productQuery.data));
+  }, [productQuery.data]);
+  // <<< MP1-COMPLETE
 
   useEffect(() => {
     const p = productQuery.data;
@@ -109,6 +133,13 @@ export default function ProductDetailScreen() {
     }
 
     setErrors(nextErrors);
+    // >>> MP1-COMPLETE — P1: the shop-page fields are checked with the rest (server rules, said sooner).
+    const shopProblems = shopOn ? shopFieldsProblems(shopFields, unit) : {};
+    const nextShopErrors: Partial<Record<ShopFieldKey, string>> = {};
+    for (const [k, p] of Object.entries(shopProblems)) if (p) nextShopErrors[k as ShopFieldKey] = t(p.key, p.params);
+    setShopErrors(nextShopErrors);
+    if (Object.keys(nextShopErrors).length > 0) return;
+    // <<< MP1-COMPLETE
     if (Object.keys(nextErrors).length > 0 || sellPaise === null) return;
 
     updateProduct.mutate(
@@ -122,8 +153,8 @@ export default function ProductDetailScreen() {
         sellPaise,
         taxRatePercent: taxRateNum,
         taxInclusive,
-        lowStockAt: lowStockNum ?? null,
-        trackStock,
+        lowStockAt: noOwnStock ? null : lowStockNum ?? null,
+        trackStock: noOwnStock ? false : trackStock,
         // This screen omitted `images` entirely, so a product could never gain a
         // photo after it was created — and, worse, `updateProductSchema` treats
         // a missing key as "leave it alone", which meant the omission was silent
@@ -131,8 +162,17 @@ export default function ProductDetailScreen() {
         // matching how the schema reads it: this IS the new list.
         images,
         categoryId: categoryId ?? null,
+        // MP1-COMPLETE — P1: only what changed; an emptied box is sent as `null` (clears it).
+        ...(shopOn ? shopFieldsBody(shopFields, productQuery.data) : {}),
       },
-      { onError: (e: unknown) => Alert.alert(t('catalog.form.saveFailed'), apiErrorMessage(e)) },
+      {
+        onError: (e: unknown) => {
+          // MP1-COMPLETE — P1: COMMERCE_FIELD_INVALID {field} marks that box with the server's sentence.
+          const badField = shopFieldOfError(apiErrorCode(e), apiErrorParams(e));
+          if (badField) setShopErrors({ [badField]: apiErrorMessage(e) });
+          Alert.alert(t('catalog.form.saveFailed'), apiErrorMessage(e));
+        },
+      },
     );
   };
 
@@ -249,6 +289,21 @@ export default function ProductDetailScreen() {
         </Pressable>
       )}
 
+      {/* Commerce: sizes & types (C6), bundle contents (C3), barcode labels (C6). */}
+      <VariantsCard product={product} />
+      <BundleCard product={product} />
+      {product.barcode && !product.isVariantParent ? (
+        <Pressable
+          onPress={() => setLabelsOpen(true)}
+          accessibilityRole="button"
+          style={[styles.adjustBtn, { borderColor: c.primary, alignSelf: 'flex-start', marginBottom: 10, minHeight: 44, justifyContent: 'center' }]}
+          testID="product-print-labels"
+        >
+          <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('commerce.labels.print')}</Text>
+        </Pressable>
+      ) : null}
+      <LabelsSheet visible={labelsOpen} onDismiss={() => setLabelsOpen(false)} items={[{ productId: product._id, name: product.name }]} />
+
       {/* P1 cost line — the fields arrive only for a COSTS holder. */}
       {typeof product.avgCostPaise === 'number' && (
         <Text style={[styles.mrpNote, { color: c.textSecondary, textAlign: 'left', marginBottom: 8 }]} testID="product-cost">
@@ -317,14 +372,33 @@ export default function ProductDetailScreen() {
       <AppInput label={t('catalog.form.barcode')} value={barcode} onChangeText={setBarcode} autoCapitalize="characters" disabled={!canManage} />
       <AppInput label={t('catalog.form.hsn')} value={hsnCode} onChangeText={setHsnCode} disabled={!canManage} />
 
-      <View style={[styles.switchBox, { marginTop: 4 }]}>
-        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.trackStock')}</Text>
-        <Switch value={trackStock} onValueChange={setTrackStock} disabled={!canManage} />
-      </View>
+      {noOwnStock ? (
+        <Text style={{ color: c.textSecondary, fontSize: 12.5, marginTop: 4 }} testID="product-no-own-stock">
+          {product.isVariantParent ? t('commerce.variants.stockOnSizes') : t('commerce.bundles.stockOnItems')}
+        </Text>
+      ) : (
+        <View style={[styles.switchBox, { marginTop: 4 }]}>
+          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.trackStock')}</Text>
+          <Switch value={trackStock} onValueChange={setTrackStock} disabled={!canManage} />
+        </View>
+      )}
 
-      {trackStock && (
+      {trackStock && !noOwnStock && (
         <AppInput label={t('catalog.form.lowStockAt')} value={lowStockAt} onChangeText={setLowStockAt} keyboardType="numeric" error={errors.lowStockAt} disabled={!canManage} />
       )}
+
+      {/* >>> MP1-COMPLETE — P1 */}
+      {shopOn ? (
+        <ProductCommerceFields
+          c={c}
+          unit={unit}
+          value={shopFields}
+          onChange={(patch) => setShopFields((f) => ({ ...f, ...patch }))}
+          errors={shopErrors}
+          disabled={!canManage}
+        />
+      ) : null}
+      {/* <<< MP1-COMPLETE */}
 
       {canManage && (
         <>

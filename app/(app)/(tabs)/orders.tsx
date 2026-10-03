@@ -6,7 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // the literal routes the generated union describes — the same escape hatch
 // `(tabs)/bookings.tsx#openBillFor` uses for the identical link.
 import { router, useLocalSearchParams, type Href } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { qk } from '../../../src/lib/queryKeys';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { Hero } from '../../../src/components/Hero';
@@ -23,6 +25,16 @@ import {
 import type { KnownOrderVerb, PartnerOrder, ReasonPromptTarget, OrderReturnResult } from '../../../src/features/orders';
 import { formatPaise } from '../../../src/lib/money';
 import { ErrorBlock } from '../../../src/features/more/ui';
+// Commerce C2 (fulfilment) — each piece draws nothing unless its feature is on.
+import { PillButton } from '../../../src/features/p1/ui';
+import { useCommerceAccess } from '../../../src/features/commerce/access';
+import { useCommerceSettings } from '../../../src/features/commerce/hooks';
+import { assignable, needsProof, type ProofMode } from '../../../src/features/commerce/fulfilmentLogic';
+import { fulfilmentApi } from '../../../src/features/commerce/fulfilmentApi';
+import { clockText, extrasOf, isPausedNow, storefrontOf } from '../../../src/features/commerce/storefrontApi';
+import {
+  AssignRiderSheet, DeliverProofSheet, OrderCommerceInfo, PartialAcceptSheet, PickingListSheet,
+} from '../../../src/features/commerce/components/FulfilmentSheets';
 
 /**
  * This tab is only reachable when the gate says so: ORDERS_VIEW READ / module
@@ -83,7 +95,7 @@ const FILTER_CHIPS: { key: keyof typeof STATUS_FILTER_MAP; labelKey: string }[] 
 const PAGE_LIMIT = 20;
 
 export default function OrdersScreen() {
-  const { t } = useTranslation();
+  const { t, i18n: { language: i18nLang } } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
@@ -196,6 +208,22 @@ export default function OrdersScreen() {
   // ---- M5: record a return ----
   const [returnOrder, setReturnOrder] = useState<PartnerOrder | null>(null);
 
+  // ---- Commerce C2: accept with changes, give to a rider, picking list, proof at hand-over ----
+  const commerce = useCommerceAccess();
+  // Read for every shop that may read it: a new shop is "closed means closed" by default (Owner rule 2)
+  // with no feature switched on, and the board must still say so.
+  const fulfilmentSettings = useCommerceSettings(commerce.settings.canView);
+  const proofMode = fulfilmentSettings.data?.settings.fulfilment
+    ? (fulfilmentSettings.data.settings.fulfilment as { proofMode?: ProofMode }).proofMode
+    : undefined;
+  /** One fulfilment sheet at a time; the detail sheet closes while it is open (a native modal would cover it). */
+  const [c2Sheet, setC2Sheet] = useState<{ kind: 'PARTIAL' | 'ASSIGN' | 'PROOF'; order: PartnerOrder } | null>(null);
+  const [pickingOpen, setPickingOpen] = useState(false);
+  const openC2 = useCallback((kind: 'PARTIAL' | 'ASSIGN' | 'PROOF', order: PartnerOrder) => {
+    setSelectedId(null);
+    setC2Sheet({ kind, order });
+  }, []);
+
   /**
    * B6 fix: `rows` is this screen's own accumulated-pages array (see the
    * effect above) — `useOrderTransition`'s own `onSuccess` only touches the
@@ -276,12 +304,17 @@ export default function OrdersScreen() {
             setRxTarget({ order, drug: { name: String(p.itemName ?? ''), schedule }, refusal: apiErrorMessage(e) });
             return;
           }
+          // Commerce C2 (B-5): the shop wants proof at hand-over — take it, then deliver.
+          if (verb === 'deliver' && apiErrorCode(e) === 'DELIVERY_PROOF_REQUIRED') {
+            openC2('PROOF', order);
+            return;
+          }
           setSnackbar(apiErrorMessage(e));
         },
         onSettled: () => setPendingId(null),
       },
     );
-  }, [transition, patchRow, openBillFor, t]);
+  }, [transition, patchRow, openBillFor, openC2, t]);
 
   // ---- P2 PHARMACY: accept with a prescription ----
   const acceptWithRx = useCallback((rx: DocumentRx) => {
@@ -303,8 +336,26 @@ export default function OrdersScreen() {
       setReasonTarget({ orderId: order.id, orderCode: order.code, verb });
       return;
     }
+    // Commerce C2 (B-5): proof first when the shop asks for it on a delivery.
+    // >>> GAP-C-SHOP — the assigned rider's order detail carries the rule itself (`delivery.proofMode`),
+    // so a rider who may not read the shop's settings is asked up front too.
+    const mode = order.delivery?.proofMode ?? (commerce.has('DELIVERY_PROOF') ? proofMode : undefined);
+    if (verb === 'deliver' && needsProof(mode, order)) {
+    // <<< GAP-C-SHOP
+      openC2('PROOF', order);
+      return;
+    }
     runTransition(order, verb);
-  }, [runTransition]);
+  }, [runTransition, commerce, proofMode, openC2]);
+
+  /** A fulfilment sheet finished: patch the row, refresh, and bring the order back up. */
+  const queryClient = useQueryClient();
+  const c2Done = useCallback((updated: PartnerOrder) => {
+    patchRow(updated);
+    queryClient.setQueryData(qk.orders.detail(updated.id), updated);
+    void queryClient.invalidateQueries({ queryKey: qk.orders.all() });
+    setSelectedId(updated.id);
+  }, [patchRow, queryClient]);
 
   const submitReason = useCallback((reason: string) => {
     if (!reasonTarget) return;
@@ -336,12 +387,24 @@ export default function OrdersScreen() {
       t('orders.list.returnRecordedBody', {
         number: result.creditNote.number ?? '',
         amount: formatPaise(result.creditNote.totals.grandPaise),
-      }),
+      })
+      // Commerce C4: say where the money went when it went to store credit.
+      + (result.refundedToCredit ? `\n\n${t('commerce.wallet.return.refundedToCredit', { amount: formatPaise(result.refundedToCredit) })}` : ''),
     );
   }, [patchRow, t]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
+      {/* >>> WEB-UI — the whole screen scrolls as one list. Everything that used
+          to sit FIXED above the orders (hero, search, chips, banners) is the
+          list's header now, so on a short phone the orders are not squeezed
+          into a strip under it. The header is an ELEMENT, not a component
+          function, so the search box keeps its focus while typing. */}
+      <FlatList
+        data={rows}
+        keyExtractor={(o) => o.id}
+        ListHeaderComponent={
+          <View>
       {/* The title is `modules.ORDERS.label`, the same catalogue entry the tab
           bar and the More menu read — a module is called one thing in this app. */}
       <Hero isDark={isDark} action={<HelpButton c={c} variant="hero" />} rounded={false} eyebrow={t('orders.list.eyebrow')} title={t('modules.ORDERS.label')} />
@@ -360,6 +423,10 @@ export default function OrdersScreen() {
         data={FILTER_CHIPS}
         keyExtractor={(f) => f.key}
         showsHorizontalScrollIndicator={false}
+        // >>> WEB-UI — a horizontal list must not grow to fill the column (a
+        // browser stretched the chips into ~250px-tall pills).
+        style={styles.chipList}
+        // <<< WEB-UI
         contentContainerStyle={styles.chipRow}
         renderItem={({ item }) => {
           const active = item.key === chip;
@@ -380,6 +447,39 @@ export default function OrdersScreen() {
         }}
       />
 
+      {/* Commerce C1 (A-1): say when residents cannot order right now — paused, or closed by the shop's hours. */}
+      {fulfilmentSettings.data ? (() => {
+        const sf = storefrontOf(fulfilmentSettings.data);
+        const ex = extrasOf(fulfilmentSettings.data);
+        if (isPausedNow(sf)) {
+          return (
+            <View style={[styles.c2Banner, { backgroundColor: `${c.warning}1A`, borderColor: `${c.warning}55` }]} testID="orders-paused-banner">
+              <Text style={{ color: c.warning, fontWeight: '700' }}>
+                {t('commerce.storefront.pause.pausedTitle')}
+                {' · '}
+                {sf.pausedUntil ? t('commerce.storefront.pause.backAt', { time: clockText(sf.pausedUntil, t) }) : t('commerce.storefront.pause.untilResume')}
+              </Text>
+            </View>
+          );
+        }
+        // Only when residents really cannot order while closed (A-1); a shop taking orders while closed sees nothing new.
+        if (!sf.acceptOrdersWhenClosed && ex.openNow === false && ex.opensAt) {
+          return (
+            <View style={[styles.c2Banner, { backgroundColor: `${c.info}14`, borderColor: `${c.info}44` }]} testID="orders-closed-banner">
+              <Text style={{ color: c.info, fontWeight: '600' }}>{t('commerce.storefront.closedNowOpens', { time: clockText(ex.opensAt, t) })}</Text>
+            </View>
+          );
+        }
+        return null;
+      })() : null}
+
+      {/* Commerce C2 (B-8): the batch picking list, for anybody who can read orders. */}
+      {commerce.anyOn ? (
+        <View style={styles.c2Bar}>
+          <PillButton c={c} tone="outline" icon="clipboard-list-outline" label={t('commerce.fulfilment.pickingTitle')} onPress={() => setPickingOpen(true)} testID="orders-picking" />
+        </View>
+      ) : null}
+
       {!canManage && (
         <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
           <Text style={[styles.readOnlyText, { color: c.textSecondary }]}>
@@ -387,10 +487,9 @@ export default function OrdersScreen() {
           </Text>
         </View>
       )}
-
-      <FlatList
-        data={rows}
-        keyExtractor={(o) => o.id}
+          </View>
+        }
+        // <<< WEB-UI
         renderItem={({ item }) => (
           <OrderCard
             order={item}
@@ -418,7 +517,10 @@ export default function OrdersScreen() {
           ) : null
         }
         ListEmptyComponent={
-          loadError ? (
+          // >>> WEB-UI — centred in the space left UNDER the header (the
+          // header is part of the list now, so the list itself is not centred).
+          <View style={styles.emptyFill}>
+          {loadError ? (
             <ErrorBlock c={c} message={loadError} onRetry={() => void query.refetch()} />
           ) : query.isLoading ? (
             <ActivityIndicator color={c.primary} />
@@ -431,7 +533,9 @@ export default function OrdersScreen() {
                   : t('orders.list.emptyFiltered')}
               </Text>
             </View>
-          )
+          )}
+          </View>
+          // <<< WEB-UI
         }
       />
 
@@ -451,7 +555,48 @@ export default function OrdersScreen() {
           if (!detail.data) return;
           setReturnOrder(detail.data);
         }}
+        extra={detail.data ? <OrderCommerceInfo order={detail.data} /> : null}
+        extraActions={detail.data ? (() => {
+          const o = detail.data;
+          const partial = canManage && commerce.has('PARTIAL_ACCEPT') && o.status === 'PLACED';
+          const rider = canManage && commerce.has('DELIVERY_STAFF') && assignable(o);
+          const slip = ['ACCEPTED', 'PACKED', 'OUT_FOR_DELIVERY'].includes(o.status);
+          if (!partial && !rider && !slip) return null;
+          return (
+            <>
+              {partial ? <PillButton c={c} tone="outline" icon="playlist-edit" label={t('commerce.fulfilment.acceptWithChanges')} onPress={() => openC2('PARTIAL', o)} testID="order-accept-partial" /> : null}
+              {rider ? (
+                <PillButton c={c} tone="outline" icon="moped-outline" label={o.delivery?.staffName ? t('commerce.fulfilment.changeRider') : t('commerce.fulfilment.giveToRider')} onPress={() => openC2('ASSIGN', o)} testID="order-assign" />
+              ) : null}
+              {slip ? (
+                <PillButton
+                  c={c}
+                  tone="outline"
+                  icon="clipboard-list-outline"
+                  label={t('commerce.fulfilment.packingSlip')}
+                  onPress={() => {
+                    void fulfilmentApi.sharePickingSlip(o.id, o.code, String(i18nLang).startsWith('hi') ? 'hi' : 'en')
+                      .catch((e: unknown) => setSnackbar(apiErrorMessage(e)));
+                  }}
+                  testID="order-slip"
+                />
+              ) : null}
+            </>
+          );
+        })() : null}
       />
+
+      {/* Commerce C2 sheets (Paper portals — the detail sheet is closed while one is open). */}
+      {c2Sheet?.kind === 'PARTIAL' ? (
+        <PartialAcceptSheet order={c2Sheet.order} onDismiss={() => setC2Sheet(null)} onDone={c2Done} />
+      ) : null}
+      {c2Sheet?.kind === 'ASSIGN' ? (
+        <AssignRiderSheet order={c2Sheet.order} onDismiss={() => setC2Sheet(null)} onDone={c2Done} />
+      ) : null}
+      {c2Sheet?.kind === 'PROOF' ? (
+        <DeliverProofSheet order={c2Sheet.order} mode={c2Sheet.order.delivery?.proofMode ?? proofMode} onDismiss={() => setC2Sheet(null)} onDone={c2Done} />
+      ) : null}
+      {pickingOpen ? <PickingListSheet onDismiss={() => setPickingOpen(false)} /> : null}
 
       <RecordReturnModal
         order={returnOrder}
@@ -488,15 +633,23 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   search: { marginHorizontal: 14, marginTop: 12, borderRadius: radii.field },
   searchInput: { fontSize: 14 },
-  chipRow: { paddingHorizontal: 14, paddingVertical: 10, gap: 8 },
+  // >>> WEB-UI — the chip strip takes only its own height; chips are not stretched.
+  chipList: { flexGrow: 0, flexShrink: 0 },
+  chipRow: { paddingHorizontal: 14, paddingVertical: 10, gap: 8, alignItems: 'center' },
+  // <<< WEB-UI
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth, marginRight: 8 },
   chipLabel: { fontSize: 12.5, fontWeight: '600' },
   readOnlyBanner: { marginHorizontal: 14, marginBottom: 6, borderRadius: radii.sm, paddingVertical: 6, paddingHorizontal: 10 },
   readOnlyText: { fontSize: 11.5, fontWeight: '600' },
   listPad: { paddingBottom: 24 },
-  emptyGrow: { flexGrow: 1, justifyContent: 'center' },
+  // >>> WEB-UI — the header now sits inside the list; only the empty block is centred.
+  emptyGrow: { flexGrow: 1 },
+  emptyFill: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
+  // <<< WEB-UI
   emptyBox: { alignItems: 'center', gap: 4, paddingHorizontal: 32 },
   emptyTitle: { fontSize: 15, fontWeight: '600' },
   emptyBody: { fontSize: 13, textAlign: 'center' },
   footerSpinner: { marginVertical: 16 },
+  c2Bar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, paddingBottom: 6 },
+  c2Banner: { marginHorizontal: 14, marginBottom: 6, borderRadius: radii.sm, borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12 },
 });

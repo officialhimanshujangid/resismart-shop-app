@@ -26,12 +26,22 @@ import { ProductUnit } from '../../types/api-contract.generated';
  *
  * Kept in: `ean13`/`ean8`/`upc_a`/`upc_e` (the GTIN family on every retail
  * pack), `code128` (GS1-128 and nearly every label printer's default),
- * `code39` (pharma and older Indian FMCG labels), `itf14` (the outer carton, so
- * a shop buying by the case can scan the case).
+ * `code39` (pharma and older Indian FMCG labels).
+ *
+ * >>> SCANNER — `itf14` is NOT in this list. Android's ML Kit decodes ITF of
+ * ANY length, and a partly-seen carton code comes out as a shorter, valid-
+ * looking number — the textbook "same item, different code" misread. It is
+ * switched on per screen with `<BarcodeScannerView cartonCodes>` on the
+ * RECEIVING screens only (catalogue scan, product create/edit, stock count,
+ * stock in) — never the billing counter — and even there `scanCore.classifyScan`
+ * accepts only a full 14-digit code with a valid GS1 check digit.
  */
 export const RETAIL_BARCODE_TYPES = [
-  'ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'itf14',
+  'ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39',
 ] as const;
+
+/** >>> SCANNER — the carton code, for receiving screens (`cartonCodes`). */
+export const CARTON_BARCODE_TYPES = ['itf14'] as const;
 
 /**
  * Opt-in, via `<BarcodeScannerView extendedSymbologies>`. Two-dimensional codes
@@ -45,7 +55,7 @@ export const RETAIL_BARCODE_TYPES = [
  * choosing, not us, which is exactly why it is not the default.
  */
 export const EXTENDED_BARCODE_TYPES = [
-  'qr', 'datamatrix', 'pdf417', 'aztec', 'code93', 'codabar',
+  'itf14', 'qr', 'datamatrix', 'pdf417', 'aztec', 'code93', 'codabar',
 ] as const;
 
 /**
@@ -62,7 +72,7 @@ export type SupportedBarcodeType = typeof SUPPORTED_BARCODE_TYPES[number];
 
 /** One decoded read, however it arrived. */
 export interface ScanHit {
-  /** Trimmed and UPPERCASED — matches how `partner-product.model.ts` stores `barcode`. */
+  /** >>> SCANNER — CANONICAL (`scanCore.canonicalBarcode`) — the spelling `partner-product.model.ts` stores. */
   code: string;
   /** As read, before normalisation. Kept for the create form's "barcode" field. */
   raw: string;
@@ -96,6 +106,15 @@ export interface ScannedProduct {
   /** P2 PHARMACY — sent by a server whose lookup projects them; absent otherwise. */
   drugSchedule?: 'H' | 'H1' | 'X';
   batchTracking?: boolean;
+  /**
+   * Commerce C6 — a scanned PARENT says so and lists its live sizes / types
+   * (`COMMERCE-C6-VARIANTS` in `byBarcode`), so the till can ask "which one?".
+   * Absent on every other scan.
+   */
+  isVariantParent?: boolean;
+  variants?: Array<Omit<ScannedProduct, 'variants' | 'isVariantParent' | 'isActive'> & {
+    isActive?: boolean; variantLabel?: string; variantAttributes?: Array<{ name: string; value: string }>;
+  }>;
 }
 
 export type BarcodeLookupResult =
@@ -111,6 +130,20 @@ export type ProductScanOutcome =
    *  read as "create a new product": that would mint a duplicate SKU the next
    *  time the connection is fine and the same barcode is scanned again. */
   | { status: 'error'; message: string; hit: ScanHit };
+
+// >>> SCANNER
+/**
+ * A read that is NOT a product code — a web link, a UPI QR, a ResiSmart pass, a
+ * symbology this screen does not use, or (typed/reader only) a number that
+ * fails its check digit. Never looked up, never added; said once per
+ * presentation. Delivered to `onRejected`, NOT to `onResult`, so no existing
+ * `onResult` switch has to learn a fourth case.
+ */
+export interface ProductScanRejection {
+  reason: 'url' | 'upi' | 'pass' | 'unsupported' | 'invalid';
+  hit: ScanHit;
+}
+// <<< SCANNER
 
 /** Remembered per device (`DEVICE_KEYS.SCAN_METHOD`) so the sheet opens the way it was last used. */
 export type ScanMethod = 'camera' | 'manual';

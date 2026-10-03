@@ -1,5 +1,5 @@
 import React from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, useWindowDimensions } from 'react-native'; // >>> WEB-UI useWindowDimensions
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,6 +11,21 @@ import { useNotifications } from '../../../src/features/notifications/hooks';
 import { themeColors } from '../../../src/constants/colors';
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+// >>> WEB-UI
+/**
+ * One line of tab label (11sp text), before the system font scale. 16, not
+ * 13–14: the Hindi labels' vowel signs rise above a Latin line and a tight
+ * line height clips their tops.
+ */
+const TAB_LABEL_LINE = 16;
+/**
+ * Everything in the bar except the label line and the bottom inset:
+ * paddingTop 4 + the tab item's own padding 5 + 5 (bottom-tabs, `tabVerticalUiKit`)
+ * + the 28dp icon box (`wrapperUikit`) + paddingBottom 6 + the 1px top border.
+ */
+const TAB_BAR_CHROME = 4 + 5 + 5 + 28 + 6 + 1;
+// <<< WEB-UI
 
 const tabIcon = (name: IconName) => {
   // Named so React DevTools and `react/display-name` can identify it.
@@ -61,6 +76,7 @@ export default function TabsLayout() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions(); // >>> WEB-UI
   const { ready, can, hasModule, menu } = usePartnerEntitlements();
 
   /**
@@ -131,11 +147,21 @@ export default function TabsLayout() {
           // the gesture bar on every phone with a bottom inset, and clipped them
           // outright at a large system font scale. The bar is now 62dp of chrome
           // PLUS whatever the device reserves at the bottom.
-          height: 62 + insets.bottom,
-          paddingBottom: 8 + insets.bottom,
-          paddingTop: 6,
+          // >>> WEB-UI — the bar is now sized to what the tab item actually draws
+          // (see TAB_BAR_CHROME): 62 was 4dp shorter than icon + label + the
+          // item's own padding, so the label hung into the bottom padding on a
+          // phone and, in a browser, was squeezed and cut off. The label line
+          // grows with the system font scale, so a large font no longer clips.
+          height: TAB_BAR_CHROME + Math.ceil(TAB_LABEL_LINE * fontScale) + insets.bottom,
+          paddingBottom: 6 + insets.bottom,
+          paddingTop: 4,
+          // <<< WEB-UI
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        // >>> WEB-UI — explicit line height (the bar height above is built from
+        // it) and no shrinking: a browser shrinks a flex text item to the space
+        // left, which is what clipped the labels on web.
+        tabBarLabelStyle: { fontSize: 11, lineHeight: TAB_LABEL_LINE, fontWeight: '600', flexShrink: 0 },
+        // <<< WEB-UI
       }}
     >
       <Tabs.Screen

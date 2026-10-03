@@ -58,7 +58,8 @@ export default function CatalogScanScreen() {
 
   return (
     <View style={styles.root}>
-      <BarcodeScannerView active={!suppressed} onResult={handleResult} hint={t('catalog.scan.hint')} />
+      {/* >>> SCANNER — the catalogue: a carton's full ITF-14 is accepted too. */}
+      <BarcodeScannerView active={!suppressed} onResult={handleResult} hint={t('catalog.scan.hint')} cartonCodes />
 
       <SafeAreaView style={styles.headerOverlay} edges={['top']} pointerEvents="box-none">
         <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
