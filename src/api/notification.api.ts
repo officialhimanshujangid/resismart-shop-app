@@ -1,6 +1,7 @@
 import type { Href } from 'expo-router';
 
 import { apiClient, ApiEnvelope, unwrap } from './axios';
+import { appIdentityHeaders } from '../lib/appIdentity'; // NOTIFY-ROUTE
 import { PartnerModule } from '../types/api-contract.generated';
 import type { P2Module } from '../features/p2/modules';
 
@@ -353,8 +354,10 @@ export const notificationApi = {
    * one token per install: without it, a partner who switches to their second
    * business keeps receiving the first one's alerts and none of the second's.
    */
+  // NOTIFY-ROUTE: name this app, so the server rings this token only with the
+  // business's own notices (never a society's bills or a gate alarm).
   registerDevice: (input: { platform: DevicePlatform; token: string; deviceLabel?: string }) =>
-    apiClient.post('/notifications/devices', input).then((r) => r.data),
+    apiClient.post('/notifications/devices', input, { headers: appIdentityHeaders() }).then((r) => r.data),
 
   unregisterDevice: (token: string) =>
     apiClient.delete('/notifications/devices', { data: { token } }).then((r) => r.data),

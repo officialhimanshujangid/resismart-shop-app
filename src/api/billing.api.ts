@@ -113,6 +113,8 @@ export interface TenantInvoice {
   creditApplied?: number | null;
   /** The sentence only. The arithmetic behind it is not sent to a tenant. */
   pricingSnapshot?: { line: string | null } | null;
+  /** FIXA — the issued GST credit note for a refund on this invoice (its PDF: `creditNoteDownloadUrl`). */
+  creditNoteNumber?: string;
 }
 
 export const platformBillingApi = {
@@ -126,12 +128,12 @@ export const platformBillingApi = {
    * That is why the plan row is gated on `entitlements.isAdmin` rather than on
    * `can('SETTINGS')` — see `settings/plan.tsx`'s header.
    *
-   * `isAdmin` is the closest thing the client has and it is not exact:
-   * `PARTNER_ADMIN_ROLES` on the server is `[PARTNER_ADMIN, PARTNER_OWNER]`,
-   * while this route names only `PARTNER_ADMIN`. A session holding
-   * `PARTNER_OWNER` therefore sees the row and is refused when they open it, so
-   * the screen renders the 403 as a sentence rather than as a broken state. The
-   * fix is one word in `billing.routes.ts`; see this phase's report.
+   * `isAdmin` is what the client has, and since FIXA it is exact: the server's
+   * `PARTNER_ADMIN_ROLES` is `[PARTNER_ADMIN, PARTNER_OWNER]`, and
+   * `billing.routes.ts` now admits both on every tenant billing line (the
+   * proprietor pair is one person — `context.service#PARTNER_PROPRIETOR_ROLES`).
+   * A 403 is still rendered as a sentence, never a broken state.
+   * (was: "this route names only `PARTNER_ADMIN` … the fix is one word")
    */
   mySubscription: () =>
     apiClient.get<{ success: boolean } & MySubscriptionResponse>('/billing/my-subscription').then((r) => r.data),
@@ -164,4 +166,18 @@ export const platformBillingApi = {
     apiClient
       .get<{ success: boolean; url: string }>(`/billing/invoices/${id}/download`)
       .then((r) => r.data.url),
+
+  // >>> FIXA
+  /**
+   * A URL for the business's own GST credit note on a refunded invoice
+   * (`GET /billing/invoices/:id/credit-note/pdf`, tenant-checked on the server).
+   * A 5-minute presigned link, opened like an invoice receipt. Refusals carry a
+   * code (`INVOICE_NOT_FOUND`, `CREDIT_NOTE_NOT_ISSUED`, `CREDIT_NOTE_PDF_FAILED`)
+   * that `apiErrorMessage` words from `errors.<CODE>`.
+   */
+  creditNoteDownloadUrl: (id: string) =>
+    apiClient
+      .get<{ success: boolean; url: string; creditNoteNumber: string }>(`/billing/invoices/${id}/credit-note/pdf`)
+      .then((r) => r.data.url),
+  // <<< FIXA
 };

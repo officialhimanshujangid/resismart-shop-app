@@ -262,6 +262,13 @@ function classifyRefreshFailure(e: unknown): RefreshFailureKind {
   }
   // The person has no society or business left at all — see `endsSession`.
   if (res.status === 403 && res.data?.code === 'NO_ACTIVE_ACCESS') return 'no-access';
+  // >>> MP3LEFT — OC-4b: the refresh answers SOCIETY_SUSPENDED INSTEAD of NO_ACTIVE_ACCESS when the
+  // account has no place left and one of its societies is suspended (a partner whose business went
+  // away while they also belonged to a suspended society). The same "nothing to open" — ends the
+  // session like NO_ACTIVE_ACCESS, rather than leaving a session that can only 403. A shop's own
+  // PARTNER token is never refused with it (the per-request check is for SOCIETY tokens only).
+  if (res.status === 403 && res.data?.code === 'SOCIETY_SUSPENDED') return 'no-access';
+  // <<< MP3LEFT
   // 429 lands here on purpose. `/auth/refresh-token` sits behind an IP-keyed
   // limiter of 20 per 15 minutes, and behind carrier NAT or one shop's wifi a
   // whole street shares an egress IP — so a routine background refresh can be

@@ -25,6 +25,7 @@ import { TodayShortcutGrid } from '../../../src/features/today/ShortcutGrid';
 // <<< SHORTCUTS
 import { MiniBars } from '../../../src/components/charts';
 import { HomeSocietyBanner } from '../../../src/features/society/components/HomeSocietyBanner';
+import { AnnouncementBanner } from '../../../src/components/AnnouncementBanner'; // >>> OC6 <<<
 import { useMyReach } from '../../../src/features/society/hooks';
 import { useMyRent } from '../../../src/features/rent/hooks';
 import { rentAccess } from '../../../src/features/rent/logic';
@@ -387,6 +388,9 @@ export default function TodayScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        {/* >>> OC6 */}
+        <AnnouncementBanner />
+        {/* <<< OC6 */}
         <Hero
           action={<HelpButton c={c} variant="hero" />}
           isDark={isDark}

@@ -60,9 +60,9 @@ type TFunc = (key: string, opts?: Record<string, unknown>) => string;
  * authorised by the TENANT ROLE (`authorizeRoles([SOCIETY_ADMIN, PARTNER_ADMIN])`),
  * so a member of staff holding SETTINGS at FULL is still `PARTNER_STAFF` and is
  * refused. The row into this screen is therefore gated on `entitlements.isAdmin`
- * — but `isAdmin` also covers `PARTNER_OWNER`, which that route does not list,
- * so the refusal is rendered as a sentence here rather than left as an empty
- * card. See `billing.api.ts`.
+ * — `isAdmin` also covers `PARTNER_OWNER`, which that route admits too since
+ * FIXA (the proprietor pair is one person). A refusal is still rendered as a
+ * sentence here rather than left as an empty card. See `billing.api.ts`.
  *
  * Everything above the invoice list — plan name, trial deadline, modules, usage
  * meters — comes from `/partners/me/entitlements` and `/partners/me/usage`,
@@ -126,6 +126,7 @@ export default function PlanScreen() {
   const { entitlements, ready, moduleState, refresh } = usePartnerEntitlements();
   const { rows: usageRows, capacity } = usePlanUsage();
   const [sharingId, setSharingId] = useState<string | null>(null);
+  const [openingNoteId, setOpeningNoteId] = useState<string | null>(null); // FIXA
 
   const isAdmin = entitlements.isAdmin;
 
@@ -189,6 +190,27 @@ export default function PlanScreen() {
     },
     [t],
   );
+
+  // >>> FIXA — the business's own GST credit note (tenant route). A refusal is worded
+  // from its code (`settings.plan.creditNoteErrors.<CODE>`), en + hi.
+  const openCreditNote = async (invoice: TenantInvoice) => {
+    if (openingNoteId) return;
+    setOpeningNoteId(invoice._id);
+    try {
+      const url = await platformBillingApi.creditNoteDownloadUrl(invoice._id);
+      await Linking.openURL(url);
+    } catch (e: unknown) {
+      const code = (e as { response?: { data?: { code?: unknown } } } | undefined)?.response?.data?.code;
+      const known = typeof code === 'string' && ['INVOICE_NOT_FOUND', 'CREDIT_NOTE_NOT_ISSUED', 'CREDIT_NOTE_PDF_FAILED'].includes(code);
+      Alert.alert(
+        t('settings.plan.creditNoteFailedTitle'),
+        known ? t(`settings.plan.creditNoteErrors.${String(code)}`) : apiErrorMessage(e, t('settings.plan.creditNoteFailedBody')),
+      );
+    } finally {
+      setOpeningNoteId(null);
+    }
+  };
+  // <<< FIXA
 
   if (!ready) {
     return (
@@ -501,6 +523,23 @@ export default function PlanScreen() {
                       }
                       onPress={hasFile ? () => void shareInvoice(invoice) : undefined}
                     />
+                    {/* >>> FIXA — the GST credit note for a refund on this invoice (web + society app parity) */}
+                    {invoice.creditNoteNumber ? (
+                      <Row
+                        c={c}
+                        icon="file-document-outline"
+                        title={t('settings.plan.creditNote', { number: invoice.creditNoteNumber })}
+                        right={
+                          openingNoteId === invoice._id ? (
+                            <ActivityIndicator color={c.primary} size={18} />
+                          ) : (
+                            <Text style={{ color: c.primary, fontSize: 12, fontWeight: '600' }}>{t('settings.plan.invoiceOpen')}</Text>
+                          )
+                        }
+                        onPress={() => void openCreditNote(invoice)}
+                      />
+                    ) : null}
+                    {/* <<< FIXA */}
                     {i < invoices.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
                   </View>
                 );

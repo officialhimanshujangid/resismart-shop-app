@@ -1,4 +1,8 @@
 {
+  "announcement": {
+    "label": "Announcement",
+    "close": "Close announcement"
+  },
   "common": {
     "startingUp": "Starting up…",
     "loading": "Loading…",
@@ -122,7 +126,7 @@
       "invoiceLocked": "Not included in your current plan",
       "invoiceSub": "Theme, numbering, bank details, thermal printing",
       "planSection": "Plan & billing",
-      "plan": "Your plan",
+      "plan": "Plan & billing",
       "planTrialSub": "On trial — see when it ends, and what your plan includes",
       "planSub": "{{plan}} · renewal, usage and invoices",
       "foundSection": "Getting found",
@@ -356,7 +360,7 @@
       }
     },
     "plan": {
-      "title": "Your plan",
+      "title": "Plan & billing",
       "status": {
         "active": "Active",
         "trialing": "On trial",
@@ -424,7 +428,15 @@
       "planEndsOnLeft_other": "Your plan ends on {{date}}, {{count}} days left. Everything keeps working until then.",
       "graceEnded": "Your plan ended on {{date}}. Your features stay on until {{until}}.",
       "graceUntil": "Your features stay on until {{until}}.",
-      "invoicePaymentPending": "Payment pending"
+      "invoicePaymentPending": "Payment pending",
+      "creditNote": "Credit note {{number}}",
+      "creditNoteFailedTitle": "Could not open the credit note",
+      "creditNoteFailedBody": "The credit note could not be opened. Please try again.",
+      "creditNoteErrors": {
+        "INVOICE_NOT_FOUND": "This invoice was not found.",
+        "CREDIT_NOTE_NOT_ISSUED": "There is no credit note for this invoice. A credit note is issued only after a refund has reached you.",
+        "CREDIT_NOTE_PDF_FAILED": "The credit note PDF could not be prepared just now. Please try again in a few minutes."
+      }
     }
   },
   "modules": {
@@ -2369,8 +2381,8 @@
   "account": {
     "delete": {
       "title": "Delete account",
-      "warningTitle": "This permanently deletes your account",
-      "warningBody": "You will be signed out on every device and cannot sign back in with this account. This cannot be undone.",
+      "warningTitle": "This deletes your account in 30 days",
+      "warningBody": "You will be signed out on every device now, and the account is deleted 30 days after your request. To cancel before then, sign in on the ResiSmart website and choose Restore my account.",
       "deletedSection": "What is deleted",
       "deleted": {
         "login": "Your login — phone, email, password and Google sign-in",
@@ -2404,10 +2416,11 @@
       "resend": "Send a new code",
       "resendIn": "Send a new code in {{seconds}}s",
       "finalTitle": "Delete your account?",
-      "finalBody": "Your login, photo and personal details will be removed and you will lose access to every workspace. This cannot be undone.",
-      "finalConfirm": "Delete",
-      "doneTitle": "Account deleted",
-      "doneBody": "Your account has been deleted."
+      "finalBody": "You will lose access to every workspace now. Your login, photo and personal details are removed 30 days after your request; sign in on the ResiSmart website before then to cancel.",
+      "finalConfirm": "Delete in 30 days",
+      "doneTitle": "Deletion requested",
+      "doneBody": "You have been signed out. Your account will be deleted in 30 days. Sign in on the ResiSmart website before then to cancel.",
+      "doneOn": "You have been signed out. Your account will be deleted on {{date}}. Sign in on the ResiSmart website before then to cancel."
     },
     "devices": {
       "title": "Signed-in devices",
@@ -2678,6 +2691,8 @@
     "EMAIL_NOT_VERIFIED": "Please verify your email with the code we sent.",
     "PHONE_NOT_VERIFIED": "Please verify your mobile number with the code we sent.",
     "SOCIETY_NAME_TAKEN": "A society with this name is already on ResiSmart. Add your area or city to the name.",
+    "SIGNUP_NOT_AVAILABLE": "We cannot complete this sign-up right now. Please contact ResiSmart support for help.",
+    "SOCIETY_SUSPENDED": "Your society has been suspended on ResiSmart for now, so it cannot be opened. Your society office has been told. Please contact them or ResiSmart support.",
     "PARTNER_ADMIN_EMAIL_USE_HANDOVER": "The admin email decides who owns this business, so it cannot be changed here. To add an owner or hand the business over, send an owner invitation from Team → Owners.",
     "PARTNER_OWNER_ONLY": "Only an owner of this business can do this.",
     "PARTNER_INVITE_CONTACT_REQUIRED": "Give the phone number or email address of the person you are inviting.",

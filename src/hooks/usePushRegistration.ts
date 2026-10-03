@@ -8,6 +8,7 @@ import { notificationApi } from '../api/notification.api';
 import { store } from '../lib/store';
 import { DEVICE_KEYS, PUSH_CHANNEL_URGENT, PUSH_CHANNEL_DEFAULT } from '../constants/app';
 import { qk } from '../lib/queryKeys';
+import { pushScopeKey } from '../lib/appIdentity'; // NOTIFY-ROUTE
 import i18n from '../i18n';
 import { useLanguage } from '../i18n/useLanguage';
 
@@ -152,6 +153,9 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
   useEffect(() => {
     if (!enabled || !partnerId) return;
     if (Constants.appOwnership === 'expo') return; // push was removed from Expo Go on SDK 53+
+    // NOTIFY-ROUTE: no Expo push token in a browser build (the web registers its
+    // own browser subscription), so a web build never registers — or names itself.
+    if (Platform.OS === 'web') return;
     let cancelled = false;
 
     (async () => {
@@ -187,7 +191,10 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
         // Re-register only when something actually changed. Expo tokens rotate
         // rarely, and a POST on every cold start is a write per launch per device
         // for nothing.
-        if (storedToken === token && storedScope === partnerId) return;
+        // NOTIFY-ROUTE: a versioned key, so a token registered before the server
+        // stored which app it belongs to is re-registered once, named.
+        const scopeKey = pushScopeKey(partnerId);
+        if (storedToken === token && storedScope === scopeKey) return;
 
         await notificationApi.registerDevice({
           platform: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
@@ -197,7 +204,7 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
         if (cancelled) return;
 
         await store.set(DEVICE_KEYS.PUSH_TOKEN, token);
-        await store.set(DEVICE_KEYS.PUSH_TOKEN_SCOPE, partnerId);
+        await store.set(DEVICE_KEYS.PUSH_TOKEN_SCOPE, scopeKey); // NOTIFY-ROUTE
       } catch (error) {
         // Never fatal. Push is an extra way to hear about a booking; the app has
         // to keep working for a partner who denied the permission, is on a

@@ -37,7 +37,7 @@ const DELETED_KEYS = ['login', 'photo', 'details', 'devices', 'workspaces'] as c
 const KEPT_KEYS = ['invoices', 'business'] as const;
 
 export default function DeleteAccountScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation(); // HELP34R: i18n for the date's language
   const c = themeColors(useColorScheme() === 'dark');
   const { user } = useAuth();
   const request = useRequestAccountDeletion();
@@ -77,10 +77,16 @@ export default function DeleteAccountScreen() {
       .then((res) => {
         // Shown over the login screen: by the time this resolves the hook has
         // already signed out and `(app)` has unmounted — see `useConfirmAccountDeletion`.
-        Alert.alert(t('account.delete.doneTitle'), res?.message || t('account.delete.doneBody'));
+        // >>> HELP34R — our own (translated) text with the date, never the server's English sentence.
+        const deleteAt = (res as { data?: { deleteAt?: string } } | undefined)?.data?.deleteAt;
+        const when = deleteAt && !Number.isNaN(Date.parse(deleteAt))
+          ? new Date(deleteAt).toLocaleDateString(i18n.language === 'hi' ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+          : '';
+        Alert.alert(t('account.delete.doneTitle'), when ? t('account.delete.doneOn', { date: when }) : t('account.delete.doneBody'));
+        // <<< HELP34R
       })
       .catch((e: unknown) => setCodeError(apiErrorMessage(e, t('account.delete.confirmFailed'))));
-  }, [code, confirm, t]);
+  }, [code, confirm, t, i18n]); // HELP34R: i18n
 
   const onDeletePress = () => {
     if (code.length !== CODE_LENGTH) {
