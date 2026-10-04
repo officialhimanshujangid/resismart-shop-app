@@ -494,7 +494,7 @@ export type DraftSyncStatus =
   | 'PENDING'         // written locally, not yet attempted
   | 'SYNCING'         // a create/issue call is in flight right now
   | 'FAILED'          // the server refused it; see `lastError`
-  | 'BLOCKED_UPGRADE' // the plan's max_invoices_month ceiling was hit
+  | 'BLOCKED_UPGRADE' // X2F: a 402 plan refusal (now only the catalogue-items limit; bills are not plan-limited)
   | 'SYNCED';         // issued; kept briefly so the screen can show a success state, then dropped
 
 /**

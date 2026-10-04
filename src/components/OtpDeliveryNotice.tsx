@@ -206,8 +206,19 @@ export function OtpDeliveryNotice({
         </View>
       ) : null}
 
-      {!sending && !failure && message ? (
-        <Text style={[styles.line, { color: c.textSecondary }]}>{message}</Text>
+      {/* M01 audit — where to look, in the reader's language. The server's
+          sentence is English only; it is kept for a reply that names no
+          transport (an older server). Literal keys for the i18n checker. */}
+      {!sending && !failure && (deliveredVia || message) ? (
+        <Text style={[styles.line, { color: c.textSecondary }]}>
+          {deliveredVia === 'whatsapp'
+            ? t('otpLookOn.whatsapp')
+            : deliveredVia === 'sms'
+              ? t('otpLookOn.sms')
+              : deliveredVia === 'email'
+                ? t('otpLookOn.email')
+                : message}
+        </Text>
       ) : null}
 
       {showWhatsappNote ? (

@@ -6,7 +6,7 @@ import { Href, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette } from '../../../src/constants/colors';
-import { usePartnerEntitlements, ModuleMenuEntry } from '../../../src/hooks';
+import { usePartnerEntitlements } from '../../../src/hooks'; // X2F: ModuleMenuEntry no longer needed
 import { useAuth } from '../../../src/context/AuthContext';
 import { PartnerModule } from '../../../src/types/api-contract.generated';
 import { Card, Row, SectionLabel } from '../../../src/features/more/ui';
@@ -32,13 +32,9 @@ import { commerceDoors, useCommerceAccess } from '../../../src/features/commerce
  *      to the ones that do NOT already have a bottom tab. Bookings, Orders
  *      and Invoicing, when ON, are reached from their tabs; repeating them
  *      here would be two paths to the same screen and the tab bar would win
- *      every time, making the More row dead weight. When one of THOSE three
- *      is LOCKED it has no tab at all (`(tabs)/_layout.tsx` removes a locked
- *      route from the navigator), so it still has to surface here — LOCKED
- *      is the one state `moduleMenuEntries()` shows regardless of gate 3's
- *      READ/FULL split, and hiding it would mean a partner never learns the
- *      module exists to buy. Catalogue and Promotion never have a tab, so
- *      they always appear, ON or LOCKED.
+ *      every time, making the More row dead weight. Catalogue and Promotion
+ *      never have a tab, so they always appear when ON. (X2F: there is no
+ *      plan-LOCKED module any more — every plan has every module.)
  *   2. The fixed "Business" rows (Parties/Reports/Staff/Settings) — gate-3
  *      permission only, no plan lock. `PARTNER_MODULE_CATALOG` on the server
  *      does not carry a capability for any of them (see `PARTNER_MODULE_INFO`
@@ -82,51 +78,9 @@ function destinationFor(module: PartnerModule): '/catalog' | '/promotion' | null
   }
 }
 
-/**
- * Where a tap on a LOCKED module row goes, which is NOT the same question.
- *
- * A LOCKED row may only navigate to a screen that sells the upgrade itself.
- * `promotion/index.tsx` is the one that does: it reads `boostAvailable`/
- * `upgradeRequired` and draws the upgrade card in place of the buy button,
- * exactly as `getBoostPackages` was built to support (spec: "the packages are
- * returned even when the plan excludes boost").
- *
- * `/catalog` deliberately does NOT qualify even though `destinationFor` has a
- * route for it — `catalog/_layout.tsx` redirects a partner without the module
- * straight back out, so sending a LOCKED Catalogue tap there would bounce them
- * to Today and read as a broken button. Those fall through to the Alert.
- */
-function lockedDestinationFor(module: PartnerModule): '/promotion' | null {
-  return module === 'PROMOTION' ? '/promotion' : null;
-}
-
-function onLockedTap(entry: ModuleMenuEntry) {
-  const dest = lockedDestinationFor(entry.module);
-  if (dest) {
-    router.push(dest);
-    return;
-  }
-  /**
-   * Everything else goes to the plan screen.
-   *
-   * This used to be a native alert ending "ask your ResiSmart contact to
-   * upgrade your plan". That sentence was defending the absence of an in-app
-   * PURCHASE flow, and that absence is still deliberate — a plan upgrade is a
-   * subscription, not a one-off spend like a boost, and this app does not run
-   * Razorpay (see `settings/plan.tsx`'s header). But it was doing a second job
-   * it was never entitled to do: it was also the app's only answer to "what
-   * plan am I on, and what would this cost", and it answered that with a phone
-   * call.
-   *
-   * `settings/plan.tsx` now answers it — current plan, status, renewal date,
-   * every module's ON/OFF/LOCKED state and usage against the ceilings — read
-   * only, with no way out to a purchase while `IN_APP_PLAN_PURCHASES` is off
-   * (Google Play's Payments policy). A LOCKED row is only
-   * ever drawn for somebody holding SETTINGS at FULL (`moduleMenuEntries`), so
-   * every partner who can reach this line can reach that screen.
-   */
-  router.push('/settings/plan');
-}
+// >>> X2F — the LOCKED-row tap handlers are gone: every partner plan has every
+// module (Owner, 2026-10-04), so a module row is only ever ON here.
+// <<< X2F
 
 export default function MoreScreen() {
   const { t } = useTranslation();
@@ -324,7 +278,7 @@ export default function MoreScreen() {
                     // carry the null-check across two separate calls — and
                     // that cast is precisely what let a non-route literal
                     // through the compiler in the first place.
-                    const dest = entry.state === 'LOCKED' ? null : destinationFor(entry.module);
+                    const dest = destinationFor(entry.module); // X2F: no LOCKED rows
                     /**
                      * `entry.label` and `entry.blurb` are NOT read here, and
                      * that is deliberate rather than an oversight.
@@ -345,20 +299,8 @@ export default function MoreScreen() {
                           c={c}
                           icon={entry.icon}
                           title={t(`modules.${entry.module}.label`)}
-                          subtitle={
-                            entry.state === 'LOCKED'
-                              ? t('more.lockedSubtitle', { blurb })
-                              : dest
-                                ? blurb
-                                : t('more.notBuiltSubtitle', { blurb })
-                          }
-                          onPress={
-                            entry.state === 'LOCKED'
-                              ? () => onLockedTap(entry)
-                              : dest
-                                ? () => router.push(dest)
-                                : undefined
-                          }
+                          subtitle={dest ? blurb : t('more.notBuiltSubtitle', { blurb })}
+                          onPress={dest ? () => router.push(dest) : undefined}
                         />
                         {i < moduleRows.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
                       </View>

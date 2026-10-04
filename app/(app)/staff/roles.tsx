@@ -16,6 +16,7 @@ import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { Card, EmptyBlock, ErrorBlock, Loading, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
 import { limitsFormFrom, limitsFromForm, RoleLimitsCard, RoleLimitsForm } from '../../../src/features/p1/RoleLimitsCard';
+import { HelpButton } from '../../../src/features/help/HelpButton'; // M02 audit
 
 /**
  * WHAT A PERMISSION LEVEL IS CALLED ON SCREEN — a catalogue key per level, not
@@ -40,7 +41,9 @@ function draftFrom(role: PartnerAccessRole | null): { name: string; description:
 }
 
 export default function RolesScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // M02 audit: each catalogue row's Hindi from the server, English as the fallback.
+  const isHi = i18n.language === 'hi';
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
@@ -175,11 +178,10 @@ export default function RolesScreen() {
                 <Row
                   c={c}
                   /* `entry.label` and `entry.description` come from the SERVER's
-                     permission catalogue (`GET /partners/me/roles`) and arrive in
-                     English — the same trade `UsageMeter.tsx` documents for
-                     `capacity.noun`. They follow when the backend catalogue does. */
-                  title={entry.label}
-                  subtitle={entry.description}
+                     permission catalogue (`GET /partners/me/roles`), which now
+                     sends `labelHi` / `descriptionHi` beside them (M02 audit). */
+                  title={(isHi && entry.labelHi) || entry.label}
+                  subtitle={(isHi && entry.descriptionHi) || entry.description}
                   onPress={beyondMe ? undefined : () => cycleLevel(entry)}
                   right={
                     <Chip
@@ -218,7 +220,19 @@ export default function RolesScreen() {
   }
 
   return (
-    <Screen c={c} title={t('staff.roles.title')} subtitle={t('staff.roles.subtitle')} right={<IconButton icon="plus" size={24} onPress={() => openEditor(null)} />}>
+    <Screen
+      c={c}
+      title={t('staff.roles.title')}
+      subtitle={t('staff.roles.subtitle')}
+      // M02 audit: `right` replaces the header's help button, so the roles screen
+      // had no way into help — both icons now, help beside "new role".
+      right={(
+        <View style={styles.headerIcons}>
+          <HelpButton c={c} />
+          <IconButton icon="plus" size={24} onPress={() => openEditor(null)} accessibilityLabel={t('staff.roles.newTitle')} />
+        </View>
+      )}
+    >
       {roles.length === 0 ? (
         <EmptyBlock c={c} icon="shield-account-outline" title={t('staff.roles.emptyTitle')} body={t('staff.roles.emptyBody')} />
       ) : (
@@ -253,5 +267,6 @@ export default function RolesScreen() {
 
 const styles = StyleSheet.create({
   levelPill: { borderRadius: radii.pill },
+  headerIcons: { flexDirection: 'row', alignItems: 'center' }, // M02 audit
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
 });

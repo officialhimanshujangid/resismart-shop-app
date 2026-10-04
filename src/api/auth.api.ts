@@ -243,6 +243,23 @@ export function otpDeliveryFailure(error: unknown, t: Translate): OtpDeliveryFai
   };
 }
 
+// >>> M01 audit — #46 "Restore my account" (parity with the society app and the web)
+/**
+ * A sign-in that PROVED the person (password, code or Google) on an account
+ * waiting out its 30-day deletion answers 409 `ACCOUNT_DELETION_PENDING` with
+ * the date and a one-time restore ticket (15 minutes) instead of a session.
+ * Null for any other failure.
+ */
+export function pendingDeletionOf(error: unknown): { deleteAt: string; restoreTicket: string } | null {
+  if (!isAxiosError(error)) return null;
+  const d = error.response?.data as { code?: string; deleteAt?: unknown; restoreTicket?: unknown; params?: { deleteAt?: unknown } } | undefined;
+  if (!d || d.code !== 'ACCOUNT_DELETION_PENDING') return null;
+  const deleteAt = typeof d.deleteAt === 'string' ? d.deleteAt : d.params?.deleteAt;
+  if (typeof deleteAt !== 'string' || typeof d.restoreTicket !== 'string') return null;
+  return { deleteAt, restoreTicket: d.restoreTicket };
+}
+// <<< M01 audit
+
 export interface OtpVerifyResponse {
   message: string;
   channel: OtpChannel;
@@ -303,6 +320,15 @@ export const authApi = {
     apiClient.post<LoginResponse>('/auth/login/otp/verify', { identifier, code, deviceName: deviceLabel() }),
 
   /**
+   * M01 audit — #46 "Restore my account": spends the ticket a pending-deletion
+   * sign-in answered and returns the same session a sign-in does. Refusals:
+   * 400 ACCOUNT_RESTORE_EXPIRED, 403 NO_ACTIVE_ACCESS / SOCIETY_SUSPENDED /
+   * MFA_SIGN_IN_AGAIN (the account IS restored in that last case).
+   */
+  restoreAccount: (restoreTicket: string) =>
+    apiClient.post<LoginResponse>('/auth/account/restore', { restoreTicket, deviceName: deviceLabel() }),
+
+  /**
    * Switch context, and the only way to do it. Also how a session is renewed —
    * one endpoint, because "which business am I in" and "give me a fresh token"
    * are the same operation server-side.
@@ -335,11 +361,16 @@ export const authApi = {
   /**
    * Sign out. THIS device only unless `everywhere`, which ends every session of
    * the account. 200 always, except 503 LOGOUT_FAILED.
+   *
+   * `pushToken` is this device's push token: the server drops that device row
+   * for the caller, so pushes stop even if the separate DELETE did not land.
+   * (`everywhere` drops every push device of the account server-side.)
    */
-  logout: (refreshToken: string | null, everywhere = false) =>
+  logout: (refreshToken: string | null, everywhere = false, pushToken?: string | null) =>
     apiClient.post<{ success?: boolean }>('/auth/logout', {
       ...(refreshToken ? { refreshToken } : {}),
       ...(everywhere ? { everywhere: true } : {}),
+      ...(pushToken ? { pushToken } : {}),
     }),
 
   /** The signed-in devices list (bearer). */

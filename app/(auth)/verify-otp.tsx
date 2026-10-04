@@ -18,8 +18,10 @@ import { useAuth } from '../../src/context/AuthContext';
 import { AppButton } from '../../src/components/AppButton';
 import { Hero } from '../../src/components/Hero';
 import { OtpDeliveryNotice } from '../../src/components/OtpDeliveryNotice';
-import { OtpAltVia, OtpDeliveredVia, OtpVia } from '../../src/api/auth.api';
+import { OtpAltVia, OtpDeliveredVia, OtpVia, ProfileInfo } from '../../src/api/auth.api';
 import { themeColors, radii } from '../../src/constants/colors';
+import { ContextPickerModal } from '../../src/components/ContextPickerModal'; // M01 audit
+import { apiErrorMessage } from '../../src/api/axios'; // M01 audit
 
 /**
  * Sign in with a one-time code.
@@ -65,7 +67,12 @@ import { themeColors, radii } from '../../src/constants/colors';
  */
 
 const CODE_LENGTH = 6;
-const RESEND_SECONDS = 30;
+/**
+ * M01 audit: 60, the server's own resend gap (`otpResendCooldownSeconds`, 60
+ * unless a deployment overrides it) — at 30 the button was offered half a
+ * minute early and its first tap was always a 429.
+ */
+const RESEND_SECONDS = 60;
 
 /** What the screen is currently telling the user about delivery. */
 interface DeliveryView {
@@ -104,8 +111,12 @@ export default function VerifyOtpScreen() {
   const isNewAccount = params.reason === 'new-account';
   const emailIdentity = asString(params.email);
 
-  const { requestLoginOtp, verifyLoginOtp } = useAuth();
+  const { requestLoginOtp, verifyLoginOtp, selectContext } = useAuth();
   const inputRef = useRef<RNTextInput>(null);
+  // >>> M01 audit — the business picker, on THIS screen (see `ContextPickerModal`).
+  const [picker, setPicker] = useState<{ handle: string; profiles: ProfileInfo[] } | null>(null);
+  const [picking, setPicking] = useState(false);
+  // <<< M01 audit
 
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -173,15 +184,20 @@ export default function VerifyOtpScreen() {
            */
           return;
         }
-        if (result.requiresContextSelection) {
-          // Rare on this path: somebody who works in two partner businesses and
-          // signs in with a code. The picker lives on the login screen, so send
-          // them there with the session already half-open rather than inventing
-          // a second picker here.
-          show(t('auth.verifyOtp.multipleBusinesses'), true);
-          setTimeout(() => router.replace('/(auth)/login'), 2200);
+        // >>> M01 audit — #46: the code was right, the account is waiting out its 30-day deletion.
+        if (result.pendingDeletion) {
+          router.replace('/(auth)/restore-account');
           return;
         }
+        // Somebody who works in two partner businesses and signs in with a
+        // code. The picker is shown HERE: it used to send them back to the
+        // password form "to pick one", which a passwordless partner cannot use
+        // and whose code button led straight back to this screen — a loop.
+        if (result.requiresContextSelection && result.userId) {
+          setPicker({ handle: result.userId, profiles: result.profiles ?? [] });
+          return;
+        }
+        // <<< M01 audit
         show(result.error ?? t('auth.verifyOtp.codeFailed'), true);
         setCode('');
       } finally {
@@ -247,6 +263,29 @@ export default function VerifyOtpScreen() {
     // button as well.
     if (digits.length === CODE_LENGTH) void submit(digits);
   };
+
+  // >>> M01 audit — finish (or abandon) a sign-in that resolved several businesses.
+  const pickBusiness = async (profile: ProfileInfo) => {
+    if (!picker) return;
+    setPicking(true);
+    try {
+      // On success the session opens and `(auth)/_layout` takes this screen away.
+      await selectContext(picker.handle, profile.tenantId, profile.role);
+      setPicker(null);
+    } catch (err) {
+      show(apiErrorMessage(err, t('auth.login.contextFailed')), true);
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  const cancelPick = () => {
+    if (picking) return;
+    setPicker(null);
+    setCode('');
+    show(t('auth.login.noProfileChosen'));
+  };
+  // <<< M01 audit
 
   if (!identifier) {
     return (
@@ -375,6 +414,15 @@ export default function VerifyOtpScreen() {
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* M01 audit — several businesses: pick one here, not on the password form. */}
+      <ContextPickerModal
+        visible={!!picker}
+        profiles={picker?.profiles ?? []}
+        loading={picking}
+        onSelect={(p) => { void pickBusiness(p); }}
+        onCancel={cancelPick}
+      />
 
       <Snackbar
         visible={snack.visible}

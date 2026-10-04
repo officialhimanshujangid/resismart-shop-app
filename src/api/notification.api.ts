@@ -338,12 +338,24 @@ export const notificationApi = {
    * `req.query.unread === 'true'` and anything else is ignored, so the wrong
    * name silently returns the full list instead of erroring.
    */
-  list: (params?: { unread?: boolean; limit?: number; before?: string }) =>
+  /**
+   * Paged by `cursor` — the server's stable page cursor, handed back as
+   * `nextCursor` (absent/null = no older page). Preferred over `before` (a bare
+   * createdAt), which skips rows that share the oldest row's millisecond.
+   *
+   * Every call here names the app (`X-ResiSmart-App: shop`) so the server keeps
+   * this app's notices apart from a society/guard app of the same person.
+   */
+  list: (params?: { unread?: boolean; limit?: number; before?: string; cursor?: string }) =>
     apiClient
-      .get<ApiEnvelope<{ items: NotificationRow[]; unread: number }>>('/notifications', { params })
+      .get<ApiEnvelope<{ items: NotificationRow[]; unread: number; nextCursor?: string | null }>>('/notifications', {
+        params,
+        headers: appIdentityHeaders(),
+      })
       .then((r) => unwrap(r.data)),
 
-  markRead: (ids: string[]) => apiClient.post('/notifications/read', { ids }).then((r) => r.data),
+  markRead: (ids: string[]) =>
+    apiClient.post('/notifications/read', { ids }, { headers: appIdentityHeaders() }).then((r) => r.data),
 
   /**
    * Register this device for push.
@@ -360,5 +372,7 @@ export const notificationApi = {
     apiClient.post('/notifications/devices', input, { headers: appIdentityHeaders() }).then((r) => r.data),
 
   unregisterDevice: (token: string) =>
-    apiClient.delete('/notifications/devices', { data: { token } }).then((r) => r.data),
+    apiClient
+      .delete('/notifications/devices', { data: { token }, headers: appIdentityHeaders() })
+      .then((r) => r.data),
 };

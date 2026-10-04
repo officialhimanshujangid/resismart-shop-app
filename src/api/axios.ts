@@ -542,7 +542,8 @@ export function refreshSession(opts: { dropContext?: boolean } = {}): Promise<st
  */
 function isAuthEntry(url: string | undefined): boolean {
   if (!url) return false;
-  return /\/auth\/(login|refresh-token|logout|otp|register|forgot-password|reset-password|google)/.test(url);
+  // M01 audit: + account/restore — its refusals are answers about the ticket, never an expired token.
+  return /\/auth\/(login|refresh-token|logout|otp|register|forgot-password|reset-password|google|account\/restore)/.test(url);
 }
 
 /**
@@ -672,6 +673,8 @@ interface ApiErrorBody {
   params?: Record<string, unknown>;
   upgradeRequired?: boolean;
   missing?: Array<{ step: number; field: string; message: string }>;
+  /** X2F — the catalogue-items 402 names its sentence here (`CATALOG_ITEMS_LIMIT[_BULK]`). */
+  messageKey?: string;
 }
 
 /**
@@ -727,6 +730,17 @@ export function apiErrorMessage(error: unknown, fallback?: string): string {
      * worth keeping: a module the plan does not include at all, versus a
      * ceiling the plan has and has reached.
      */
+    // >>> X2F — one-factor partner plans: the catalogue-items 402 is shown in our
+    // coded words (backend `plan-items-codes.ts`, word for word) plus the
+    // Play-neutral next step "archive items" — never a pointer to a purchase.
+    if (
+      isUpgradeRequired(error)
+      && (body?.messageKey === 'CATALOG_ITEMS_LIMIT' || body?.messageKey === 'CATALOG_ITEMS_LIMIT_BULK')
+      && body.params && body.params.limit !== undefined && body.params.used !== undefined
+    ) {
+      return `${i18n.t(`errors.${body.messageKey}`, body.params)} ${i18n.t('planItems.archiveHint')}`;
+    }
+    // <<< X2F
     if (!IN_APP_PLAN_PURCHASES && isUpgradeRequired(error)) {
       return body?.code === 'MODULE_NOT_IN_PLAN' || body?.code === 'PLAN_UPGRADE_REQUIRED'
         ? i18n.t('common.apiError.notInPlan')

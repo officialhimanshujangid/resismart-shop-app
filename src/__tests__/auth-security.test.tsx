@@ -19,11 +19,12 @@ import * as SecureStore from 'expo-secure-store';
 
 import { apiErrorMessage, endsSession, refreshSession } from '../api/axios';
 import { AuthProvider } from '../context/AuthContext';
-import { STORAGE_KEYS } from '../constants/app';
+import { DEVICE_KEYS, STORAGE_KEYS } from '../constants/app';
+import { store } from '../lib/store';
 import LoginScreen from '../../app/(auth)/login';
 import ChangePasswordScreen from '../../app/(app)/account/change-password';
 import DevicesScreen from '../../app/(app)/account/devices';
-import { callsTo, fail, setRoutes } from './setup/mockApi';
+import { calls, callsTo, fail, setRoutes } from './setup/mockApi';
 import { renderScreen } from './setup/harness';
 import en from '../i18n/locales/en.json';
 import hi from '../i18n/locales/hi.json';
@@ -219,6 +220,32 @@ describe('Signed-in devices', () => {
     await waitFor(() => expect(callsTo('POST', '/auth/logout')).toHaveLength(1));
     expect(callsTo('POST', '/auth/logout')[0].body).toEqual({ refreshToken: 'old-refresh', everywhere: true });
     await waitFor(async () => expect(await SecureStore.getItemAsync(STORAGE_KEYS.REFRESH_TOKEN)).toBeNull());
+  });
+
+  it('M03 H1: "Sign out of all devices" drops this device\'s push row FIRST and sends pushToken', async () => {
+    await seedSession();
+    await store.set(DEVICE_KEYS.PUSH_TOKEN, 'ExponentPushToken[here]');
+    jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
+      buttons?.find((b) => b.style === 'destructive')?.onPress?.();
+    });
+    setRoutes({
+      'GET /auth/sessions': sessions,
+      'POST /auth/logout': { success: true },
+      'DELETE /notifications/devices': { success: true },
+    });
+    await renderScreen(withAuth(<DevicesScreen />));
+    await waitFor(() => expect(screen.getByText('Chrome on Windows')).toBeTruthy());
+
+    await fireEvent.press(screen.getByRole('button', { name: named(en.account.devices.everywhere) }));
+    await waitFor(() => expect(callsTo('POST', '/auth/logout')).toHaveLength(1));
+    expect(callsTo('POST', '/auth/logout')[0].body).toEqual({
+      refreshToken: 'old-refresh', everywhere: true, pushToken: 'ExponentPushToken[here]',
+    });
+    const del = callsTo('DELETE', '/notifications/devices');
+    expect(del).toHaveLength(1);
+    // The DELETE went out before the everywhere-logout (while the bearer was valid).
+    expect(calls.indexOf(del[0])).toBeLessThan(calls.indexOf(callsTo('POST', '/auth/logout')[0]));
+    await waitFor(async () => expect(await store.get(DEVICE_KEYS.PUSH_TOKEN)).toBeNull());
   });
 });
 

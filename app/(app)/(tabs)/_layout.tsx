@@ -60,11 +60,10 @@ const tabIcon = (name: IconName) => {
  *     partner, a staff member awaiting a role, and somebody with no connection
  *     can all be shown, and it is where the reason is explained.
  *
- * There is deliberately NO tab for a PLAN-LOCKED module. Locked is the one case
- * where hiding is wrong — a partner who never learns Promotion exists never buys
- * it — but the place to sell it is the More screen's module list, which draws
- * every entry `moduleMenuEntries()` hands it, LOCKED ones included, with the
- * upgrade card behind them. A tab that opens an advertisement is not a tab.
+ * >>> X2F — there is no PLAN-LOCKED module any more: every partner plan has
+ * every module (Owner, 2026-10-04) and the plan limits catalogue items only. A
+ * module tab shows when the business has switched it on and the role may read it.
+ * <<< X2F
  *
  * Gate 3 (the person's role) and gate 2 (the module) are BOTH required, and gate
  * 3 is checked first, exactly as `sidebarContent.tsx` does on the web: a
@@ -115,7 +114,7 @@ export default function TabsLayout() {
 
   /**
    * More holds the screens every business has whatever it sells — customers,
-   * reports, staff, settings — plus the module list that sells what is locked.
+   * reports, staff, settings — plus the switched-on modules without a tab (X2F).
    * It is shown when there is at least one row to put in it, which is what keeps
    * a staff member who is still `awaitingRole` from tapping into an empty page:
    * they have no permissions at all, so nothing qualifies and the tab does not

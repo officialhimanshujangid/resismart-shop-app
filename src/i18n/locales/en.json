@@ -141,7 +141,7 @@
       "verificationPending": "Documents and approval status",
       "alertsSection": "Alerts & modules",
       "whatsapp": "WhatsApp alerts",
-      "whatsappSub": "Bookings, orders and plan alerts on WhatsApp",
+      "whatsappSub": "Messages to your customers, and alerts to you",
       "modules": "Modules",
       "modulesSub": "Bookings, Catalogue, Orders, Invoicing, Promotion — on or off",
       "ownershipSection": "Ownership",
@@ -155,16 +155,41 @@
       "couldNotSave": "Could not save",
       "couldNotLoad": "Could not load this.",
       "notWiredTitle": "Not wired up yet",
-      "notWiredBody": "WhatsApp is not connected on this install. This switch will do nothing until it is.",
+      "notWiredBody": "WhatsApp is not connected on this install. These switches will do nothing until it is.",
       "notOnPlanTitle": "Not on your plan",
       "notOnPlanBody": "WhatsApp alerts are not included in your current plan.",
       "needPhone": "Add a phone number to your account before turning this on.",
       "sendMe": "Send me alerts on WhatsApp",
       "to": "To {{phone}}",
       "agreedOn": "Agreed on {{date}}",
+      "stoppedLine": "You replied STOP on WhatsApp on {{date}}, so nothing reaches your number on WhatsApp. Turn on “WhatsApp alerts to me” to get messages again.",
       "turnedOffOn": "Turned off on {{date}}",
       "whatYouGet": "What you'll get",
-      "nothingConfigured": "Nothing configured yet."
+      "nothingConfigured": "Nothing configured yet.",
+      "readOnly": "Only someone allowed to change this business's settings can turn this on or off.",
+      "saved": "Saved.",
+      "audienceYou": "Sent to you",
+      "audienceCustomers": "Sent to your customers",
+      "customerTitle": "Message my customers on WhatsApp",
+      "customerBlurb": "When on, your customers get the messages below on WhatsApp as they happen. When off, your business sends them nothing on WhatsApp — they still get app notifications.",
+      "customerMessages": "Messages to your customers",
+      "meTitle": "WhatsApp alerts to me",
+      "meBlurb": "Your own agreement to get WhatsApp messages on your number. Needed for plan and trial reminders. It does not change what your customers get.",
+      "events": {
+        "partner_registration_status": "Your registration result",
+        "partner_booking_new": "New booking",
+        "partner_order_placed": "New order",
+        "partner_plan_expiry": "Plan about to expire",
+        "partner_trial_ending": "Trial ending",
+        "partner_booking_confirmed": "Booking confirmed",
+        "partner_booking_reminder": "Booking reminder",
+        "partner_booking_otp": "Service completion code",
+        "partner_booking_cancelled": "Booking cancelled",
+        "partner_order_status": "Order update",
+        "partner_invoice_sent": "Invoice sent",
+        "partner_payment_received": "Payment received",
+        "partner_khata_reminder": "Khata reminder"
+      }
     },
     "business": {
       "title": "Business details",
@@ -1294,7 +1319,7 @@
       "trackStock": "Track stock for this product",
       "openingStock": "Opening stock",
       "lowStockAt": "Low-stock alert at",
-      "atLimit": "You've reached your plan's limit for products. Remove or deactivate one to add another.",
+      "atLimit": "You've reached your plan's limit for catalogue items (products and services). Archive an item you no longer sell to add another.",
       "saveProduct": "Save product",
       "saveChanges": "Save changes",
       "planLimitTitle": "Plan limit reached",
@@ -1882,7 +1907,7 @@
     "create": {
       "submit": "Add it",
       "limitTitle": "Plan limit reached",
-      "limitBody": "You've reached your plan's limit for services. Remove one to add another.",
+      "limitBody": "You've reached your plan's limit for catalogue items (products and services). Archive an item you no longer sell to add another.",
       "addFailed": "Could not add that service"
     },
     "p2": {
@@ -2336,7 +2361,8 @@
       "olderFailed": "Could not load older alerts",
       "gone": "This is about something your plan or your module settings no longer include, so there is nothing left to open.",
       "emptyTitle": "Nothing yet",
-      "emptyBody": "New bookings, orders and plan notices land here — including the ones that arrive while your phone is off."
+      "emptyBody": "New bookings, orders and plan notices land here — including the ones that arrive while your phone is off.",
+      "markReadFailed": "Could not mark as read"
     },
     "channels": {
       "urgent": {
@@ -2382,7 +2408,7 @@
     "delete": {
       "title": "Delete account",
       "warningTitle": "This deletes your account in 30 days",
-      "warningBody": "You will be signed out on every device now, and the account is deleted 30 days after your request. To cancel before then, sign in on the ResiSmart website and choose Restore my account.",
+      "warningBody": "You will be signed out on every device now, and the account is deleted 30 days after your request. To cancel before then, sign in again — in this app or on the ResiSmart website — and choose Restore my account.",
       "deletedSection": "What is deleted",
       "deleted": {
         "login": "Your login — phone, email, password and Google sign-in",
@@ -2416,11 +2442,11 @@
       "resend": "Send a new code",
       "resendIn": "Send a new code in {{seconds}}s",
       "finalTitle": "Delete your account?",
-      "finalBody": "You will lose access to every workspace now. Your login, photo and personal details are removed 30 days after your request; sign in on the ResiSmart website before then to cancel.",
+      "finalBody": "You will lose access to every workspace now. Your login, photo and personal details are removed 30 days after your request; sign in again before then to cancel.",
       "finalConfirm": "Delete in 30 days",
       "doneTitle": "Deletion requested",
-      "doneBody": "You have been signed out. Your account will be deleted in 30 days. Sign in on the ResiSmart website before then to cancel.",
-      "doneOn": "You have been signed out. Your account will be deleted on {{date}}. Sign in on the ResiSmart website before then to cancel."
+      "doneBody": "You have been signed out. Your account will be deleted in 30 days. Sign in again before then to cancel.",
+      "doneOn": "You have been signed out. Your account will be deleted on {{date}}. Sign in again before then to cancel."
     },
     "devices": {
       "title": "Signed-in devices",
@@ -2944,7 +2970,12 @@
     "PARTNER_SIGNUP_PHONE_INVALID": "Enter a valid mobile number for your business.",
     "PARTNER_SIGNUP_EMAIL_NOT_VERIFIED": "Your email is not verified, or the code has expired. Please verify your email again.",
     "PARTNER_SIGNUP_PHONE_NOT_VERIFIED": "Your mobile number is not verified, or the code has expired. Please verify your number again.",
-    "PARTNER_NAME_TAKEN": "A business with this name is already registered. Add your area or city to the name and try again."
+    "PARTNER_NAME_TAKEN": "A business with this name is already registered. Add your area or city to the name and try again.",
+    "PLAN_TOO_FEW_ITEMS": "You have {{used}} catalogue items; this plan allows {{limit}}. Archive items or pick a bigger plan.",
+    "CATALOG_ITEMS_LIMIT": "Your plan covers {{limit}} catalogue items (products and services) and you have {{used}}.",
+    "CATALOG_ITEMS_LIMIT_BULK": "Your plan covers {{limit}} catalogue items and you have {{used}}, so you can add {{remaining}} more, not {{requested}}. Nothing was added.",
+    "ITEM_VIEW_ONLY": "This item is beyond the {{limit}} catalogue items your plan covers, so it is view-only and hidden from customers. Pick a bigger plan or archive other items to change it.",
+    "PARTNER_WHATSAPP_OFF": "ResiSmart has switched WhatsApp messages for businesses off for now. Your customers still get app notifications."
   },
   "partnerAccess": {
     "movedTitle": "Business changed",
@@ -5896,5 +5927,73 @@
         }
       }
     }
+  },
+  "planItems": {
+    "heading": "What your plan limits",
+    "oneFactorNote": "Every feature is on every plan. Your plan sets one number: how many catalogue items you can have.",
+    "countsNote": "Catalogue items are your active products and services. A product with variants counts as one item. Archived items do not count.",
+    "ofLimit": "{{used}} of {{limit}} catalogue items",
+    "unlimited": "{{used}} catalogue items · unlimited on your plan",
+    "overBy": "{{n}} of your items are beyond the {{limit}} catalogue items your plan covers, so they are view-only and hidden from customers. Archive other items to open them again.",
+    "archiveHint": "Archive items you no longer sell."
+  },
+  "restoreAccount": {
+    "title": "Your account is scheduled for deletion",
+    "body": "It will be deleted on {{date}}. Restore it to keep everything as it was — your businesses, societies and details.",
+    "restore": "Restore my account",
+    "keep": "Continue deleting",
+    "backToSignIn": "Back to sign in",
+    "failed": "Could not restore your account. Please sign in again."
+  },
+  "accountErrors": {
+    "MFA_WEB_ONLY": "The owner console can only be opened on the ResiSmart website. Please sign in there.",
+    "MFA_SIGN_IN_AGAIN": "Your account is restored. To open the owner console, sign in again.",
+    "MFA_SESSION_REQUIRED": "For your safety, please sign in to the owner console again.",
+    "ACCOUNT_DELETION_PENDING": "Your account is scheduled for deletion. Restore it to keep using ResiSmart.",
+    "ACCOUNT_RESTORE_EXPIRED": "This restore step has expired. Sign in again to restore your account.",
+    "DELETION_BLOCKED": "You are the only administrator of a society or business. Hand the admin role to someone else first, then delete your account.",
+    "DELETION_PLATFORM_STAFF": "Platform staff accounts are removed by the ResiSmart owner. Please contact info@resismart.in.",
+    "DELETION_SOLE_OWNER": "You are the only owner of a flat. Transfer or sell the flat through the society office first, then delete your account.",
+    "DELETION_NO_CONTACT": "This account has no phone or email to confirm with. Please contact the society office.",
+    "DELETION_CODE_FORMAT": "Enter the 6-digit code.",
+    "DELETION_CODE_WRONG": "That code is not right. Please try again.",
+    "DELETION_CODE_EXPIRED": "That code has expired or was never sent. Ask for a new code.",
+    "DELETION_TOO_MANY_TRIES": "Too many wrong codes. Ask for a new code.",
+    "DELETION_CODE_WAIT": "Please wait a little before asking for another code.",
+    "LEAVE_SOLE_ADMIN": "You are the only administrator of this society. Make someone else an admin first, then leave.",
+    "LEAVE_SOLE_OWNER": "You are the only owner of this flat. The society office must record another owner (or the sale) first. A tenant living there and the flat's bills stay as they are.",
+    "LEAVE_NOT_A_MEMBER": "You are no longer part of that society or flat."
+  },
+  "accountPlaces": {
+    "title": "Your places",
+    "loading": "Loading your places…",
+    "failed": "Could not load your places.",
+    "empty": "You are not linked to any society or flat.",
+    "count": "You are linked to {{n}} places.",
+    "hint": "Leaving one place keeps all the others, on this login and on your other logins. This is usually what you want.",
+    "otherLoginBadge": "Through your other login",
+    "businessNoteShop": "A business — to leave it, hand it over under Settings → Owners & handover.",
+    "leaveFlat": "Remove me from {{flat}}",
+    "leaveSociety": "Leave this society",
+    "leaveFlatTitle": "Remove yourself from {{flat}}?",
+    "leaveSocietyTitle": "Leave {{name}}?",
+    "leaveFlatBody": "You will no longer be part of {{flat}}. Your other flats and societies stay as they are. The society office will be told.",
+    "leaveSocietyBody": "Your access to {{name}} ends on all your logins. Your other places stay as they are. The society office will be told.",
+    "leaveAction": "Leave",
+    "leftFlat": "You were removed from {{flat}}.",
+    "leftSociety": "You have left {{name}}.",
+    "leaveFailed": "Could not leave. Please try again.",
+    "tenantNote": "A tenant lives in {{flat}}. Their stay and the flat's bills are not affected.",
+    "soleAdminNote": "You are the only admin here. Make someone else an admin first.",
+    "soleOwnerNote": "You are the only owner of {{flats}}. The society office must record another owner first.",
+    "fullTitle": "Delete my whole account",
+    "blockedTitle": "Your account cannot be deleted yet",
+    "otherLoginsLabel": "Also delete my other login ({{n}})",
+    "otherLoginsHint": "You also sign in with another phone or email. Tick this to delete it too; otherwise it keeps its access."
+  },
+  "otpLookOn": {
+    "whatsapp": "Look for the code on WhatsApp.",
+    "sms": "Look for the code in your SMS messages.",
+    "email": "Look for the code in your email inbox."
   }
 }

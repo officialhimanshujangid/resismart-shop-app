@@ -147,12 +147,15 @@ export function planLimit(limits: Record<string, number> | undefined, key: strin
  *           never learns Promotion exists never buys it. It is the difference
  *           between selling and leaking.
  */
-export type PartnerModuleState = 'ON' | 'OFF' | 'LOCKED';
+// >>> X2F — one-factor partner plans (Owner, 2026-10-04): every module is on every
+// plan; the plan limits catalogue items only. There is no LOCKED state any more —
+// a module is ON (switched on) or OFF (switched off in Settings → Modules).
+export type PartnerModuleState = 'ON' | 'OFF';
 
 export function moduleStateOf(ent: PartnerEntitlementsPayload, module: PartnerModule): PartnerModuleState {
-  if (ent.modules.includes(module)) return 'ON';
-  return planSells(ent.plan.limits, PARTNER_MODULE_INFO[module].capability) ? 'OFF' : 'LOCKED';
+  return ent.modules.includes(module) ? 'ON' : 'OFF';
 }
+// <<< X2F
 
 /**
  * Does this person's ROLE allow `module` at `level` or better? Gate 3 only — it
@@ -279,15 +282,13 @@ export function moduleMenuEntries(
   ready: boolean,
 ): ModuleMenuEntry[] {
   if (!ready) return []; // fail closed: nothing is offered before the answer lands
-  const canBuy = allows(ent, 'SETTINGS', 'FULL');
 
   return PARTNER_MODULES.flatMap<ModuleMenuEntry>((module) => {
     const info = PARTNER_MODULE_INFO[module];
     if (!allows(ent, info.permission, 'READ')) return [];
     const state = moduleStateOf(ent, module);
     if (state === 'OFF') return [];
-    if (state === 'LOCKED' && !canBuy) return [];
-    return [{ ...info, module, state }];
+    return [{ ...info, module, state }]; // X2F: no plan-LOCKED rows — every plan has every module
   });
 }
 
@@ -308,7 +309,7 @@ export interface UsePartnerEntitlements {
   can: (module: PartnerAccessModule, level?: 'READ' | 'FULL') => boolean;
   /** Bought AND switched on. Not a permission question — see `can`. */
   hasModule: (module: PartnerModule) => boolean;
-  /** ON / OFF / LOCKED, for the screens that have to sell as well as gate. */
+  /** ON / OFF (X2F: no LOCKED — every plan has every module). */
   moduleState: (module: PartnerModule) => PartnerModuleState;
   /** The module rows "More" should draw, gate 3 applied — see `moduleMenuEntries`. */
   menu: ModuleMenuEntry[];
@@ -366,7 +367,7 @@ export function usePartnerEntitlements(options?: UsePartnerEntitlementsOptions):
       // Before the answer lands every module reads LOCKED rather than ON.
       // Callers are expected to check `ready` first and draw nothing; this is the
       // backstop for the ones that forget.
-      if (!ready) return 'LOCKED';
+      if (!ready) return 'OFF'; // X2F (was LOCKED; that state is gone)
       return moduleStateOf(resolved, module);
     },
     [ready, resolved],

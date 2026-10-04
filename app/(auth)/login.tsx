@@ -143,7 +143,12 @@ export default function LoginScreen() {
     try {
       const idToken = await getGoogleIdToken(t);
       const result = await loginWithGoogle(idToken);
-      if (!result.success) {
+      // M01 audit — #46: proved, but the account is waiting out its 30-day deletion.
+      if (result.pendingDeletion) {
+        router.push('/(auth)/restore-account');
+        return;
+      }
+      if (!result.success && !result.requiresContextSelection) {
         setSnackbar({ visible: true, message: result.error ?? t('auth.login.googleFailed'), error: true });
         return;
       }
@@ -206,6 +211,11 @@ export default function LoginScreen() {
         setPendingProfiles(result.profiles);
         setPendingUserId(result.userId);
         setContextModal(true);
+        return;
+      }
+      // M01 audit — #46: right password, but the account is waiting out its 30-day deletion.
+      if (result.pendingDeletion) {
+        router.push('/(auth)/restore-account');
         return;
       }
       // One coded answer for every failure (INVALID_CREDENTIALS) — its sentence

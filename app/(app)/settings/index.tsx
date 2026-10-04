@@ -42,11 +42,7 @@ export default function SettingsHubScreen() {
    *           themselves and it is one tap away under Modules, two rows down.
    *           A settings screen that keeps arguing with a setting is one people
    *           stop trusting.
-   *   LOCKED  KEEP the row, say plainly that the plan does not include it, and
-   *           send the tap to the plan screen instead of into a 404. Hiding it
-   *           is the wrong answer for LOCKED for the same reason it is wrong in
-   *           the More menu: a partner who never learns invoicing exists never
-   *           buys it.
+   *   (X2F: there is no LOCKED state — every partner plan has every module.)
    */
   const invoicingState = moduleState('INVOICING');
 
@@ -97,16 +93,8 @@ export default function SettingsHubScreen() {
               c={c}
               icon="receipt-text-outline"
               title={t('settings.hub.invoice')}
-              subtitle={
-                invoicingState === 'LOCKED'
-                  ? t('settings.hub.invoiceLocked')
-                  : t('settings.hub.invoiceSub')
-              }
-              onPress={
-                invoicingState === 'LOCKED'
-                  ? () => router.push(toHref('/settings/plan'))
-                  : () => router.push('/settings/invoice')
-              }
+              subtitle={t('settings.hub.invoiceSub') /* X2F: no LOCKED state — every plan has invoicing */}
+              onPress={() => router.push('/settings/invoice')}
             />
           </>
         )}

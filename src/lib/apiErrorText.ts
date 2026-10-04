@@ -109,7 +109,12 @@ export function commerceExtraText(code: string | undefined, params: Record<strin
 /** Our sentence for a code, or `undefined` when we have none or cannot fill it. */
 export function codedText(code: string | undefined, params: Record<string, unknown> | undefined, tr: Translator): string | undefined {
   if (!code || code.includes('.')) return undefined;
-  const key = `errors.${code}`;
+  // M01 audit — `accountErrors.<CODE>` after `errors.<CODE>`: the own-account
+  // refusals (delete / leave a place / restore, backend `resident-error-codes.ts`)
+  // and the owner-console sign-in codes a phone can meet (MFA_WEB_ONLY …,
+  // `admin-security-codes.ts`). Kept out of `errors.*`, whose key set is held to
+  // the partner + marketplace + auth catalogues exactly.
+  const key = tr.exists(`errors.${code}`) ? `errors.${code}` : `accountErrors.${code}`;
   if (!tr.exists(key)) return undefined;
   const values = localiseParams(params, tr);
   // The English template decides which slots are needed; the two catalogues

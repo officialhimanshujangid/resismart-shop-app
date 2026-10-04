@@ -22,7 +22,7 @@ export type {
   PartnerModuleInfo,
 } from './usePartnerEntitlements';
 
-export { usePlanUsage, capacityOf } from './usePlanUsage';
+export { usePlanUsage, capacityOf, CATALOG_ITEMS_KEY } from './usePlanUsage'; // X2F: + CATALOG_ITEMS_KEY
 export type { CapacityView } from './usePlanUsage';
 
 export { useOnboardingStatus, resumeStep } from './useOnboardingStatus';

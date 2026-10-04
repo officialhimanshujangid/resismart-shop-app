@@ -59,8 +59,8 @@ async function finishStep1() {
   await fireEvent.changeText(field(0), 'Sharma Kirana');
   await fireEvent.changeText(field(1), '9876543210');
   await fireEvent.changeText(field(2), 'ravi@shop.in');
-  await fireEvent.changeText(field(3), 'secret1');
-  await fireEvent.changeText(field(4), 'secret1');
+  await fireEvent.changeText(field(3), 'kirana-shop-secret1');
+  await fireEvent.changeText(field(4), 'kirana-shop-secret1');
   await fireEvent.press(screen.getByText(R.sendCodes));
   await screen.findByText(R.verifyAndContinue);
   await fireEvent.changeText(field(5), '123456'); // email code
@@ -117,7 +117,7 @@ describe('partner signup — business created at step 2, like the web', () => {
       longitude: 72.8777,
       emailVerificationToken: 'receipt-EMAIL-0123456789',
       phoneVerificationToken: 'receipt-PHONE-0123456789',
-      password: 'secret1',
+      password: 'kirana-shop-secret1',
     });
     expect(JSON.stringify(body)).not.toMatch(/To be confirmed/);
 

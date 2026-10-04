@@ -89,7 +89,12 @@ export default function ForgotPasswordScreen() {
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+          {/* M01 audit: opened cold (a link, a reload) there is no screen behind — go to sign-in instead of a dead tap. */}
+          <TouchableOpacity
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/login'))}
+            style={styles.backBtn}
+            activeOpacity={0.7}
+          >
             <MaterialCommunityIcons name="arrow-left" size={22} color={c.primary} />
             <Text style={[styles.backText, { color: c.primary }]}>{t('auth.forgot.back')}</Text>
           </TouchableOpacity>

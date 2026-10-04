@@ -10,9 +10,10 @@ import Constants from 'expo-constants';
  * society or guard app of the same person. Same header pair the guard app
  * already sends (`mobile-guard/src/lib/appIdentity.ts`).
  *
- * Sent ONLY on `POST /notifications/devices` (`api/notification.api.ts`), not on
- * every request: device registration is native-only, so a web build never sends
- * a custom header that a CORS preflight would refuse.
+ * Sent on the notification calls — device register/unregister, the inbox list,
+ * mark-read (`api/notification.api.ts`) and the SSE stream (`lib/sse.ts`). The
+ * backend's CORS config allows `X-ResiSmart-App` / `X-App-Version`, so a web
+ * build's preflight accepts them too.
  */
 export const SHOP_APP_NAME = 'shop';
 export const SHOP_APP_VERSION: string = Constants.expoConfig?.version || '1.0.0';

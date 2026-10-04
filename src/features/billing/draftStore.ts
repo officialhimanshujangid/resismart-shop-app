@@ -183,7 +183,17 @@ async function syncDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
     }
   } catch (e: unknown) {
     if (isUpgradeRequired(e)) {
-      patchDraft(draft.id, { status: 'BLOCKED_UPGRADE', lastError: apiErrorMessage(e) });
+      // >>> X2F — bills are no longer limited by any plan (one-factor plans,
+      // 2026-10-04); the only plan refusal left is the catalogue-items limit
+      // (`messageKey: CATALOG_ITEMS_LIMIT`). Keep its code + params so the text
+      // is the coded en/hi sentence (`apiErrorMessage`), never the server's.
+      patchDraft(draft.id, {
+        status: 'BLOCKED_UPGRADE',
+        lastError: apiErrorMessage(e),
+        lastErrorCode: apiErrorCode(e),
+        lastErrorParams: apiErrorParams(e),
+      });
+      // <<< X2F
       return currentDraft(draft.id, draft);
     }
     // No response at all — timeout, dropped mid-request, or still offline —

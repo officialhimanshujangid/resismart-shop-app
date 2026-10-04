@@ -1,5 +1,6 @@
 import { API_BASE_URL, STORAGE_KEYS } from '../constants/app';
 import { storage } from '../utils/storage';
+import { appIdentityHeaders } from './appIdentity';
 
 /**
  * A minimal Server-Sent Events client for React Native.
@@ -107,6 +108,10 @@ export function openEventStream(options: SseOptions): SseConnection {
     // Some proxies will happily gzip an event stream and then buffer it; the
     // server sets identity encoding for the same reason.
     request.setRequestHeader('Cache-Control', 'no-cache');
+    // Name the app, as every other notifications call does.
+    for (const [name, value] of Object.entries(appIdentityHeaders())) {
+      request.setRequestHeader(name, value);
+    }
 
     request.onreadystatechange = () => {
       if (closed || request !== xhr) return;

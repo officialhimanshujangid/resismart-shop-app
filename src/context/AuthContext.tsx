@@ -11,6 +11,7 @@ import {
   OtpVia,
   isPartnerContext,
   toProfile,
+  pendingDeletionOf, // M01 audit — #46 restore
 } from '../api/auth.api';
 import { Alert } from 'react-native';
 
@@ -54,6 +55,13 @@ export interface LoginResult {
    */
   userId?: string;
   error?: string;
+  /**
+   * M01 audit — #46: the identity was proved, but the account is waiting out
+   * its 30-day deletion (409 ACCOUNT_DELETION_PENDING). The caller opens
+   * `/(auth)/restore-account`; the date is `pendingRestore`, the one-time
+   * ticket stays inside this provider.
+   */
+  pendingDeletion?: boolean;
 }
 
 /**
@@ -145,6 +153,14 @@ interface AuthContextType extends AuthState {
    * not be reached — the session is then left as it was.
    */
   leaveBusiness: (notice: SessionNotice) => Promise<'moved' | 'ended'>;
+  // >>> M01 audit — #46 "Restore my account"
+  /** The deletion date of a sign-in that answered ACCOUNT_DELETION_PENDING, or `null`. */
+  pendingRestore: { deleteAt: string } | null;
+  /** Spend the restore ticket — answers exactly like a sign-in (picker included). */
+  restoreAccount: () => Promise<LoginResult>;
+  /** "Continue deleting": forget the ticket, change nothing. */
+  dropRestore: () => void;
+  // <<< M01 audit
 }
 
 export type SessionNotice = 'ACCESS_ENDED' | 'ARCHIVED';
@@ -179,9 +195,9 @@ const UNREGISTER_TIMEOUT_MS = 5_000;
  *    this device re-registers instead of matching the cached pair in
  *    `usePushRegistration` and skipping the POST.
  */
-async function unregisterPushDevice(): Promise<void> {
+async function unregisterPushDevice(): Promise<string | null> {
   const token = await store.get(DEVICE_KEYS.PUSH_TOKEN);
-  if (!token) return;
+  if (!token) return null;
   await Promise.race([
     notificationApi.unregisterDevice(token).catch((error: unknown) => {
       // The server may still hold the token. It is addressed by partner scope,
@@ -193,6 +209,9 @@ async function unregisterPushDevice(): Promise<void> {
   ]);
   await store.remove(DEVICE_KEYS.PUSH_TOKEN);
   await store.remove(DEVICE_KEYS.PUSH_TOKEN_SCOPE);
+  // Handed back so `POST /auth/logout` can carry it as `pushToken`: the server
+  // drops that device row too, in case the DELETE above did not land.
+  return token;
 }
 
 /**
@@ -201,11 +220,11 @@ async function unregisterPushDevice(): Promise<void> {
  * cleared, bounded, and never able to block the sign-out — the local session
  * ends whatever the server said.
  */
-async function endServerSession(): Promise<void> {
+async function endServerSession(pushToken?: string | null): Promise<void> {
   const refreshToken = await storage.get(STORAGE_KEYS.REFRESH_TOKEN);
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([
-    authApi.logout(refreshToken).then(
+    authApi.logout(refreshToken, false, pushToken).then(
       () => undefined,
       (error: unknown) => {
         console.warn('[auth] server sign-out failed:', error);
@@ -268,6 +287,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   const pending = useRef<{ handle: string; refreshToken: string; contexts: ResolvedContext[] } | null>(null);
 
+  // >>> M01 audit — #46: the 15-minute restore ticket (memory only, never stored)
+  // and the date the screen shows.
+  const restoreTicket = useRef<string | null>(null);
+  const [pendingRestore, setPendingRestore] = useState<{ deleteAt: string } | null>(null);
+  /** A sign-in failure that is really "restore or keep deleting": hold the ticket, tell the caller. */
+  const asPendingDeletion = useCallback((err: unknown): LoginResult | null => {
+    const deletion = pendingDeletionOf(err);
+    if (!deletion) return null;
+    restoreTicket.current = deletion.restoreTicket;
+    setPendingRestore({ deleteAt: deletion.deleteAt });
+    return { success: false, pendingDeletion: true };
+  }, []);
+  // <<< M01 audit
+
   const applySession = useCallback(
     async (
       token: string,
@@ -317,6 +350,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // business's data for a frame. See `resetQueryCache`.
       resetQueryCache();
       pending.current = null;
+      restoreTicket.current = null; // M01 audit — a session answers any waiting restore
+      setPendingRestore(null); // M01 audit
       setSessionNotice(null); // a new sign-in answers the old "you no longer have access"
       const partners = contexts.filter(isPartnerContext);
       setAvailableContexts(partners);
@@ -443,13 +478,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await authApi.loginGoogle(idToken);
         return await consumeLogin(data);
       } catch (err) {
+        const deletion = asPendingDeletion(err); // M01 audit — #46
+        if (deletion) return deletion;
         return {
           success: false,
           error: apiErrorMessage(err, t('auth.session.googleFailed')),
         };
       }
     },
-    [consumeLogin, t],
+    [consumeLogin, t, asPendingDeletion],
   );
 
   const login = useCallback(
@@ -464,10 +501,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // exist). `apiErrorMessage` renders the code from our catalogue, and its
         // sentence already points at the one-time-code option the login screen
         // always shows.
+        const deletion = asPendingDeletion(err); // M01 audit — #46
+        if (deletion) return deletion;
         return { success: false, error: apiErrorMessage(err, t('auth.session.loginFailed')) };
       }
     },
-    [consumeLogin, t],
+    [consumeLogin, t, asPendingDeletion],
   );
 
   const requestLoginOtp = useCallback(
@@ -495,11 +534,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await authApi.loginOtpVerify(identifier, code);
         return await consumeLogin(data);
       } catch (err) {
+        const deletion = asPendingDeletion(err); // M01 audit — #46
+        if (deletion) return deletion;
         return { success: false, error: apiErrorMessage(err, t('auth.session.otpWrong')) };
       }
     },
-    [consumeLogin, t],
+    [consumeLogin, t, asPendingDeletion],
   );
+
+  // >>> M01 audit — #46 "Restore my account"
+  /**
+   * Spend the ticket. The answer is the ordinary sign-in body, so it goes
+   * through `consumeLogin` exactly as a password/code/Google sign-in would —
+   * the partner-only gate and the business picker included. A 400/403 means
+   * the ticket is spent (expired, or the account is back but cannot open a
+   * business here), so it is forgotten; a 429/5xx/no answer keeps it for a retry.
+   */
+  const restoreAccount = useCallback(async (): Promise<LoginResult> => {
+    const ticket = restoreTicket.current;
+    if (!ticket) return { success: false, error: t('accountErrors.ACCOUNT_RESTORE_EXPIRED') };
+    try {
+      const { data } = await authApi.restoreAccount(ticket);
+      restoreTicket.current = null;
+      const result = await consumeLogin(data);
+      if (result.success) setPendingRestore(null);
+      return result;
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 400 || status === 403) restoreTicket.current = null;
+      return { success: false, error: apiErrorMessage(err, t('restoreAccount.failed')) };
+    }
+  }, [consumeLogin, t]);
+
+  const dropRestore = useCallback(() => {
+    restoreTicket.current = null;
+    setPendingRestore(null);
+  }, []);
+  // <<< M01 audit
 
   const selectContext = useCallback(
     async (handle: string, tenantId: string, role: string) => {
@@ -657,25 +728,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      * one member of staff acting as another. Never throws.
      */
     await forgetGoogle();
-    await unregisterPushDevice();
+    const pushToken = await unregisterPushDevice();
     // Before the keys go: the server needs this device's refresh token to know
     // WHICH session to end. Bounded and never blocking.
-    await endServerSession();
+    await endServerSession(pushToken);
     await endLocalSession();
   }, [endLocalSession]);
 
   const logoutEverywhere = useCallback(async () => {
     pending.current = null;
     const refreshToken = await storage.get(STORAGE_KEYS.REFRESH_TOKEN);
+    // This device's push row goes FIRST, while the bearer is still valid: once
+    // `everywhere` has ended every session that DELETE would only 401. Bounded
+    // and never throwing, as in `logout`. The token also rides in the logout
+    // body (and `everywhere` drops every push device server-side anyway).
+    const pushToken = await unregisterPushDevice();
     try {
-      // The server FIRST, and awaited: if it could not end the other devices,
+      // Then the server, awaited: if it could not end the other devices,
       // saying so matters more than leaving this one.
-      await authApi.logout(refreshToken, true);
+      await authApi.logout(refreshToken, true, pushToken);
     } catch (err) {
       throw new Error(apiErrorMessage(err, t('account.devices.everywhereFailed')));
     }
     await forgetGoogle();
-    await unregisterPushDevice();
     await endLocalSession();
   }, [endLocalSession, t]);
 
@@ -697,8 +772,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         pending.current = null;
         await forgetGoogle();
-        await unregisterPushDevice();
-        await endServerSession();
+        const pushToken = await unregisterPushDevice();
+        await endServerSession(pushToken);
         await endLocalSession();
         setSessionNotice(notice);
         return 'ended';
@@ -832,6 +907,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sessionNotice,
         clearSessionNotice,
         leaveBusiness,
+        pendingRestore, // M01 audit — #46
+        restoreAccount, // M01 audit — #46
+        dropRestore, // M01 audit — #46
       }}
     >
       {children}

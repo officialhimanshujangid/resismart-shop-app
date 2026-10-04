@@ -24,23 +24,18 @@ export function ServiceUsageMeterBar({ cap, c }: { cap: CapacityView; c: ColorSc
     );
   }
 
-  if (!cap.included) {
-    return (
-      <View style={[styles.box, { backgroundColor: c.error + '14' }]}>
-        <Text style={[styles.text, { color: c.error }]}>
-          {t('services.meter.notIncluded')}
-        </Text>
-      </View>
-    );
-  }
+  // >>> X2F — services share the ONE catalogue-items meter with products. Every
+  // plan has a catalogue, so "not included" is never true: while loading, draw nothing.
+  if (!cap.included) return null;
 
   if (cap.limit === null) {
     return (
       <View style={[styles.box, { backgroundColor: c.surfaceVariant }]}>
-        <Text style={[styles.text, { color: c.textSecondary }]}>{t('services.meter.unlimited', { used: cap.used })}</Text>
+        <Text style={[styles.text, { color: c.textSecondary }]}>{t('planItems.unlimited', { used: cap.used })}</Text>
       </View>
     );
   }
+  // <<< X2F
 
   const fraction = cap.fraction ?? 0;
   const tone = cap.atLimit ? c.error : fraction > 0.8 ? c.warning : c.primary;
@@ -52,7 +47,7 @@ export function ServiceUsageMeterBar({ cap, c }: { cap: CapacityView; c: ColorSc
             `features/billing/components/UsageMeter.tsx` documents. The fallback
             when the server sends none IS ours, so that one is translated. */}
         <Text style={[styles.text, { color: c.textPrimary }]}>
-          {t('services.meter.ofLimit', { used: cap.used, limit: cap.limit, noun: cap.noun || t('services.meter.servicesNoun') })}
+          {t('planItems.ofLimit', { used: cap.used, limit: cap.limit }) /* X2F */}
         </Text>
         {cap.atLimit && <Text style={[styles.atLimit, { color: c.error }]}>{t('services.meter.limitReached')}</Text>}
       </View>

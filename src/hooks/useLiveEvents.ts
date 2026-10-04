@@ -95,8 +95,13 @@ export interface LiveEventsState {
  * One connection per device is the whole design — `sse.service.ts` holds an open
  * response per client in process memory, so a hook mounted on five tabs would
  * hold five of them for one partner and five heartbeats every 25 seconds.
+ *
+ * `scopeKey` is the active business (partner id). The server binds a stream to
+ * the scope of the token it was opened with, so switching business must close
+ * the old stream and open a new one — otherwise frames keep coming for the shop
+ * that was left and never for the one now open.
  */
-export function useLiveEvents(enabled: boolean): LiveEventsState {
+export function useLiveEvents(enabled: boolean, scopeKey?: string | null): LiveEventsState {
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
 
@@ -142,7 +147,7 @@ export function useLiveEvents(enabled: boolean): LiveEventsState {
       connection.close();
       setConnected(false);
     };
-  }, [enabled, queryClient]);
+  }, [enabled, scopeKey, queryClient]);
 
   /**
    * Coming back from the background is the case pull-to-refresh was invented

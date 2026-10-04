@@ -25,6 +25,8 @@ export interface CapacityView {
   comingSoon: boolean;
   /** The server's own noun, e.g. "products", "bookings this month". */
   noun: string;
+  /** X2F — items beyond the plan's number: view-only and hidden from customers. */
+  overBy: number;
 }
 
 const UNKNOWN: CapacityView = {
@@ -39,10 +41,28 @@ const UNKNOWN: CapacityView = {
   fraction: null,
   comingSoon: false,
   noun: '',
+  overBy: 0, // X2F
 };
 
+// >>> X2F — one-factor partner plans (Owner, 2026-10-04). The plan sells ONE
+// number: catalogue items (active products + active services; a product with
+// variants is one item). Products and services share that one meter, so the old
+// `max_products` / `max_services` keys read it. Every other old key (bills,
+// customers, staff, bookings, orders …) is no longer limited by any plan: it
+// reads as unlimited with no noun, so no meter is drawn and no button locks.
+export const CATALOG_ITEMS_KEY = 'max_catalog_items';
+const CATALOG_ALIASES: ReadonlySet<string> = new Set([CATALOG_ITEMS_KEY, 'max_products', 'max_services']);
+
+const NOT_LIMITED: CapacityView = {
+  included: true, used: 0, limit: null, atLimit: false, fraction: null, comingSoon: false, noun: '', overBy: 0,
+};
+// <<< X2F
+
 export function capacityOf(rows: PartnerUsageRow[] | undefined, key: string): CapacityView {
-  const row = rows?.find((r) => r.key === key);
+  // >>> X2F
+  if (!CATALOG_ALIASES.has(key)) return NOT_LIMITED;
+  const row = rows?.find((r) => r.key === CATALOG_ITEMS_KEY);
+  // <<< X2F
   if (!row) return UNKNOWN;
 
   const limit = row.limit;
@@ -55,6 +75,7 @@ export function capacityOf(rows: PartnerUsageRow[] | undefined, key: string): Ca
     fraction: unlimited || !row.included || !limit ? null : Math.min(1, row.used / limit),
     comingSoon: Boolean(row.wiredIn),
     noun: row.noun,
+    overBy: row.overBy ?? 0, // X2F
   };
 }
 
@@ -75,6 +96,8 @@ export function usePlanUsage() {
     loading: query.isPending,
     /** `capacity('max_products')` → what to draw next to the create button. */
     capacity: (key: string): CapacityView => capacityOf(query.data?.usage, key),
+    /** X2F — the one meter a partner plan has: catalogue items. */
+    catalogItems: capacityOf(query.data?.usage, CATALOG_ITEMS_KEY),
     refresh: query.refetch,
   };
 }

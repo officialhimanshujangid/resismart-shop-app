@@ -67,6 +67,8 @@ export interface PartnerUsageRow {
   used: number;
   /** Set when the feature's model lands in a later phase — draw "coming soon", not a 0-of-30 meter. */
   wiredIn?: string;
+  /** X2F — catalogue items beyond the plan's number (view-only, hidden from customers). */
+  overBy?: number;
 }
 
 /** Why the app may be showing very little: suspended, or still mid-wizard. */

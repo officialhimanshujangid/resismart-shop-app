@@ -6,14 +6,13 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette, ColorScheme } from '../../../src/constants/colors';
 import { IN_APP_PLAN_PURCHASES, WEB_BILLING_URL } from '../../../src/constants/app';
-import { usePartnerEntitlements, usePlanUsage, PARTNER_MODULE_INFO } from '../../../src/hooks';
-import { PARTNER_MODULES, PartnerModule } from '../../../src/types/api-contract.generated';
+import { usePartnerEntitlements, usePlanUsage, CATALOG_ITEMS_KEY } from '../../../src/hooks'; // X2F: module list removed
 import { platformBillingApi, TenantInvoice } from '../../../src/api/billing.api';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { qk } from '../../../src/lib/queryKeys';
 import { formatPaise } from '../../../src/lib/money';
 import { sharePlatformInvoicePdf } from '../../../src/features/billing/pdf';
-import { UsageMeter } from '../../../src/features/billing/components/UsageMeter';
+import { UsageMeterBar } from '../../../src/features/catalog/components/UsageMeterBar'; // X2F: one catalogue-items meter
 import { Card, ErrorBlock, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
 import { formatI18nDate } from '../../../src/i18n';
 
@@ -123,8 +122,9 @@ export default function PlanScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const { entitlements, ready, moduleState, refresh } = usePartnerEntitlements();
-  const { rows: usageRows, capacity } = usePlanUsage();
+  const { entitlements, ready, refresh } = usePartnerEntitlements();
+  const { capacity } = usePlanUsage();
+  const catalogItems = capacity(CATALOG_ITEMS_KEY); // X2F: the one meter
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [openingNoteId, setOpeningNoteId] = useState<string | null>(null); // FIXA
 
@@ -416,59 +416,25 @@ export default function PlanScreen() {
         </Card>
       )}
 
-      {/* ── what the plan includes ───────────────────────────────────── */}
-      <SectionLabel c={c}>{t('settings.plan.includesHeading')}</SectionLabel>
-      <Card c={c} style={styles.listCard}>
-        {PARTNER_MODULES.map((module: PartnerModule, i) => {
-          const info = PARTNER_MODULE_INFO[module];
-          const state = moduleState(module);
-          // ON / OFF / LOCKED, from the SAME `moduleStateOf` the tab bar and the
-          // More menu read. A second rule here would be a second answer to "may
-          // I", and the one nobody is looking at is the one that drifts.
-          const detail =
-            state === 'ON'
-              ? t('settings.plan.moduleOnDetail')
-              : state === 'OFF'
-                ? t('settings.plan.moduleOffDetail')
-                : t('settings.plan.moduleLockedDetail');
-          return (
-            <View key={module}>
-              <Row
-                c={c}
-                icon={info.icon}
-                title={t(`modules.${module}.label`)}
-                subtitle={t('settings.plan.moduleSubtitle', { detail, blurb: t(`modules.${module}.blurb`) })}
-                right={
-                  <Text style={{ color: state === 'LOCKED' ? c.textDisabled : state === 'OFF' ? c.warning : c.success, fontSize: 12, fontWeight: '600' }}>
-                    {state === 'ON' ? t('settings.plan.moduleOn') : state === 'OFF' ? t('settings.plan.moduleOff') : t('settings.plan.moduleLocked')}
-                  </Text>
-                }
-              />
-              {i < PARTNER_MODULES.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
-            </View>
-          );
-        })}
+      {/* >>> X2F — ONE-FACTOR PLANS (Owner, 2026-10-04). Every feature is on every
+          plan; the plan sets one number, catalogue items (active products +
+          services). The old per-module list and its ON/OFF/LOCKED rows are gone. */}
+      <SectionLabel c={c}>{t('planItems.heading')}</SectionLabel>
+      <Card c={c}>
+        <Text style={{ color: c.textPrimary, fontSize: 13 }}>{t('planItems.oneFactorNote')}</Text>
+        {/* Usage is sent only to people who can act on it, so an UNKNOWN answer
+            (not included) draws no meter rather than a row of zeroes. */}
+        <UsageMeterBar cap={catalogItems} c={c} />
+        <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('planItems.countsNote')}</Text>
+        {(catalogItems.overBy ?? 0) > 0 && (
+          <View style={[styles.banner, { backgroundColor: palette.coral.soft }]}>
+            <Text style={{ color: palette.coral[600], fontWeight: '600', fontSize: 13 }}>
+              {t('planItems.overBy', { n: catalogItems.overBy, limit: catalogItems.limit ?? 0 })}
+            </Text>
+          </View>
+        )}
       </Card>
-
-      {/* ── the meters ───────────────────────────────────────────────── */}
-      {/* `/partners/me/usage` is sent only to people who can act on it (admins
-          and SETTINGS holders), so an empty list here is a permission answer,
-          not an error — nothing is drawn rather than a row of zeroes. */}
-      {usageRows && usageRows.length > 0 && (
-        <>
-          <SectionLabel c={c}>{t('settings.plan.usedHeading')}</SectionLabel>
-          <Card c={c}>
-            {usageRows.map((row) => {
-              const cap = capacity(row.key);
-              // `comingSoon` rows have no model behind them yet — a "0 of 30"
-              // meter for something that cannot be counted is a lie with a
-              // progress bar on it.
-              if (cap.comingSoon || !cap.included) return null;
-              return <UsageMeter key={row.key} capacity={cap} c={c} />;
-            })}
-          </Card>
-        </>
-      )}
+      {/* <<< X2F */}
 
       {/* ── the receipts ─────────────────────────────────────────────── */}
       {isAdmin && (

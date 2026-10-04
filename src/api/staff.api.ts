@@ -82,6 +82,9 @@ export interface PartnerRoleCatalogEntry {
   key: PartnerAccessModule;
   label: string;
   description: string;
+  /** M02 audit: the same row in Hindi (absent from an older server). */
+  labelHi?: string;
+  descriptionHi?: string;
   levels: readonly PermissionLevel[];
 }
 

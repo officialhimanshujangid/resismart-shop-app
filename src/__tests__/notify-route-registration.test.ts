@@ -22,13 +22,27 @@ describe('NOTIFY-ROUTE: the shop app names itself on device registration', () =>
     expect(appIdentityHeaders()['X-ResiSmart-App']).toBe(SHOP_APP_NAME);
   });
 
-  it('the inbox read is unchanged (no custom header outside registration)', async () => {
+  it('the inbox read, mark-read and unregister name the app too (M03 H10)', async () => {
     mockApi.get.mockClear();
+    mockApi.post.mockClear();
+    mockApi.delete.mockClear();
     // The empty mock server may make `unwrap` complain; only the request matters here.
-    await notificationApi.list({ limit: 5 }).catch(() => undefined);
+    await notificationApi.list({ limit: 5, cursor: 'c1' }).catch(() => undefined);
     const call = mockApi.get.mock.calls.find((c: unknown[]) => c[0] === '/notifications') as unknown[] | undefined;
     expect(call).toBeDefined();
-    expect((call![1] as { headers?: unknown }).headers).toBeUndefined();
+    const cfg = call![1] as { headers?: Record<string, string>; params?: Record<string, unknown> };
+    expect(cfg.headers?.['X-ResiSmart-App']).toBe('shop');
+    expect(cfg.params).toEqual({ limit: 5, cursor: 'c1' });
+
+    await notificationApi.markRead(['a']).catch(() => undefined);
+    const read = mockApi.post.mock.calls.find((c: unknown[]) => c[0] === '/notifications/read') as unknown[] | undefined;
+    expect((read![2] as { headers: Record<string, string> }).headers['X-ResiSmart-App']).toBe('shop');
+
+    await notificationApi.unregisterDevice('ExponentPushToken[p]').catch(() => undefined);
+    const del = mockApi.delete.mock.calls.find((c: unknown[]) => c[0] === '/notifications/devices') as unknown[] | undefined;
+    const delCfg = del![1] as { data: unknown; headers: Record<string, string> };
+    expect(delCfg.data).toEqual({ token: 'ExponentPushToken[p]' });
+    expect(delCfg.headers['X-ResiSmart-App']).toBe('shop');
   });
 
   it('the stored push scope is versioned and stable', () => {

@@ -172,8 +172,8 @@ const emptySignup = (): SignupDraft => ({
   created: false,
 });
 
-/** The web wizard's `passwordErrors` rule (min 6, both equal). */
-const MIN_PASSWORD = 6;
+/** The web wizard's `passwordErrors` rule (min 12 since the M01 audit, both equal). */
+const MIN_PASSWORD = 12; // M01 audit — the platform rule; the server refuses shorter (was 6)
 
 /** The step-2 rules of `onboardingStep2Schema` (web + server), mirrored. */
 const locationValid = (v: { address: string; city: string; state: string; pincode: string }, hasPin: boolean) =>
@@ -677,7 +677,7 @@ function StepIdentity({
   const setConfirmPassword = (v: string) => patchSignup({ confirmPassword: v });
   const tokens = { email: signup.emailToken, phone: signup.phoneToken };
   // <<< OWNER-0310
-  // >>> SITE-SYNC — typed twice, as on the web wizard (`passwordErrors`: min 6, both equal).
+  // >>> SITE-SYNC — typed twice, as on the web wizard (`passwordErrors`: min 12, both equal).
   const passwordShort = password.length > 0 && password.length < MIN_PASSWORD;
   const passwordMismatch = confirmPassword.length > 0 && confirmPassword !== password;
   // <<< SITE-SYNC

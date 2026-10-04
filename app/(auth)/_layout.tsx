@@ -56,6 +56,8 @@ export default function AuthLayout() {
         <Stack.Screen name="login" />
         <Stack.Screen name="forgot-password" />
         <Stack.Screen name="verify-otp" />
+        {/* M01 audit — #46 "Restore my account" (signed out until the restore signs in). */}
+        <Stack.Screen name="restore-account" />
       </Stack.Protected>
       <Stack.Screen name="register" />
     </Stack>

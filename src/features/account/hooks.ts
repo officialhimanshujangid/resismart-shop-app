@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { accountApi } from '../../api/account.api';
 import { clearSession } from '../../api/axios';
@@ -37,7 +37,9 @@ export function useRequestAccountDeletion() {
 export function useConfirmAccountDeletion() {
   const { logout } = useAuth();
   return useMutation({
-    mutationFn: (code: string) => accountApi.confirmDeletion(code),
+    // M01 audit: `alsoOtherLogins` when the person ticked it (a bare code still works).
+    mutationFn: (v: string | { code: string; alsoOtherLogins?: boolean }) =>
+      typeof v === 'string' ? accountApi.confirmDeletion(v) : accountApi.confirmDeletion(v.code, !!v.alsoOtherLogins),
     onSuccess: async () => {
       try {
         await logout();
@@ -47,3 +49,26 @@ export function useConfirmAccountDeletion() {
     },
   });
 }
+
+// >>> M01 audit — "Your places" on the delete screen (parity with the web profile page).
+const PLACES_KEY = ['account', 'places'] as const;
+
+/** Every society/flat/business this person is linked to. */
+export function useMyPlaces() {
+  return useQuery({ queryKey: PLACES_KEY, queryFn: () => accountApi.places() });
+}
+
+/** Leave one society or flat; the list is replaced with the server's answer. */
+export function useLeavePlace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { societyId: string; flatId?: string }) => accountApi.leave(body),
+    onSuccess: (res) => {
+      queryClient.setQueryData(PLACES_KEY, (old: { otherLogins?: number } | undefined) => ({
+        places: res.places,
+        otherLogins: old?.otherLogins ?? 0,
+      }));
+    },
+  });
+}
+// <<< M01 audit

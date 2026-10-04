@@ -7,6 +7,9 @@ import { notificationDestination } from '../api/notification.api';
 import { PartnerModule } from '../types/api-contract.generated';
 import type { P2Module } from '../features/p2/modules';
 
+/** A launch tap older than this is not acted on (mirrors the guard app). */
+const LAUNCH_TAP_MAX_AGE_MS = 30 * 60 * 1000;
+
 /**
  * What happens when a partner TAPS a push.
  *
@@ -143,7 +146,23 @@ export function useNotificationTaps({ enabled, hasModule, ready, hasCategoryModu
      */
     void Notifications.getLastNotificationResponseAsync()
       .then((response) => {
-        if (response) act(response);
+        if (!response) return;
+        /**
+         * The OS keeps the launch tap for the life of the process, and `handled`
+         * is per mount — so after a sign-out and sign-in in the same process the
+         * old tap would navigate again. Same 30-minute age guard as the guard
+         * app, and the response is cleared once it has been dealt with.
+         */
+        const sentAt = response.notification.date;
+        const stale = typeof sentAt === 'number' && Date.now() - sentAt > LAUNCH_TAP_MAX_AGE_MS;
+        if (!stale) act(response);
+        try {
+          if (typeof Notifications.clearLastNotificationResponse === 'function') {
+            Notifications.clearLastNotificationResponse();
+          }
+        } catch (error: unknown) {
+          console.warn('[push] could not clear the launch tap:', error);
+        }
       })
       .catch((error: unknown) => console.warn('[push] could not read the launch tap:', error));
 

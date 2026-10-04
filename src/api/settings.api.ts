@@ -156,15 +156,56 @@ export interface PartnerWhatsAppEvent {
 export interface PartnerWhatsAppSettings {
   /** Plan sells `whatsapp_notifications`. False also reads as "could not check" — fails closed. */
   available: boolean;
+  /**
+   * Why `available` is false, when it is not the plan: `PARTNER_WHATSAPP_OFF` =
+   * ResiSmart has switched partner WhatsApp off platform-wide.
+   */
+  availableReason?: 'PARTNER_WHATSAPP_OFF' | (string & {});
   /** The platform's WhatsApp Business number is wired at all. */
   configured: boolean;
   optedIn: boolean;
   phone?: string;
   optedInAt?: string;
   optedOutAt?: string;
+  /** P1+ review (R+06): when this admin's number replied STOP on WhatsApp (ISO). Turning `optedIn` on lifts it. */
+  stoppedAt?: string;
   kinds: string[];
-  /** What buying this would turn on — sent even when `available` is false. */
+  /**
+   * The messages to the BUSINESS itself (audience 'You') — governed by the
+   * signed-in admin's own consent, `optedIn`. Sent even when `available` is false.
+   */
   events: PartnerWhatsAppEvent[];
+  /**
+   * Q4 — the BUSINESS switch: may this business's customers be sent WhatsApp at
+   * all (booking confirmed/reminder/completion code/cancelled, order updates,
+   * invoices, payment receipts, khata reminders). Absent on the server = ON.
+   * Off → app notifications still go. Needs no phone.
+   */
+  customerWhatsApp: boolean;
+  /** Q4 — the messages `customerWhatsApp` governs (audience 'Customers'). */
+  customerEvents: PartnerWhatsAppEvent[];
+}
+
+/** PUT body — at least one of the two. */
+export type SavePartnerWhatsAppPayload =
+  | { customerWhatsApp: boolean; optedIn?: boolean }
+  | { optedIn: boolean; customerWhatsApp?: boolean };
+
+/** Older server without Q4 fields: the business switch reads ON (server default). */
+function normaliseWhatsApp(w: PartnerWhatsAppSettings): PartnerWhatsAppSettings {
+  return {
+    ...w,
+    events: Array.isArray(w?.events) ? w.events : [],
+    customerWhatsApp: w?.customerWhatsApp !== false,
+    customerEvents: Array.isArray(w?.customerEvents) ? w.customerEvents : [],
+  };
+}
+
+/** One PUT for either switch; the reply is the whole block. */
+function saveWhatsApp(payload: SavePartnerWhatsAppPayload): Promise<PartnerWhatsAppSettings> {
+  return apiClient
+    .put<ApiEnvelope<PartnerWhatsAppSettings>>('/partners/me/notifications/whatsapp', payload)
+    .then((r) => normaliseWhatsApp(unwrap(r.data)));
 }
 
 export const settingsApi = {
@@ -194,11 +235,15 @@ export const settingsApi = {
     get: () =>
       apiClient
         .get<ApiEnvelope<PartnerWhatsAppSettings>>('/partners/me/notifications/whatsapp')
-        .then((r) => unwrap(r.data)),
-    /** DPDP consent evidence, recorded against the signed-in person's own account phone. */
-    setOptIn: (optedIn: boolean) =>
-      apiClient
-        .put<ApiEnvelope<PartnerWhatsAppSettings>>('/partners/me/notifications/whatsapp', { optedIn })
-        .then((r) => unwrap(r.data)),
+        .then((r) => normaliseWhatsApp(unwrap(r.data))),
+    save: saveWhatsApp,
+    /**
+     * The admin's OWN WhatsApp alerts — DPDP consent evidence, recorded against
+     * the signed-in person's account phone. 409 `PARTNER_WHATSAPP_NO_PHONE` when
+     * that account has no phone. Does NOT control messages to customers.
+     */
+    setOptIn: (optedIn: boolean) => saveWhatsApp({ optedIn }),
+    /** Q4 — the business switch for WhatsApp to its customers. Needs no phone. */
+    setCustomerWhatsApp: (customerWhatsApp: boolean) => saveWhatsApp({ customerWhatsApp }),
   },
 };

@@ -12,12 +12,12 @@ import { apiErrorMessage } from '../../src/api/axios';
 import { NotificationRow, notificationDestination } from '../../src/api/notification.api';
 import { categoryModulesOf } from '../../src/features/p2/modules';
 import {
-  NOTIFICATIONS_PAGE,
   fetchOlderNotifications,
   useMarkNotificationsRead,
   useNotifications,
 } from '../../src/features/notifications/hooks';
 import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../src/features/more/ui';
+import { HelpButton } from '../../src/features/help/HelpButton';
 
 /**
  * Everything the partner was told while they were not looking.
@@ -31,7 +31,7 @@ import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../src/features/more
  *
  * ── Paging ────────────────────────────────────────────────────────────────
  *
- * The endpoint pages by `before` (a `createdAt` cursor), not by page number, so
+ * The endpoint pages by `cursor` (its own `nextCursor`), not by page number, so
  * the accumulate-into-state pattern from `(tabs)/orders.tsx` is used with the
  * cursor in place of the page counter. Older pages are held HERE rather than in
  * the query cache on purpose: `qk.notifications()` is invalidated by every SSE
@@ -97,7 +97,7 @@ function NotificationItem({
   const { t } = useTranslation();
   const unread = !row.readAt;
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={onPress} accessibilityRole="button">
       <View style={[styles.row, { backgroundColor: c.surface }]}>
         <View style={[styles.icon, { backgroundColor: unread ? c.surfaceVariant : 'transparent' }]}>
           <MaterialCommunityIcons
@@ -140,6 +140,13 @@ export default function NotificationsScreen() {
   const [older, setOlder] = useState<NotificationRow[]>([]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [exhausted, setExhausted] = useState(false);
+  /**
+   * The server's `nextCursor` for the page below the local tail. `undefined`
+   * until a tail page has loaded — the first page's own `nextCursor` is used
+   * until then. No cursor = there is no older page.
+   */
+  const [tailCursor, setTailCursor] = useState<string | null | undefined>(undefined);
+  const nextCursor = tailCursor === undefined ? query.data?.nextCursor : tailCursor;
 
   const rows = useMemo(() => {
     const first = query.data?.items ?? [];
@@ -155,23 +162,21 @@ export default function NotificationsScreen() {
 
   const refresh = useCallback(() => {
     setOlder([]);
+    setTailCursor(undefined);
     setExhausted(false);
     void query.refetch();
   }, [query]);
 
   const loadOlder = useCallback(() => {
-    if (loadingOlder || exhausted || rows.length === 0) return;
-    const oldest = rows[rows.length - 1];
+    // Paged by the server's stable cursor, not `before=<oldest createdAt>`,
+    // which skipped rows sharing that millisecond. No cursor = the end.
+    if (loadingOlder || exhausted || rows.length === 0 || !nextCursor) return;
     setLoadingOlder(true);
-    fetchOlderNotifications(oldest.createdAt)
+    fetchOlderNotifications(nextCursor)
       .then((page) => {
-        if (page.items.length === 0) {
-          setExhausted(true);
-          return;
-        }
-        // A short page is the last page — the server has no `total` to compare
-        // against, so the page size is the only signal there is.
-        if (page.items.length < NOTIFICATIONS_PAGE) setExhausted(true);
+        setTailCursor(page.nextCursor ?? null);
+        if (!page.nextCursor || page.items.length === 0) setExhausted(true);
+        if (page.items.length === 0) return;
         setOlder((prev) => {
           const seen = new Set([...rows.map((r) => r._id), ...prev.map((r) => r._id)]);
           return [...prev, ...page.items.filter((r) => !seen.has(r._id))];
@@ -179,7 +184,7 @@ export default function NotificationsScreen() {
       })
       .catch((e: unknown) => Alert.alert(t('notifications.screen.olderFailed'), apiErrorMessage(e)))
       .finally(() => setLoadingOlder(false));
-  }, [loadingOlder, exhausted, rows, t]);
+  }, [loadingOlder, exhausted, rows, nextCursor, t]);
 
   /**
    * Open what the notification is about.
@@ -222,21 +227,30 @@ export default function NotificationsScreen() {
       title={t('notifications.screen.title')}
       subtitle={unread > 0 ? t('notifications.screen.unread', { count: unread }) : t('notifications.screen.subtitle')}
       scroll={false}
+      // With nothing unread the slot is left empty, so `Screen` draws its own
+      // Help "?". With unread rows, "Mark all read" sits BESIDE that "?" —
+      // width-capped and wrapping to two lines so a long Hindi label never
+      // squeezes the title at 320 px.
       right={
         unread > 0 ? (
-          <Pressable
-            onPress={() => markRead.mutate([])}
-            disabled={markRead.isPending}
-            style={styles.markAll}
-            accessibilityLabel={t('notifications.screen.markAllA11y')}
-          >
-            <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>
-              {markRead.isPending ? '…' : t('notifications.screen.markAll')}
-            </Text>
-          </Pressable>
-        ) : (
-          <View style={styles.markAll} />
-        )
+          <View style={styles.headerRight}>
+            <Pressable
+              onPress={() => markRead.mutate([])}
+              disabled={markRead.isPending}
+              style={styles.markAll}
+              accessibilityRole="button"
+              accessibilityLabel={t('notifications.screen.markAllA11y')}
+            >
+              <Text
+                style={{ color: c.primary, fontSize: 12.5, fontWeight: '600', textAlign: 'right' }}
+                numberOfLines={2}
+              >
+                {markRead.isPending ? '…' : t('notifications.screen.markAll')}
+              </Text>
+            </Pressable>
+            <HelpButton c={c} />
+          </View>
+        ) : undefined
       }
     >
       {loadError ? (
@@ -281,5 +295,9 @@ const styles = StyleSheet.create({
   body: { fontSize: 12.5, marginTop: 2, lineHeight: 18 },
   when: { fontSize: 11, marginTop: 4 },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-  markAll: { minWidth: 48, paddingHorizontal: 8, alignItems: 'flex-end', justifyContent: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, maxWidth: 160 },
+  markAll: {
+    minWidth: 48, minHeight: 44, maxWidth: 104, flexShrink: 1,
+    paddingHorizontal: 4, alignItems: 'flex-end', justifyContent: 'center',
+  },
 });

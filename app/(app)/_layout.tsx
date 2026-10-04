@@ -52,7 +52,8 @@ export default function AppLayout() {
   const partnerId = profile?.tenantType === 'PARTNER' ? profile.tenantId : null;
 
   usePushRegistration({ enabled: isAuthenticated, partnerId });
-  useLiveEvents(isAuthenticated);
+  // Keyed on the partner too: switching business reopens the stream under it.
+  useLiveEvents(isAuthenticated, partnerId);
 
   /**
    * Where a tapped push actually goes — the other half of push registration.

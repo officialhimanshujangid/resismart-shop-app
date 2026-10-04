@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
 import { Button, Chip, Switch, Text } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, palette } from '../../../src/constants/colors';
-import { usePartnerEntitlements, PARTNER_MODULE_INFO, planSells, PartnerModuleState } from '../../../src/hooks';
+import { usePartnerEntitlements, PartnerModuleState } from '../../../src/hooks'; // X2F: plan no longer locks a module
 import { partnerApi } from '../../../src/api/partner.api';
 import { PARTNER_MODULES, PartnerModule } from '../../../src/types/api-contract.generated';
 import { qk } from '../../../src/lib/queryKeys';
@@ -17,39 +16,36 @@ import { Card, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui
  * Gate 2 — what this business actually uses. C7, mirroring web
  * `partner/settings/modules/page.tsx`.
  *
- * Three states, and the difference between the last two is the whole point:
+ * Two states:
  *
  *   ON      switched on, and the partner may switch it off.
  *   OFF     switched off by the partner. One tap brings it back — nothing is
  *           deleted, so a business that turns Orders off for the monsoon
  *           finds every order still there in October.
- *   LOCKED  their plan does not sell it. Shown WITH the price attached
- *           rather than hidden — the one screen in the app where hiding is
- *           the wrong answer. A partner who never learns Promotion exists
- *           never buys it.
  *
- * Gate 2 can only ever NARROW gate 1 — switching a module on here cannot
- * give the business something the plan did not sell, the server intersects
- * the two on every request whatever this screen stored — so a LOCKED row is
- * genuinely not a toggle, and is not drawn as one.
+ * >>> X2F — the third state, LOCKED ("not in your plan"), is gone: every partner
+ * plan has every module (Owner, 2026-10-04); the plan limits catalogue items only.
+ * <<< X2F
  */
 
 /**
  * The badge copy, by state. Catalogue keys rather than sentences: the STATE is
  * an enum the server and `moduleStateOf` both read, so only the label moves.
  */
+// >>> X2F — every partner plan has every module (Owner, 2026-10-04): no LOCKED
+// state, no lock icon, no "not in your plan" footer. Every row is a toggle.
 const MODULE_STATE_KEY: Record<PartnerModuleState, string> = {
   ON: 'settings.modules.stateOn',
   OFF: 'settings.modules.stateOff',
-  LOCKED: 'settings.modules.stateLocked',
 };
+// <<< X2F
 
 export default function PartnerModulesScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
-  const { loading: gating, can, entitlements, refresh: refreshEntitlements } = usePartnerEntitlements();
+  const { loading: gating, can, refresh: refreshEntitlements } = usePartnerEntitlements(); // X2F: plan limits no longer read here
 
   const mayManage = can('SETTINGS', 'FULL');
 
@@ -77,15 +73,8 @@ export default function PartnerModulesScreen() {
   }, [query.data]);
 
   const stateOf = useCallback(
-    (key: PartnerModule): PartnerModuleState => {
-      // Locked is decided by the PLAN alone, never by the local draft, so a
-      // row the partner cannot buy their way out of by tapping never appears
-      // to move.
-      const info = PARTNER_MODULE_INFO[key];
-      if (!planSells(entitlements.plan.limits, info.capability)) return 'LOCKED';
-      return chosen.includes(key) ? 'ON' : 'OFF';
-    },
-    [chosen, entitlements.plan.limits],
+    (key: PartnerModule): PartnerModuleState => (chosen.includes(key) ? 'ON' : 'OFF'), // X2F: the plan never locks a module
+    [chosen],
   );
 
   const dirty = useMemo(() => {
@@ -101,10 +90,7 @@ export default function PartnerModulesScreen() {
   const save = async () => {
     setSaving(true);
     try {
-      // Locked modules are never sent — the server would drop them anyway,
-      // but a request asking for something the plan does not sell reads, in
-      // a log, exactly like an attempt to get it.
-      const payload = chosen.filter((m) => stateOf(m) !== 'LOCKED');
+      const payload = [...chosen]; // X2F: every module may be chosen on every plan
       await partnerApi.saveModules(payload);
       setBaseline(payload);
       setChosen(payload);
@@ -157,28 +143,19 @@ export default function PartnerModulesScreen() {
         // `key` is the enum the server stores; only its LABEL is translated.
         const label = t(`modules.${key}.label`);
         const blurb = t(`modules.${key}.blurb`);
-        const locked = state === 'LOCKED';
+        // >>> X2F — no LOCKED rows: every module is a toggle on every plan.
         return (
-          <Card
-            key={key}
-            c={c}
-            style={locked ? { backgroundColor: isDark ? palette.dark.elevated : palette.coral.soft } : undefined}
-          >
+          <Card key={key} c={c}>
             <View style={styles.headerRow}>
               <View style={{ flex: 1 }}>
                 <View style={styles.titleRow}>
                   <Text style={{ fontSize: 15, fontWeight: '600', color: c.textPrimary }}>{label}</Text>
                   <Chip
                     compact
-                    style={[
-                      styles.badge,
-                      {
-                        backgroundColor: state === 'ON' ? palette.brand[50] : state === 'OFF' ? c.surfaceVariant : palette.coral[100],
-                      },
-                    ]}
+                    style={[styles.badge, { backgroundColor: state === 'ON' ? palette.brand[50] : c.surfaceVariant }]}
                     textStyle={{
                       fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3, marginVertical: 0,
-                      color: state === 'ON' ? c.primary : state === 'OFF' ? c.textSecondary : palette.coral[600],
+                      color: state === 'ON' ? c.primary : c.textSecondary,
                     }}
                   >
                     {t(MODULE_STATE_KEY[state])}
@@ -186,22 +163,10 @@ export default function PartnerModulesScreen() {
                 </View>
                 <Text style={{ fontSize: 12.5, color: c.textSecondary, marginTop: 4, lineHeight: 17 }}>{blurb}</Text>
               </View>
-
-              {locked ? (
-                <MaterialCommunityIcons name="lock-outline" size={20} color={palette.coral[600]} />
-              ) : (
-                <Switch value={state === 'ON'} onValueChange={() => toggle(key)} color={c.primary} />
-              )}
+              <Switch value={state === 'ON'} onValueChange={() => toggle(key)} color={c.primary} />
             </View>
-
-            {locked && (
-              <View style={[styles.lockedFooter, { borderTopColor: palette.coral[100] }]}>
-                <Text style={{ fontSize: 11.5, color: palette.coral[600], flex: 1, lineHeight: 16 }}>
-                  {t('settings.modules.lockedNote')}
-                </Text>
-              </View>
-            )}
           </Card>
+          // <<< X2F
         );
       })}
 

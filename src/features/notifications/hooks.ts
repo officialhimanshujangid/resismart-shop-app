@@ -1,5 +1,8 @@
+import { Alert } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import i18n from '../../i18n';
+import { apiErrorMessage } from '../../api/axios';
 import { notificationApi, NotificationRow } from '../../api/notification.api';
 import { qk } from '../../lib/queryKeys';
 
@@ -24,13 +27,15 @@ export interface NotificationPage {
   items: NotificationRow[];
   /** Unread across the WHOLE inbox, not just this page — the server counts separately. */
   unread: number;
+  /** The stable cursor for the next (older) page. Absent/null = this is the last page. */
+  nextCursor?: string | null;
 }
 
 /**
  * The newest page, plus the unread count the badge reads.
  *
- * Deliberately not `useInfiniteQuery`. The endpoint pages by `before`
- * (a createdAt cursor), and the accumulate-into-state pattern the Orders tab
+ * Deliberately not `useInfiniteQuery`. The endpoint pages by `cursor`
+ * (`nextCursor` from the previous page), and the accumulate-into-state pattern the Orders tab
  * already uses is the one this codebase has settled on — see `notifications.tsx`,
  * which holds the older pages itself. One shape for "load more" in this app is
  * worth more than the marginally tidier hook.
@@ -46,9 +51,17 @@ export function useNotifications(limit: number = NOTIFICATIONS_PAGE) {
   });
 }
 
-/** One older page, fetched on demand. Not cached — see `notifications.tsx`. */
-export function fetchOlderNotifications(before: string, limit: number = NOTIFICATIONS_PAGE) {
-  return notificationApi.list({ before, limit });
+/**
+ * One older page, fetched on demand. Not cached — see `notifications.tsx`.
+ *
+ * Paged by the server's `nextCursor`, not by `before=<oldest createdAt>`: rows
+ * that share that millisecond would be skipped by a bare timestamp.
+ */
+export function fetchOlderNotifications(
+  cursor: string,
+  limit: number = NOTIFICATIONS_PAGE,
+): Promise<NotificationPage> {
+  return notificationApi.list({ cursor, limit });
 }
 
 /**
@@ -67,6 +80,10 @@ export function useMarkNotificationsRead() {
     mutationFn: (ids: string[]) => notificationApi.markRead(ids),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.notifications() });
+    },
+    // Never silent: the row stays bold and the badge stays up, so say why.
+    onError: (err: unknown) => {
+      Alert.alert(i18n.t('notifications.screen.markReadFailed'), apiErrorMessage(err));
     },
   });
 }
