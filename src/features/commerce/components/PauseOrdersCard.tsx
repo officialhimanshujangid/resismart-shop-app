@@ -9,6 +9,8 @@ import { usePartnerEntitlements } from '../../../hooks';
 import { apiErrorMessage } from '../../../api/axios';
 import { Sheet, ChoiceChips } from '../../p2/ui';
 import { PillButton } from '../../p1/ui';
+import { Card } from '../../../components/ui';
+import { Rise } from '../../../theme/motion';
 import { useCommerceAccess } from '../access';
 import { useCommerceSettings } from '../hooks';
 import {
@@ -144,15 +146,19 @@ export function PauseOrdersCard({ c }: { c: ColorScheme }) {
   const visible = canPause && access.settings.canView;
   const query = useCommerceSettings(visible);
   if (!visible || !query.data) return null;
+  // M04-H: the DS v1 kit `Card` (hairline edge + soft green shadow on the white
+  // page, light + dark). `PausePanel` inside is shared with Online shop settings
+  // and is left as it is.
   return (
-    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]} testID="pause-orders-card">
-      <PausePanel c={c} storefront={storefrontOf(query.data)} canPause big />
-    </View>
+    <Rise index={2}>
+      <Card testID="pause-orders-card">
+        <PausePanel c={c} storefront={storefrontOf(query.data)} canPause big />
+      </Card>
+    </Rise>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, padding: 16 },
   panel: { gap: 10 },
   stateRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   icon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },

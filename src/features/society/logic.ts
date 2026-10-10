@@ -63,7 +63,9 @@ export const isSocietyPartner = (r: MyReach | undefined | null): r is MyReach =>
 /** The Today banner: approved, removed, or nothing (independents, unknown state). */
 export type HomeBanner =
   | { kind: 'APPROVED'; society: string; reach: PartnerReach; km?: number }
-  | { kind: 'REVOKED'; society: string; at?: string; reason?: string };
+  | { kind: 'REVOKED'; society: string; at?: string; reason?: string }
+  // P2A (M04-Q13, web parity): approved, but the home society's account is paused.
+  | { kind: 'PAUSED'; society: string };
 export function homeBannerOf(r: MyReach | undefined | null): HomeBanner | null {
   if (!isSocietyPartner(r) || !r.homeSociety) return null;
   const society = r.homeSociety.name;
@@ -71,6 +73,7 @@ export function homeBannerOf(r: MyReach | undefined | null): HomeBanner | null {
   if (status === 'REVOKED') {
     return { kind: 'REVOKED', society, at: r.societyApproval?.revokedAt, reason: r.societyApproval?.revokedReason?.trim() || undefined };
   }
+  if (r.homeSocietySuspended === true) return { kind: 'PAUSED', society }; // P2A (M04-Q13)
   if (status === 'APPROVED') return { kind: 'APPROVED', society, reach: r.reach, km: r.nearbyKm };
   return null;
 }

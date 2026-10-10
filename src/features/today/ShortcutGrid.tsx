@@ -1,12 +1,17 @@
 // >>> SHORTCUTS
 import React from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { ColorScheme, radii } from '../../constants/colors';
+import type { ColorScheme } from '../../constants/colors';
+import { SectionTitle } from '../../components/ui';
+import { motion, radius, type TintName } from '../../theme/tokens';
+import { useAppTheme } from '../../theme/useAppTheme';
+import { PressableScale, Rise } from '../../theme/motion';
+import { withAlpha } from '../../theme/colorUtils';
 import { usePartnerEntitlements } from '../../hooks';
 import type { PartnerAccessModule, PartnerModule } from '../../types/api-contract.generated';
 import { useCommerceAccess, type CommerceAccess } from '../commerce/access';
@@ -80,20 +85,102 @@ export function shortcutTilesFor({ ready, can, hasModule, commerce }: ShortcutGa
 
 /**
  * The label grows with the phone's text size up to this much, then stops —
- * past it a three-across tile on a 320dp phone cannot hold two lines of Hindi.
+ * past it a four-across tile on a 360dp phone cannot hold two lines of Hindi.
  * It still shrinks to fit (`adjustsFontSizeToFit`) before it would ever be cut.
  */
 const TILE_MAX_FONT_SCALE = 1.3;
-const TILE_LINE_HEIGHT = 17;
+const TILE_LINE_HEIGHT = 16;
 
-/** Three across on a phone; more on a tablet so tiles never stretch wide. */
+/**
+ * DS v1 / ShopHome template: FOUR across on a phone (three below 340 dp, where
+ * a 60 dp tile plus a two-line Hindi label no longer fits four times), more on
+ * a tablet so tiles never stretch wide.
+ */
 function columnsFor(width: number): number {
   if (width >= 900) return 6;
-  if (width >= 600) return 4;
-  return 3;
+  if (width >= 600) return 5;
+  if (width < 340) return 3;
+  return 4;
 }
 
-export function TodayShortcutGrid({ c }: { c: ColorScheme }) {
+/** The DS service-tile tint per shortcut (presentation only; unknown keys stay green). */
+const TILE_TINT: Record<string, TintName> = {
+  NEW_BILL: 'green',
+  RECORD_PAYMENT: 'teal',
+  ADD_PRODUCT: 'amber',
+  KHATA: 'violet',
+  ADD_EXPENSE: 'rose',
+  STOCK: 'coral',
+  PARTIES: 'sky',
+  OFFERS: 'rose',
+  DAY_CLOSE: 'teal',
+  REPORTS: 'blue',
+  ONLINE_SHOP: 'green',
+};
+
+/**
+ * One shortcut in the ShopHome service-tile look (60 dp tinted gradient square,
+ * icon in the tint's deeper colour, label under it, press scale 0.93).
+ *
+ * Composed HERE rather than with the kit `ServiceTile`: that tile's label is
+ * `numberOfLines={2}` with no shrink-to-fit, so a long Hindi label ("ऑनलाइन
+ * दुकान की सेटिंग्स") at a large text size would end in "…" on a 320–360 dp
+ * phone. This keeps the grid's fixed two-line label slot that shrinks instead
+ * (reported as a kit change request: `ServiceTile` label shrink-to-fit).
+ */
+function ShortcutTileButton({
+  label, icon, tint, labelSlot, onPress, testID,
+}: { label: string; icon: string; tint: TintName; labelSlot: number; onPress: () => void; testID: string }) {
+  const { tints, ds, isDark, shadow } = useAppTheme();
+  const tn = tints[tint];
+  // Light `tints.green.icon` (#2E9C68) is 2.9:1 on its own gradient — below the
+  // 3:1 an icon needs (rule 17). The deeper brand token reads at ≈4:1. Kit/theme
+  // change requested (M04-H); until then the override lives here.
+  const iconColor = tint === 'green' && !isDark ? ds.primaryDeep : tn.icon;
+  const glow = isDark
+    ? shadow('tile').boxShadow
+    : `inset 0px 1px 0px ${ds.surface}, 0px 6px 14px ${withAlpha(tn.icon, 0.12)}`;
+  return (
+    <PressableScale
+      onPress={onPress}
+      scaleTo={motion.press.tileScale}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      testID={testID}
+      style={styles.tile}
+    >
+      <View style={[styles.square, { boxShadow: glow }]}>
+        <LinearGradient
+          colors={[tn.from, tn.to]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[StyleSheet.absoluteFill, styles.squareFill]}
+        />
+        <MaterialCommunityIcons name={icon as never} size={25} color={iconColor} />
+      </View>
+      {/* A fixed two-line slot, label centred in it. A long name (Hindi
+          especially) wraps and, if a word still will not fit, shrinks — never
+          spills out of the tile, never ends in "…". */}
+      <View style={[styles.labelSlot, { height: labelSlot }]}>
+        <Text
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          maxFontSizeMultiplier={TILE_MAX_FONT_SCALE}
+          style={[styles.label, { color: ds.ink }]}
+        >
+          {label}
+        </Text>
+      </View>
+    </PressableScale>
+  );
+}
+
+/**
+ * `c` is kept in the signature (callers and tests pass it); the tile colours
+ * now come from the DS v1 tokens via `useAppTheme()`, light + dark.
+ */
+export function TodayShortcutGrid(_props: { c: ColorScheme }) {
   const { t } = useTranslation();
   const { ready, can, hasModule } = usePartnerEntitlements();
   const commerce = useCommerceAccess();
@@ -108,66 +195,37 @@ export function TodayShortcutGrid({ c }: { c: ColorScheme }) {
   const labelSlot = Math.ceil(2 * TILE_LINE_HEIGHT * Math.min(Math.max(fontScale || 1, 1), TILE_MAX_FONT_SCALE));
 
   return (
-    <View style={styles.section} testID="today-shortcuts">
-      <Text style={[styles.title, { color: c.textPrimary }]} accessibilityRole="header">{t('today.shortcuts')}</Text>
+    // Rise sits INSIDE (not around the call): a grid with no tiles returns
+    // null, and a wrapper left behind would be an empty gap on Today.
+    <Rise index={3} style={styles.section} testID="today-shortcuts">
+      <SectionTitle>{t('today.shortcuts')}</SectionTitle>
       <View style={styles.grid}>
-        {tiles.map((tile) => {
-          const label = t(tile.labelKey);
-          return (
-            <View key={tile.key} style={[styles.cell, { width: `${100 / cols}%` }]}>
-              <Pressable
-                onPress={() => router.push(tile.href)}
-                accessibilityRole="button"
-                accessibilityLabel={label}
-                testID={`today-shortcut-${tile.key}`}
-                style={({ pressed }) => [
-                  styles.tile,
-                  { backgroundColor: c.surface, borderColor: c.divider, opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <View style={[styles.iconBox, { backgroundColor: c.surfaceVariant }]}>
-                  <MaterialCommunityIcons name={tile.icon as never} size={22} color={c.primary} />
-                </View>
-                {/* A fixed two-line slot, label centred in it. A long name
-                    (Hindi especially) wraps and, if a word still will not fit,
-                    shrinks — never spills out of the tile, never ends in "…". */}
-                <View style={[styles.labelSlot, { height: labelSlot }]}>
-                  <Text
-                    numberOfLines={2}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.7}
-                    maxFontSizeMultiplier={TILE_MAX_FONT_SCALE}
-                    style={[styles.label, { color: c.textPrimary }]}
-                  >
-                    {label}
-                  </Text>
-                </View>
-              </Pressable>
-            </View>
-          );
-        })}
+        {tiles.map((tile) => (
+          <View key={tile.key} style={[styles.cell, { width: `${100 / cols}%` }]}>
+            <ShortcutTileButton
+              label={t(tile.labelKey)}
+              icon={tile.icon}
+              tint={TILE_TINT[tile.key] ?? 'green'}
+              labelSlot={labelSlot}
+              onPress={() => router.push(tile.href)}
+              testID={`today-shortcut-${tile.key}`}
+            />
+          </View>
+        ))}
       </View>
-    </View>
+    </Rise>
   );
 }
 
 const styles = StyleSheet.create({
-  section: { gap: 8 },
-  title: { fontSize: 16, fontWeight: '600' },
-  // -4 / +4 gutter: the outer tiles line up with the cards above and below.
-  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
-  cell: { paddingHorizontal: 4, marginBottom: 8 },
-  tile: {
-    alignItems: 'center',
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingTop: 12,
-    paddingBottom: 8,
-    paddingHorizontal: 4,
-    minHeight: 48,
-  },
-  iconBox: { width: 42, height: 42, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
-  labelSlot: { alignSelf: 'stretch', justifyContent: 'center', marginTop: 6 },
-  label: { fontSize: 12.5, fontWeight: '600', lineHeight: TILE_LINE_HEIGHT, textAlign: 'center' },
+  section: { gap: 12 },
+  // DS §3 grid gaps: 14 between rows, 6 between columns (3 + 3).
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3, rowGap: 14 },
+  cell: { paddingHorizontal: 3, alignItems: 'center' },
+  tile: { alignItems: 'center', alignSelf: 'stretch', minHeight: 44, gap: 8 },
+  square: { width: 60, height: 60, borderRadius: radius.tile, alignItems: 'center', justifyContent: 'center' },
+  squareFill: { borderRadius: radius.tile },
+  labelSlot: { alignSelf: 'stretch', justifyContent: 'flex-start' },
+  label: { fontSize: 12, fontWeight: '600', lineHeight: TILE_LINE_HEIGHT, textAlign: 'center' },
 });
 // <<< SHORTCUTS

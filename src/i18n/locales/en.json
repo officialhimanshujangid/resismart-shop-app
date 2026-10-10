@@ -461,6 +461,21 @@
         "INVOICE_NOT_FOUND": "This invoice was not found.",
         "CREDIT_NOTE_NOT_ISSUED": "There is no credit note for this invoice. A credit note is issued only after a refund has reached you.",
         "CREDIT_NOTE_PDF_FAILED": "The credit note PDF could not be prepared just now. Please try again in a few minutes."
+      },
+      "daysLeftLabel": "days left",
+      "tenure": {
+        "monthly": "Monthly",
+        "quarterly": "Quarterly",
+        "halfYearly": "Half-yearly",
+        "yearly": "Yearly",
+        "trial": "Free trial"
+      },
+      "invoiceStatus": {
+        "PAID": "Paid",
+        "PENDING": "Pending",
+        "FAILED": "Failed",
+        "CANCELLED": "Cancelled",
+        "REFUNDED": "Refunded"
       }
     }
   },
@@ -2155,7 +2170,16 @@
     "noBookings": "Nothing on the diary today.",
     "nothingOnTitle": "Nothing switched on yet",
     "nothingOnBody": "Turn on Bookings, Orders or Catalogue from Settings to see them here.",
-    "shortcuts": "Shortcuts"
+    "shortcuts": "Shortcuts",
+    "blocker": {
+      "NOT_ACTIVE": "Your business is not active yet, so it is kept out of the resident's list.",
+      "NOT_VERIFIED": "We are still checking the documents you sent us.",
+      "NO_LOCATION": "Your map pin is missing, so we cannot tell which societies you are near.",
+      "NO_SERVICE_MODES": "You have not said whether customers come to you or you go to them.",
+      "NO_CATEGORY": "Your business is not filed under any category, so it does not turn up in a search.",
+      "NO_AVAILABILITY": "None of your services have working hours behind them, so no slot can be booked.",
+      "SOCIETY_ONLY_REACH": "Visible to residents of your society only"
+    }
   },
   "reviews": {
     "title": "Reviews",
@@ -3809,6 +3833,8 @@
       "removedTitle": "Removed by your society",
       "removedBody": "Removed by your society on {{date}}: {{reason}}",
       "removedBodyNoReason": "Removed by your society on {{date}}.",
+      "pausedTitle": "Your society's account is paused",
+      "pausedBody": "{{society}} is paused for now, so its residents cannot find or order from you in the app. Everything comes back when the society's account is active again.",
       "removedHint": "Please speak to your society office."
     }
   },
@@ -3924,6 +3950,15 @@
       "doneBody": "The society office will check its bank and mark the bill paid.",
       "failedTitle": "Could not send",
       "failedBody": "Your note could not be sent. Try again."
+    },
+    "term": {
+      "title": "Lease term",
+      "daysLeft_one": "{{count}} day left",
+      "daysLeft_other": "{{count}} days left",
+      "ends": "Ends on {{date}}",
+      "starts": "Starts on {{date}}",
+      "over": "Ended on {{date}}",
+      "aria": "{{pct}}% of the lease term has passed"
     }
   },
   "p2": {
@@ -5995,5 +6030,33 @@
     "whatsapp": "Look for the code on WhatsApp.",
     "sms": "Look for the code in your SMS messages.",
     "email": "Look for the code in your email inbox."
+  },
+  "kit": {
+    "addOne": "Add one",
+    "removeOne": "Remove one",
+    "addItem": "Add {{name}}",
+    "quantity": "Quantity {{count}}",
+    "newBadge": "NEW",
+    "stockLeft": "{{count}} left",
+    "errorTitle": "Something went wrong",
+    "dismiss": "Close",
+    "search": "Search",
+    "clearSearch": "Clear search",
+    "tabWithCount": "{{label}} ({{badge}})",
+    "ringA11y": "{{label}}, {{percent}}%",
+    "areaA11y": "{{label}}, latest {{latest}}",
+    "art": {
+      "storefront": "Shop front with awning and delivery bike",
+      "open": "OPEN",
+      "milk": "MILK",
+      "flour": "ATTA",
+      "chips": "CHIPS",
+      "soap": "SOAP",
+      "milkA11y": "Milk packet",
+      "flourA11y": "Flour bag",
+      "chipsA11y": "Chips packet",
+      "soapA11y": "Soap bar",
+      "productA11y": "Product picture"
+    }
   }
 }

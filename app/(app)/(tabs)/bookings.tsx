@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, useColorScheme, View } from 'react-native';
-import { ActivityIndicator, Button, Chip, Searchbar, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Searchbar, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { Hero } from '../../../src/components/Hero';
+import { Segmented, SkeletonList } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
 import { HelpButton } from '../../../src/features/help/HelpButton';
 import { BookingCard } from '../../../src/features/bookings/components/BookingCard';
 import { BookingActionModal, CodeRefusal } from '../../../src/features/bookings/components/BookingActionModal';
@@ -378,15 +380,14 @@ export default function BookingsScreen() {
           style={[styles.search, { backgroundColor: c.surfaceVariant }]}
           inputStyle={{ minHeight: 0 }}
         />
-        <View style={styles.tabs}>
-          {/* `key`, not `t` — this file holds a translator now, and a callback
-              parameter called `t` is the shadow that broke `billing/[id].tsx`. */}
-          {(Object.keys(TAB_LABEL_KEYS) as FilterTab[]).map((key) => (
-            <Chip key={key} selected={tab === key} onPress={() => setTab(key)} style={styles.tabChip}>
-              {t(TAB_LABEL_KEYS[key])}
-            </Chip>
-          ))}
-        </View>
+        {/* M13 — the kit's sliding segment (white pill glides; labels wrap for Hindi). `key`, not `t`:
+            a callback parameter called `t` is the shadow that broke `billing/[id].tsx`. */}
+        <Segmented
+          testID="bookings-tabs"
+          options={(Object.keys(TAB_LABEL_KEYS) as FilterTab[]).map((key) => ({ key, label: t(TAB_LABEL_KEYS[key]) }))}
+          value={tab}
+          onChange={setTab}
+        />
       </View>
       <View style={styles.headerBody}>
           {linkedId && linked.data ? (
@@ -413,8 +414,12 @@ export default function BookingsScreen() {
       </View>
           </View>
         }
-        renderItem={({ item }) => (
-          <View style={styles.item}>
+        renderItem={({ item, index }) => {
+          // M13 — the first screenful rises in on a capped stagger; rows mounted later
+          // by scrolling (or a next page) just appear, so scrolling never lags.
+          const Wrap = page === 1 && index < 6 ? Rise : View;
+          return (
+          <Wrap {...(Wrap === Rise ? { index } : {})} style={styles.item}>
           <BookingCard
             booking={item}
             isDark={isDark}
@@ -426,13 +431,16 @@ export default function BookingsScreen() {
             billOfSupply={billOfSupply}
             onSendQuote={mayQuote ? () => sendQuoteFor(item) : undefined}
           />
-          </View>
-        )}
+          </Wrap>
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.item}>
           {loadError ? (
             <ErrorBlock c={c} message={loadError} onRetry={() => void list.refetch()} />
-          ) : list.isLoading ? null : (
+          ) : list.isLoading ? (
+            <SkeletonList rows={3} testID="bookings-loading" />
+          ) : (
             <Text style={[styles.empty, { color: c.textSecondary }]}>
               {tab === 'REQUESTED' ? t('bookings.list.emptyRequested') : t('bookings.list.empty')}
             </Text>
@@ -461,8 +469,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   controls: { paddingHorizontal: 20, paddingTop: 14, gap: 10 },
   search: { elevation: 0, borderRadius: radii.field },
-  tabs: { flexDirection: 'row', gap: 8 },
-  tabChip: {},
   // >>> WEB-UI — hero + controls are inside the list now; the 20dp side padding
   // moved onto the header body and each card so the hero still runs edge to edge.
   list: { paddingBottom: 20, flexGrow: 1 },

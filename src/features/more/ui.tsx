@@ -7,6 +7,8 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { ColorScheme, radii } from '../../constants/colors';
+import { fontFamily, radius, MIN_TOUCH } from '../../theme/tokens';
+import { useAppTheme } from '../../theme/useAppTheme';
 import { useIsOnline } from '../../hooks/useIsOnline';
 import { HelpButton } from '../help/HelpButton';
 
@@ -147,8 +149,10 @@ export function Row({
   onPress?: () => void;
   danger?: boolean;
 }) {
+  const { shadow } = useAppTheme();
   const content = (
-    <View style={[styles.row, { backgroundColor: c.surface }]}>
+    // Hairline edge: the light page is pure white (Owner 2026-10-06).
+    <View style={[styles.row, { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }, shadow('card')]}>
       {icon ? (
         <View style={[styles.rowIcon, { backgroundColor: c.surfaceVariant }]}>
           <MaterialCommunityIcons name={icon as never} size={20} color={danger ? c.error : c.primary} />
@@ -170,7 +174,10 @@ export function Row({
 }
 
 export function Card({ c, children, style }: { c: ColorScheme; children: React.ReactNode; style?: object }) {
-  return <View style={[styles.card, { backgroundColor: c.surface }, style]}>{children}</View>;
+  const { shadow } = useAppTheme();
+  // Hairline edge: the light page is pure white (Owner 2026-10-06), so a card
+  // never relies on ground-vs-surface contrast. A caller's own style still wins.
+  return <View style={[styles.card, { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border }, shadow('card'), style]}>{children}</View>;
 }
 
 /**
@@ -194,6 +201,9 @@ export function ChipRow<T extends string>({
           <Pressable
             key={o.key}
             onPress={() => onChange(o.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            hitSlop={4}
             style={[
               styles.chip,
               { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.border },
@@ -213,21 +223,22 @@ const styles = StyleSheet.create({
   backBtn: { margin: 0 },
   backSpacer: { width: 48 },
   headerText: { flex: 1, alignItems: 'center' },
-  title: { fontSize: 17, fontWeight: '600' },
+  // D0 (DS v1 §2): screen titles in Sora 600; no fontWeight with a custom face.
+  title: { fontSize: 17, fontFamily: fontFamily.sora600 },
   subtitle: { fontSize: 12, marginTop: 1 },
   body: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 40, gap: 12 },
+  scrollContent: { padding: 18, paddingBottom: 40, gap: 12 },
   centerBlock: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 48, paddingHorizontal: 24 },
   centerText: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
   emptyTitle: { fontSize: 15, fontWeight: '600', textAlign: 'center' },
-  retryBtn: { borderWidth: 1.5, borderRadius: radii.pill, paddingHorizontal: 18, paddingVertical: 8, marginTop: 4 },
+  retryBtn: { borderWidth: 1.5, borderRadius: radii.pill, paddingHorizontal: 20, minHeight: MIN_TOUCH, justifyContent: 'center', marginTop: 4 },
   sectionLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', marginTop: 8, marginBottom: -4 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radii.card, padding: 14 },
-  rowIcon: { width: 36, height: 36, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.row, padding: 14, minHeight: 64 },
+  rowIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '600' },
   rowSubtitle: { fontSize: 12, marginTop: 2 },
   card: { borderRadius: radii.card, padding: 16, gap: 10 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderRadius: radii.pill, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1 },
+  chip: { borderRadius: radii.pill, paddingHorizontal: 14, paddingVertical: 7, minHeight: 36, justifyContent: 'center', borderWidth: 1 },
   chipText: { fontSize: 12, fontWeight: '600' },
 });

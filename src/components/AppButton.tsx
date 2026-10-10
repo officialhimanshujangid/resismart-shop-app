@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, useColorScheme } from 'react-native';
 import { Button } from 'react-native-paper';
-import { Colors, palette, themeColors } from '../constants/colors';
+import { palette, themeColors } from '../constants/colors';
 
 interface AppButtonProps {
   label: string;
@@ -75,27 +75,28 @@ export function AppButton({
   );
 }
 
+// D0 (Design System v1): fully round, solid fill, soft brand shadow — no glow
+// (`0 6px 14px rgba(primary,.22)` max). Min height 48. The label may wrap so a
+// long Hindi label is never clipped. New screens use `components/ui/Button`.
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 12,
+    borderRadius: 999,
     marginVertical: 4,
   },
   containedButton: {
-    elevation: 3,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    boxShadow: '0px 6px 14px rgba(46, 156, 104, 0.22)',
   },
   content: {
-    paddingVertical: 6,
+    minHeight: 48,
+    paddingVertical: 4,
   },
   fullWidth: {
     width: '100%',
   },
   label: {
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '600',
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
   },
 });

@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+// M06b — kit card (DS hairline + soft shadow, light + dark).
+import { Card, ErrorState } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
 import { Alert, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import {
   Button, Dialog, Divider, IconButton, Menu, Portal, RadioButton, Snackbar, Surface, Text, TextInput,
@@ -430,9 +433,8 @@ export default function DocumentDetailScreen() {
         <View style={styles.topBar}>
           <IconButton icon="arrow-left" onPress={() => router.back()} />
         </View>
-        <View style={styles.centerBox}>
-          <Text style={{ color: c.textSecondary }}>{apiErrorMessage(query.error, t('billing.detail.notFound'))}</Text>
-        </View>
+        {/* M06b: the reason AND a way to try again (was a bare line of grey text). */}
+        <ErrorState message={apiErrorMessage(query.error, t('billing.detail.notFound'))} onRetry={query.isError ? () => { void query.refetch(); } : undefined} />
       </SafeAreaView>
     );
   }
@@ -505,7 +507,9 @@ export default function DocumentDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+        {/* M06b: the document rises in as one block (reduce-motion: instant). */}
+        <Rise index={0} style={styles.riseStack}>
+        <Card style={styles.card}>
           <View style={styles.headerRow}>
             <View>
               <Text style={[styles.docType, { color: c.textSecondary }]}>{typeLabel}</Text>
@@ -546,16 +550,16 @@ export default function DocumentDetailScreen() {
               })}
             </Text>
           )}
-        </Surface>
+        </Card>
 
-        <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+        <Card style={styles.card}>
           <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{doc.partySnapshot.name}</Text>
           {!!doc.partySnapshot.phone && <Text style={[styles.cardBody, { color: c.textSecondary }]}>{doc.partySnapshot.phone}</Text>}
           {!!doc.partySnapshot.address && <Text style={[styles.cardBody, { color: c.textSecondary }]}>{doc.partySnapshot.address}</Text>}
           {!!doc.partySnapshot.gstin && <Text style={[styles.cardBody, { color: c.textSecondary }]}>{t('billing.detail.gstin', { gstin: doc.partySnapshot.gstin })}</Text>}
-        </Surface>
+        </Card>
 
-        <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+        <Card style={styles.card}>
           {/*
             The column is CAPTIONED because the number in it changed meaning.
 
@@ -685,17 +689,17 @@ export default function DocumentDetailScreen() {
           {doc.status !== 'DRAFT' && doc.paidPaise < doc.totals.grandPaise && (
             <TotalRow label={t('billing.detail.outstanding')} value={doc.totals.grandPaise - doc.paidPaise} c={c} bold tone={c.error} />
           )}
-        </Surface>
+        </Card>
 
         {doc.status === 'CANCELLED' && !!doc.cancelledReason && (
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+          <Card style={styles.card}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.detail.cancelledTitle')}</Text>
             <Text style={[styles.cardBody, { color: c.textSecondary }]}>{doc.cancelledReason}</Text>
-          </Surface>
+          </Card>
         )}
 
         {!!doc.convertedToId && (
-          <Surface style={[styles.card, { backgroundColor: c.surfaceVariant }]} elevation={0}>
+          <Card tone="alt" style={styles.card}>
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
               {t('billing.detail.convertedInto')}
             </Text>
@@ -707,32 +711,33 @@ export default function DocumentDetailScreen() {
             >
               {t('billing.detail.viewIt')}
             </Button>
-          </Surface>
+          </Card>
         )}
 
         {missingPartyForPayment && (
-          <Surface style={[styles.card, { backgroundColor: c.surfaceVariant }]} elevation={0}>
+          <Card tone="alt" style={styles.card}>
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
               {t('billing.detail.noPartyForPayment')}
             </Text>
-          </Surface>
+          </Card>
         )}
 
         {/* >>> MP1-COMPLETE — P2: how this credit note / sales return pays the customer back (sent at issue). */}
         {isDraft && canManage && asksRefundTo({ walletOn: refundChoice.walletOn, type: doc.type, partyId: doc.partyId }) && (
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1} testID="doc-refund-to">
+          <Card style={styles.card} testID="doc-refund-to">
             <RefundToChoice c={c} value={refundChoice.value} onChange={refundChoice.choose} disabled={!!busy} />
-          </Surface>
+          </Card>
         )}
         {/* <<< MP1-COMPLETE */}
 
         {isDraft && (
-          <Surface style={[styles.card, { backgroundColor: c.surfaceVariant }]} elevation={0}>
+          <Card tone="alt" style={styles.card}>
             <Text style={{ color: c.textSecondary, fontSize: 13 }}>
               {t('billing.detail.draftNotice')}
             </Text>
-          </Surface>
+          </Card>
         )}
+        </Rise>
       </ScrollView>
 
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
@@ -986,6 +991,7 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
   topBarTitle: { fontSize: 16, fontWeight: '600', flex: 1, textAlign: 'center' },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
+  riseStack: { gap: 12 },
   card: { borderRadius: radii.card, padding: 14, gap: 6 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   docType: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },

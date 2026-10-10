@@ -71,6 +71,9 @@ describe('home-society banner', () => {
       .toEqual({ kind: 'REVOKED', society: 'Green Park', at: '2026-10-01T00:00:00.000Z', reason: 'Shop closed' });
     expect(homeBannerOf({ origin: 'INDEPENDENT', reach: 'PUBLIC', verificationStatus: 'VERIFIED', canWiden: false })).toBeNull();
     expect(homeBannerOf(undefined)).toBeNull();
+    // P2A (M04-Q13): the home society's account is paused → PAUSED (a removal still wins).
+    expect(homeBannerOf(reach({ homeSocietySuspended: true }))).toEqual({ kind: 'PAUSED', society: 'Green Park' });
+    expect(homeBannerOf(reach({ homeSocietySuspended: true, societyApproval: { status: 'REVOKED' } }))).toMatchObject({ kind: 'REVOKED' });
     expect(isSocietyPartner(reach())).toBe(true);
     expect(isSocietyPartner({ origin: 'INDEPENDENT', reach: 'PUBLIC', verificationStatus: 'VERIFIED', canWiden: false })).toBe(false);
   });

@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, ColorScheme } from '../../../src/constants/colors';
-import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { Card, EmptyBlock, ErrorBlock, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { Ring, Segmented, SkeletonList } from '../../../src/components/ui';
+import { PressableScale, Rise } from '../../../src/theme/motion';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { formatI18nDate } from '../../../src/i18n';
 import { formatPaise } from '../../../src/lib/money';
@@ -39,12 +41,13 @@ export default function MyRentScreen() {
   const single = data && data.leases.length === 1 ? data.leases[0] : undefined;
 
   let body: React.ReactNode;
-  if (query.isPending) body = <Loading c={c} label={t('rent.loading')} />;
+  if (query.isPending) body = <SkeletonList rows={3} testID="rent-loading" />;
   else if (query.isError) body = <ErrorBlock c={c} message={apiErrorMessage(query.error, t('rent.loadFailed'))} onRetry={() => void query.refetch()} />;
   else if (!hasLease(data)) body = <EmptyBlock c={c} icon="storefront-outline" title={t('rent.noLeaseTitle')} body={t('rent.noLeaseBody')} />;
   else {
     body = (
       <>
+        <Rise index={0}>
         <Card c={c}>
           <View style={styles.totals}>
             <View style={styles.total}>
@@ -68,13 +71,15 @@ export default function MyRentScreen() {
             <Text style={[styles.note, { color: c.textSecondary }]}>{t('rent.nothingDue')}</Text>
           ) : null}
         </Card>
+        </Rise>
 
         <SectionLabel c={c}>{t(data.leases.length === 1 ? 'rent.leaseSection' : 'rent.leasesSection')}</SectionLabel>
-        {data.leases.map((l) => <LeaseCard key={l.leaseId} c={c} lease={l} />)}
+        {data.leases.map((l, i) => <Rise key={l.leaseId} index={Math.min(i + 1, 5)}><LeaseCard c={c} lease={l} /></Rise>)}
 
         <SectionLabel c={c}>{t('rent.billsSection')}</SectionLabel>
-        <ChipRow
-          c={c}
+        {/* M15: the kit's sliding segmented pill (same three filters as the web). */}
+        <Segmented<RentListStatus>
+          testID="rent-filter"
           value={status}
           options={[
             { key: 'OPEN', label: t('rent.filter.OPEN') },
@@ -86,6 +91,7 @@ export default function MyRentScreen() {
         {data.bills.length === 0 ? (
           <Card c={c}><Text style={{ color: c.textSecondary }}>{t(`rent.noBills.${status}`)}</Text></Card>
         ) : (
+          <Rise index={2}>
           <Card c={c} style={styles.listCard}>
             {data.bills.map((b, i) => (
               <View key={b.id}>
@@ -94,6 +100,7 @@ export default function MyRentScreen() {
               </View>
             ))}
           </Card>
+          </Rise>
         )}
         {data.total > data.bills.length ? (
           <Text style={[styles.note, { color: c.textSecondary }]}>
@@ -147,7 +154,41 @@ function LeaseCard({ c, lease }: { c: ColorScheme; lease: PartnerRentLease }) {
       ) : null}
       <Fact c={c} label={t('rent.leaseRuns')} value={`${formatI18nDate(dateOfDay(lease.startDate), t)} – ${formatI18nDate(dateOfDay(lease.endDate), t)}`} />
       <Fact c={c} label={t('rent.depositHeld')} value={formatPaise(lease.depositHeldPaise)} />
+      {live ? <TermRow c={c} lease={lease} /> : null}
     </Card>
+  );
+}
+
+/** M15 — how far the lease has run (IST day, both days counted): the same ring the society and web show. */
+function TermRow({ c, lease }: { c: ColorScheme; lease: PartnerRentLease }) {
+  const { t } = useTranslation();
+  const DAY = 86_400_000;
+  const day = (iso: string) => Date.parse(`${String(iso).slice(0, 10)}T00:00:00.000Z`);
+  const s = day(lease.startDate); const e = day(lease.endDate);
+  const today = day(new Date(Date.now() + 330 * 60_000).toISOString());
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return null;
+  const total = Math.round((e - s) / DAY) + 1;
+  const gone = today < s ? 0 : today > e ? total : Math.round((today - s) / DAY) + 1;
+  const pct = Math.round((gone / total) * 100);
+  const left = total - gone;
+  return (
+    <View style={styles.term} testID="rent-term">
+      <Ring progress={gone / total} size={64} stroke={7} label={t('rent.term.aria', { pct })}>
+        <Text style={[styles.termPct, { color: c.textPrimary }]}>{pct}%</Text>
+      </Ring>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[styles.factLabel, { color: c.textSecondary }]}>{t('rent.term.title')}</Text>
+        <Text style={[styles.leaseTitle, { color: c.textPrimary }]}>
+          {today < s ? t('rent.term.starts', { date: formatI18nDate(dateOfDay(lease.startDate), t) })
+            : t('rent.term.daysLeft', { count: left })}
+        </Text>
+        {today >= s ? (
+          <Text style={[styles.meta, { color: c.textSecondary }]}>
+            {t(today > e ? 'rent.term.over' : 'rent.term.ends', { date: formatI18nDate(dateOfDay(lease.endDate), t) })}
+          </Text>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -167,10 +208,11 @@ function BillRow({ c, bill, lang }: { c: ColorScheme; bill: PartnerRentBill; lan
   const statusKey = BILL_STATUS_KEYS[bill.status];
   const overdue = bill.status === 'OVERDUE';
   return (
-    <Pressable
+    <PressableScale
       onPress={() => router.push({ pathname: '/rent/[id]', params: { id: bill.id } })}
       accessibilityRole="button"
       testID={`rent-bill-${bill.id}`}
+      scaleTo={0.98}
       style={[styles.billRow, { backgroundColor: c.surface }]}
     >
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -189,7 +231,7 @@ function BillRow({ c, bill, lang }: { c: ColorScheme; bill: PartnerRentBill; lan
             : statusKey ? t(statusKey) : bill.status}
         </Text>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -215,4 +257,6 @@ const styles = StyleSheet.create({
   billRight: { alignItems: 'flex-end', maxWidth: '45%' },
   billAmount: { fontSize: 14.5, fontWeight: '700' },
   billStatus: { fontSize: 11.5, marginTop: 2 },
+  term: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6 },
+  termPct: { fontSize: 13, fontWeight: '700' },
 });

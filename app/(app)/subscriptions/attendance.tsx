@@ -9,7 +9,9 @@ import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
-import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
+import { EmptyBlock, ErrorBlock, Screen } from '../../../src/features/more/ui';
+import { Rise, tapHaptic } from '../../../src/theme/motion';
+import { SkeletonList } from '../../../src/components/ui';
 import { ActionRow, Banner, PillButton } from '../../../src/features/p1/ui';
 import { ChoiceChips, DayStepper } from '../../../src/features/p2/ui';
 import { istToday } from '../../../src/features/p2/dates';
@@ -93,13 +95,19 @@ export default function AttendanceScreen() {
       {canMark && rows.some((r) => r.classDay) ? (
         <ActionRow>
           <PillButton c={c} tone="outline" icon="account-check" label={t('p2.subscriptions.attendance.allPresent')}
-            onPress={() => setChosen((cur) => allPresent(rows, cur))} testID="all-present" />
+            onPress={() => { tapHaptic(); setChosen((cur) => allPresent(rows, cur)); }} testID="all-present" />
         </ActionRow>
       ) : null}
     </View>
   );
 
-  const empty = sheet.isPending ? <Loading c={c} />
+  // M10: the sheet's shape while it loads, not a lone spinner.
+  const rowOf = (item: (typeof rows)[number]) => (
+    <AttendanceRow c={c} row={item} value={chosen[item.subscriptionId]} disabled={!canMark}
+      onChange={(s) => setChosen((cur) => ({ ...cur, [item.subscriptionId]: s }))} />
+  );
+
+  const empty = sheet.isPending ? <SkeletonList rows={4} testID="attendance-loading" />
     : sheet.isError ? (
       <ErrorBlock c={c} message={apiErrorMessage(sheet.error, t('p2.common.loadFailed'))} onRetry={() => void sheet.refetch()} />
     ) : <EmptyBlock c={c} icon="school-outline" title={t('p2.subscriptions.attendance.empty')} />;
@@ -118,18 +126,21 @@ export default function AttendanceScreen() {
         ListEmptyComponent={empty}
         ItemSeparatorComponent={Gap}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <AttendanceRow c={c} row={item} value={chosen[item.subscriptionId]} disabled={!canMark}
-            onChange={(s) => setChosen((cur) => ({ ...cur, [item.subscriptionId]: s }))} />
+        initialNumToRender={10}
+        renderItem={({ item, index }) => (
+          // M10: the first rows rise in on open; rows drawn later on scroll appear plainly.
+          index < 6 ? (
+            <Rise index={index}>{rowOf(item)}</Rise>
+          ) : rowOf(item)
         )}
       />
       {canMark && rows.length > 0 ? (
         <View style={[styles.footer, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
-          <Text style={{ flex: 1, minWidth: 0, color: c.textSecondary, fontSize: 12 }} numberOfLines={2}>
+          <Text style={{ flex: 1, minWidth: 0, color: c.textSecondary, fontSize: 13 }} numberOfLines={2}>
             {t('p2.subscriptions.attendance.changed', { count: entries.length })}
           </Text>
           <PillButton c={c} icon="content-save" label={save.isPending ? t('common.saving') : t('common.save')}
-            onPress={() => save.mutate()} disabled={save.isPending || entries.length === 0} testID="attendance-save" />
+            onPress={() => { tapHaptic(); save.mutate(); }} disabled={save.isPending || entries.length === 0} testID="attendance-save" />
         </View>
       ) : null}
     </Screen>

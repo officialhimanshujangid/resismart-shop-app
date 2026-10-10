@@ -1,31 +1,19 @@
 import React from 'react';
-import { useColorScheme, useWindowDimensions } from 'react-native'; // >>> WEB-UI useWindowDimensions
 import { Tabs } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { useOfflineDrafts } from '../../../src/features/billing/useOfflineDrafts';
 import { useNotifications } from '../../../src/features/notifications/hooks';
-import { themeColors } from '../../../src/constants/colors';
+import { FloatingTabBar } from '../../../src/components/ui/FloatingTabBar';
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-// >>> WEB-UI
-/**
- * One line of tab label (11sp text), before the system font scale. 16, not
- * 13–14: the Hindi labels' vowel signs rise above a Latin line and a tight
- * line height clips their tops.
- */
-const TAB_LABEL_LINE = 16;
-/**
- * Everything in the bar except the label line and the bottom inset:
- * paddingTop 4 + the tab item's own padding 5 + 5 (bottom-tabs, `tabVerticalUiKit`)
- * + the 28dp icon box (`wrapperUikit`) + paddingBottom 6 + the 1px top border.
- */
-const TAB_BAR_CHROME = 4 + 5 + 5 + 28 + 6 + 1;
-// <<< WEB-UI
+// D0 (Design System v1): the bar is drawn by `FloatingTabBar` — a floating
+// glass pill with the active tab as a solid green pill. It sizes itself to its
+// content and the system font scale, so the old fixed-height constants
+// (TAB_LABEL_LINE / TAB_BAR_CHROME) are gone with the default bar.
 
 const tabIcon = (name: IconName) => {
   // Named so React DevTools and `react/display-name` can identify it.
@@ -72,10 +60,6 @@ const tabIcon = (name: IconName) => {
  */
 export default function TabsLayout() {
   const { t } = useTranslation();
-  const isDark = useColorScheme() === 'dark';
-  const c = themeColors(isDark);
-  const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions(); // >>> WEB-UI
   const { ready, can, hasModule, menu } = usePartnerEntitlements();
 
   /**
@@ -130,38 +114,11 @@ export default function TabsLayout() {
 
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: c.primary,
-        tabBarInactiveTintColor: c.textDisabled,
-        tabBarStyle: {
-          backgroundColor: c.surface,
-          borderTopColor: c.divider,
-          elevation: 12,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: isDark ? 0.3 : 0.08,
-          shadowRadius: 12,
-          // A flat `height: 62` with `paddingBottom: 8` put the labels underneath
-          // the gesture bar on every phone with a bottom inset, and clipped them
-          // outright at a large system font scale. The bar is now 62dp of chrome
-          // PLUS whatever the device reserves at the bottom.
-          // >>> WEB-UI — the bar is now sized to what the tab item actually draws
-          // (see TAB_BAR_CHROME): 62 was 4dp shorter than icon + label + the
-          // item's own padding, so the label hung into the bottom padding on a
-          // phone and, in a browser, was squeezed and cut off. The label line
-          // grows with the system font scale, so a large font no longer clips.
-          height: TAB_BAR_CHROME + Math.ceil(TAB_LABEL_LINE * fontScale) + insets.bottom,
-          paddingBottom: 6 + insets.bottom,
-          paddingTop: 4,
-          // <<< WEB-UI
-        },
-        // >>> WEB-UI — explicit line height (the bar height above is built from
-        // it) and no shrinking: a browser shrinks a flex text item to the space
-        // left, which is what clipped the labels on web.
-        tabBarLabelStyle: { fontSize: 11, lineHeight: TAB_LABEL_LINE, fontWeight: '600', flexShrink: 0 },
-        // <<< WEB-UI
-      }}
+      // Design System v1 floating bar. Which tabs exist is still decided only by
+      // the `Tabs.Protected` guards below; the bar renders whatever routes the
+      // navigator holds and emits the default tabPress / tabLongPress events.
+      tabBar={(props) => <FloatingTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen
         name="index"
@@ -173,13 +130,8 @@ export default function TabsLayout() {
           plan screen read. A module that is called one thing on its tab and
           another in the menu that sells it is the drift that four separate
           copies of the word invite. */}
-      <Tabs.Protected guard={showBookings}>
-        <Tabs.Screen
-          name="bookings"
-          options={{ title: t('modules.BOOKINGS.label'), tabBarIcon: tabIcon('calendar-check-outline') }}
-        />
-      </Tabs.Protected>
-
+      {/* D0: order follows the ShopHome template — Today · Orders · Bill ·
+          Bookings · More. Same five routes, same guards. */}
       <Tabs.Protected guard={showOrders}>
         <Tabs.Screen
           name="orders"
@@ -195,6 +147,13 @@ export default function TabsLayout() {
             tabBarIcon: tabIcon('receipt'),
             tabBarBadge: pendingCount > 0 ? pendingCount : undefined,
           }}
+        />
+      </Tabs.Protected>
+
+      <Tabs.Protected guard={showBookings}>
+        <Tabs.Screen
+          name="bookings"
+          options={{ title: t('modules.BOOKINGS.label'), tabBarIcon: tabIcon('calendar-check-outline') }}
         />
       </Tabs.Protected>
 

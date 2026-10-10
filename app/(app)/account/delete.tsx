@@ -1,17 +1,23 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, StyleSheet, TouchableOpacity, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 
-import { themeColors, radii } from '../../../src/constants/colors';
+import { themeColors } from '../../../src/constants/colors';
 import { WEB_DELETE_ACCOUNT_URL } from '../../../src/constants/app';
 import { useAuth } from '../../../src/context/AuthContext';
 import { AccountDeletionRequest, Place, PlaceFlat } from '../../../src/api/account.api';
 import { apiErrorCode, apiErrorMessage } from '../../../src/api/axios';
-import { AppButton } from '../../../src/components/AppButton';
-import { AppInput } from '../../../src/components/AppInput';
-import { Card, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { useIsOnline } from '../../../src/hooks/useIsOnline';
+import { Button, Card, SectionTitle, SkeletonList } from '../../../src/components/ui';
+import { OtpCells } from '../../../src/components/ui/OtpCells';
+import { useAppTheme } from '../../../src/theme/useAppTheme';
+import { radius, typeScale } from '../../../src/theme/tokens';
+import { Rise, useMotionOK } from '../../../src/theme/motion';
+import { ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 import {
   useConfirmAccountDeletion, useRequestAccountDeletion, useMyPlaces, useLeavePlace, // M01 audit: + places
 } from '../../../src/features/account/hooks';
@@ -43,6 +49,12 @@ const KEPT_KEYS = ['invoices', 'business'] as const;
 export default function DeleteAccountScreen() {
   const { t, i18n } = useTranslation(); // HELP34R: i18n for the date's language
   const c = themeColors(useColorScheme() === 'dark');
+  const { ds, status } = useAppTheme();
+  const online = useIsOnline();
+  const motionOK = useMotionOK();
+  const link = status.brand.fg; // brand green that clears AA as small text
+  /** 1R presentation only: bumped when a code is refused so the boxes shake once. */
+  const [shakeKey, setShakeKey] = useState(0);
   const { user } = useAuth();
   const request = useRequestAccountDeletion();
   const confirm = useConfirmAccountDeletion();
@@ -126,12 +138,16 @@ export default function DeleteAccountScreen() {
         Alert.alert(t('account.delete.doneTitle'), when ? t('account.delete.doneOn', { date: when }) : t('account.delete.doneBody'));
         // <<< HELP34R
       })
-      .catch((e: unknown) => setCodeError(apiErrorMessage(e, t('account.delete.confirmFailed'))));
+      .catch((e: unknown) => {
+        setCodeError(apiErrorMessage(e, t('account.delete.confirmFailed')));
+        setShakeKey((k) => k + 1);
+      });
   }, [code, confirm, t, i18n, alsoOtherLogins]); // HELP34R: i18n · M01: alsoOtherLogins
 
   const onDeletePress = () => {
     if (code.length !== CODE_LENGTH) {
       setCodeError(t('account.delete.codeIncomplete'));
+      setShakeKey((k) => k + 1);
       return;
     }
     Alert.alert(t('account.delete.finalTitle'), t('account.delete.finalBody'), [
@@ -186,74 +202,89 @@ export default function DeleteAccountScreen() {
   return (
     <Screen c={c} title={t('account.delete.title')}>
       {/* >>> M01 audit — 1. Your places: leaving ONE is the default choice (web profile parity). */}
-      <SectionLabel c={c}>{t('accountPlaces.title')}</SectionLabel>
-      {places.isPending ? (
-        <Loading c={c} label={t('accountPlaces.loading')} />
-      ) : places.isError ? (
-        <ErrorBlock c={c} message={apiErrorMessage(places.error, t('accountPlaces.failed'))} onRetry={() => { void places.refetch(); }} />
-      ) : list.length === 0 ? (
-        <Text style={[styles.body, { color: c.textSecondary }]}>{t('accountPlaces.empty')}</Text>
-      ) : (
-        <>
-          <Text style={[styles.body, { color: c.textSecondary }]}>
-            {t('accountPlaces.count', { n: list.length })} {t('accountPlaces.hint')}
-          </Text>
-          {list.map((place) => (
-            <PlaceCard key={`${place.kind}-${place.id}`} place={place} busy={busy} onLeave={askLeave} />
-          ))}
-        </>
-      )}
-      {placeNote ? (
-        <View
-          style={[styles.alert, { backgroundColor: c.surface, borderColor: placeNote.error ? c.error : c.primary }]}
-          accessibilityLiveRegion="polite"
-        >
-          <Text style={[styles.body, { color: c.textPrimary }]}>{placeNote.text}</Text>
-        </View>
-      ) : null}
+      <Rise index={0} style={styles.section}>
+        <SectionTitle>{t('accountPlaces.title')}</SectionTitle>
+        {places.isPending ? (
+          // Skeleton cards; offline keeps the shared "waiting for signal" words.
+          online ? <SkeletonList rows={2} /> : <Loading c={c} label={t('accountPlaces.loading')} />
+        ) : places.isError ? (
+          <ErrorBlock c={c} message={apiErrorMessage(places.error, t('accountPlaces.failed'))} onRetry={() => { void places.refetch(); }} />
+        ) : list.length === 0 ? (
+          <Text style={[typeScale.detail, { color: ds.muted }]}>{t('accountPlaces.empty')}</Text>
+        ) : (
+          <>
+            <Text style={[typeScale.detail, { color: ds.muted }]}>
+              {t('accountPlaces.count', { n: list.length })} {t('accountPlaces.hint')}
+            </Text>
+            {list.map((place) => (
+              <PlaceCard key={`${place.kind}-${place.id}`} place={place} busy={busy} onLeave={askLeave} />
+            ))}
+          </>
+        )}
+        {placeNote ? (
+          <Animated.View
+            key={placeNote.text}
+            entering={motionOK ? FadeInDown.duration(280) : undefined}
+            style={[styles.alert, { backgroundColor: placeNote.error ? status.danger.bg : status.success.bg }]}
+            accessibilityLiveRegion="polite"
+          >
+            <Text style={[typeScale.row, { color: placeNote.error ? status.danger.fg : status.success.fg }]}>{placeNote.text}</Text>
+          </Animated.View>
+        ) : null}
+      </Rise>
 
       {/* 2. Delete the whole login — secondary, warned, 30 days. */}
-      <SectionLabel c={c}>{t('accountPlaces.fullTitle')}</SectionLabel>
-      {/* <<< M01 audit */}
-      <Card c={c} style={[styles.warning, { borderColor: c.error }]}>
-        <View style={styles.warningHead}>
-          <MaterialCommunityIcons name="alert-outline" size={22} color={c.error} />
-          <Text style={[styles.warningTitle, { color: c.textPrimary }]}>{t('account.delete.warningTitle')}</Text>
+      <Rise index={1} style={styles.section}>
+        <SectionTitle>{t('accountPlaces.fullTitle')}</SectionTitle>
+        {/* <<< M01 audit */}
+        <View style={[styles.warning, { backgroundColor: status.danger.bg }]}>
+          <View style={styles.warningHead}>
+            <MaterialCommunityIcons name="alert-outline" size={22} color={status.danger.fg} />
+            <Text style={[typeScale.section, styles.flex, { color: ds.ink }]}>{t('account.delete.warningTitle')}</Text>
+          </View>
+          <Text style={[typeScale.detail, { color: ds.ink }]}>{t('account.delete.warningBody')}</Text>
         </View>
-        <Text style={[styles.body, { color: c.textSecondary }]}>{t('account.delete.warningBody')}</Text>
-      </Card>
+      </Rise>
 
-      <SectionLabel c={c}>{t('account.delete.deletedSection')}</SectionLabel>
-      <Card c={c}>
-        {DELETED_KEYS.map((key) => (
-          <View key={key} style={styles.item}>
-            <MaterialCommunityIcons name="close-circle-outline" size={18} color={c.error} />
-            <Text style={[styles.itemText, { color: c.textPrimary }]}>{t(`account.delete.deleted.${key}`)}</Text>
-          </View>
-        ))}
-      </Card>
+      <Rise index={2} style={styles.section}>
+        <SectionTitle>{t('account.delete.deletedSection')}</SectionTitle>
+        <Card>
+          {DELETED_KEYS.map((key) => (
+            <View key={key} style={styles.item}>
+              <MaterialCommunityIcons name="close-circle-outline" size={18} color={status.danger.fg} />
+              <Text style={[styles.itemText, { color: ds.ink }]}>{t(`account.delete.deleted.${key}`)}</Text>
+            </View>
+          ))}
+        </Card>
+      </Rise>
 
-      <SectionLabel c={c}>{t('account.delete.keptSection')}</SectionLabel>
-      <Card c={c}>
-        {KEPT_KEYS.map((key) => (
-          <View key={key} style={styles.item}>
-            <MaterialCommunityIcons name="archive-outline" size={18} color={c.textSecondary} />
-            <Text style={[styles.itemText, { color: c.textPrimary }]}>{t(`account.delete.kept.${key}`)}</Text>
-          </View>
-        ))}
-        <TouchableOpacity onPress={openPolicy} accessibilityRole="link" style={styles.link}>
-          <MaterialCommunityIcons name="open-in-new" size={16} color={c.primary} />
-          <Text style={{ color: c.primary, fontWeight: '600' }}>{t('account.delete.readPolicy')}</Text>
-        </TouchableOpacity>
-      </Card>
+      <Rise index={3} style={styles.section}>
+        <SectionTitle>{t('account.delete.keptSection')}</SectionTitle>
+        <Card>
+          {KEPT_KEYS.map((key) => (
+            <View key={key} style={styles.item}>
+              <MaterialCommunityIcons name="archive-outline" size={18} color={status.success.fg} />
+              <Text style={[styles.itemText, { color: ds.ink }]}>{t(`account.delete.kept.${key}`)}</Text>
+            </View>
+          ))}
+          <TouchableOpacity onPress={openPolicy} accessibilityRole="link" style={styles.link}>
+            <MaterialCommunityIcons name="open-in-new" size={16} color={link} />
+            <Text style={{ color: link, fontWeight: '600' }}>{t('account.delete.readPolicy')}</Text>
+          </TouchableOpacity>
+        </Card>
+      </Rise>
 
       {requestError ? (
-        // Same treatment as `OtpDeliveryNotice`'s failure box: red carries the
-        // border, the words stay in `textPrimary` — `danger` is under AA as text.
-        <View style={[styles.alert, { backgroundColor: c.surface, borderColor: c.error }]}>
-          <Text style={[styles.alertTitle, { color: c.textPrimary }]}>{requestError.title}</Text>
-          <Text style={[styles.body, { color: c.textSecondary }]}>{requestError.body}</Text>
-        </View>
+        // A soft red box: the heading in red (danger fg clears AA on its soft
+        // ground), the server's sentence in ink.
+        <Animated.View
+          entering={motionOK ? FadeInDown.duration(280) : undefined}
+          style={[styles.alert, { backgroundColor: status.danger.bg }]}
+          accessibilityLiveRegion="polite"
+        >
+          <Text style={[typeScale.row, { color: status.danger.fg }]}>{requestError.title}</Text>
+          <Text style={[typeScale.detail, { color: ds.ink }]}>{requestError.body}</Text>
+        </Animated.View>
       ) : null}
 
       {/* M01 audit — the person's other phone/email login, as on the web and the society app. */}
@@ -263,64 +294,77 @@ export default function DeleteAccountScreen() {
           disabled={busy}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: alsoOtherLogins, disabled: busy }}
-          style={styles.check}
+          style={[styles.check, { backgroundColor: alsoOtherLogins ? status.danger.bg : ds.surface, borderColor: alsoOtherLogins ? status.danger.fg : ds.line }]}
         >
           <MaterialCommunityIcons
             name={alsoOtherLogins ? 'checkbox-marked' : 'checkbox-blank-outline'}
             size={22}
-            color={alsoOtherLogins ? c.error : c.textSecondary}
+            color={alsoOtherLogins ? status.danger.fg : ds.muted}
           />
           <View style={styles.checkText}>
-            <Text style={[styles.itemText, { color: c.textPrimary, fontWeight: '600' }]}>
+            <Text style={[styles.itemText, { color: ds.ink, fontWeight: '600' }]}>
               {t('accountPlaces.otherLoginsLabel', { n: otherLogins })}
             </Text>
-            <Text style={[styles.body, { color: c.textSecondary }]}>{t('accountPlaces.otherLoginsHint')}</Text>
+            <Text style={[typeScale.detail, { color: ds.muted }]}>{t('accountPlaces.otherLoginsHint')}</Text>
           </View>
         </TouchableOpacity>
       ) : null}
 
       {!sent ? (
-        <>
-          <Text style={[styles.body, { color: c.textSecondary }]}>{t('account.delete.sendHint')}</Text>
-          <AppButton
+        <Rise index={4} style={styles.section}>
+          <Text style={[typeScale.detail, { color: ds.muted }]}>{t('account.delete.sendHint')}</Text>
+          <Button
             label={t('account.delete.sendCode')}
             icon="message-lock-outline"
+            variant="dangerOutline"
+            fullWidth
             loading={request.isPending}
             onPress={sendCode}
           />
-        </>
+        </Rise>
       ) : (
-        <>
-          <Text style={[styles.body, { color: c.textSecondary }]}>{sentLine}</Text>
-          <AppInput
-            label={t('account.delete.codeLabel')}
-            value={code}
-            onChangeText={(v) => {
-              setCode(v.replace(/\D/g, '').slice(0, CODE_LENGTH));
-              setCodeError(undefined);
-            }}
-            keyboardType="numeric"
-            autoComplete="sms-otp"
-            leftIcon="lock-outline"
-            disabled={confirm.isPending}
-            error={codeError}
-          />
-          <AppButton
-            label={t('account.delete.confirmButton')}
-            icon="delete-forever-outline"
-            loading={confirm.isPending}
-            disabled={!canDelete}
-            onPress={onDeletePress}
-            // The one red fill in the app, and only while it can actually be
-            // pressed — disabled keeps Paper's own greyed look.
-            style={canDelete ? { backgroundColor: c.error } : undefined}
-          />
-          <TouchableOpacity onPress={sendCode} disabled={cooldown > 0 || busy} style={styles.resend}>
-            <Text style={{ color: cooldown > 0 || busy ? c.textDisabled : c.primary, fontWeight: '600' }}>
-              {cooldown > 0 ? t('account.delete.resendIn', { seconds: cooldown }) : t('account.delete.resend')}
-            </Text>
-          </TouchableOpacity>
-        </>
+        <Rise index={0}>
+          <Card padding={18}>
+            <View style={[styles.sentRow, { backgroundColor: status.info.bg }]}>
+              <MaterialCommunityIcons name="message-text-lock-outline" size={20} color={status.info.fg} />
+              <Text style={[typeScale.detail, styles.flex, { color: ds.ink }]}>{sentLine}</Text>
+            </View>
+            <Text style={[typeScale.caption, { color: codeError ? status.danger.fg : ds.ink }]}>{t('account.delete.codeLabel')}</Text>
+            {/* Six boxes over one real input (same digits-only handler, same
+                SMS autofill): a refused or short code shakes the row red. */}
+            <OtpCells
+              value={code}
+              onChangeText={(v) => {
+                setCode(v.replace(/\D/g, '').slice(0, CODE_LENGTH));
+                setCodeError(undefined);
+              }}
+              length={CODE_LENGTH}
+              editable={!confirm.isPending}
+              state={codeError ? 'error' : 'idle'}
+              shakeKey={shakeKey}
+              accessibilityLabel={t('account.delete.codeLabel')}
+              inputProps={{ autoComplete: 'sms-otp', textContentType: 'oneTimeCode' }}
+            />
+            {codeError ? (
+              <Text style={[typeScale.caption, { color: status.danger.fg }]} accessibilityLiveRegion="polite">{codeError}</Text>
+            ) : null}
+            {/* The one red fill in the app, and only while it can actually be pressed. */}
+            <Button
+              label={t('account.delete.confirmButton')}
+              icon="delete-forever-outline"
+              variant="danger"
+              fullWidth
+              loading={confirm.isPending}
+              disabled={!canDelete}
+              onPress={onDeletePress}
+            />
+            <TouchableOpacity onPress={sendCode} disabled={cooldown > 0 || busy} style={styles.resend}>
+              <Text style={{ color: cooldown > 0 || busy ? c.textDisabled : link, fontWeight: '600' }}>
+                {cooldown > 0 ? t('account.delete.resendIn', { seconds: cooldown }) : t('account.delete.resend')}
+              </Text>
+            </TouchableOpacity>
+          </Card>
+        </Rise>
       )}
     </Screen>
   );
@@ -335,37 +379,40 @@ function PlaceCard({ place, busy, onLeave }: {
   place: Place; busy: boolean; onLeave: (place: Place, flat?: PlaceFlat) => void;
 }) {
   const { t } = useTranslation();
-  const c = themeColors(useColorScheme() === 'dark');
+  const { ds, status, tints } = useAppTheme();
+  const tn = tints[place.kind === 'PARTNER' ? 'green' : 'blue'];
   const flatsLeaveAlone = place.flats.length > 1 || place.roles.some((r) => NON_RESIDENT_ROLES.includes(r));
   const soleOwnerFlats = place.flats.filter((f) => f.soleOwner).map((f) => f.label);
   return (
-    <Card c={c} style={styles.place}>
-      <View style={styles.item}>
-        <MaterialCommunityIcons name={place.kind === 'PARTNER' ? 'storefront-outline' : 'office-building-outline'} size={20} color={c.primary} />
+    <Card style={styles.place}>
+      <View style={styles.placeHead}>
+        <View style={styles.placeIcon}>
+          <LinearGradient colors={[tn.from, tn.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, styles.placeIconFill]} />
+          <MaterialCommunityIcons name={place.kind === 'PARTNER' ? 'storefront-outline' : 'office-building-outline'} size={20} color={tn.icon} />
+        </View>
         <View style={styles.checkText}>
-          <Text style={[styles.itemText, { color: c.textPrimary, fontWeight: '600' }]}>{place.name}</Text>
+          <Text style={[typeScale.row, { color: ds.ink }]}>{place.name}</Text>
           {!place.thisLogin ? (
-            <Text style={[styles.body, { color: c.textSecondary }]}>{t('accountPlaces.otherLoginBadge')}</Text>
+            <Text style={[typeScale.detail, { color: ds.muted }]}>{t('accountPlaces.otherLoginBadge')}</Text>
           ) : null}
         </View>
       </View>
       {place.kind === 'PARTNER' ? (
-        <Text style={[styles.body, { color: c.textSecondary }]}>{t('accountPlaces.businessNoteShop')}</Text>
+        <Text style={[typeScale.detail, { color: ds.muted }]}>{t('accountPlaces.businessNoteShop')}</Text>
       ) : (
         <>
           {place.flats.map((f) => (
             <View key={f.flatId} style={styles.flat}>
-              <Text style={[styles.itemText, { color: c.textPrimary }]}>{f.label}</Text>
+              <Text style={[styles.itemText, { color: ds.ink }]}>{f.label}</Text>
               {f.hasTenant && f.isOwner ? (
-                <Text style={[styles.body, { color: c.textSecondary }]}>{t('accountPlaces.tenantNote', { flat: f.label })}</Text>
+                <Text style={[typeScale.detail, { color: ds.muted }]}>{t('accountPlaces.tenantNote', { flat: f.label })}</Text>
               ) : null}
               {flatsLeaveAlone && !f.soleOwner ? (
-                <AppButton
+                <Button
                   label={t('accountPlaces.leaveFlat', { flat: f.label })}
                   icon="account-minus-outline"
-                  mode="outlined"
-                  fullWidth={false}
-                  style={styles.inlineButton}
+                  variant="outline"
+                  size="sm"
                   disabled={busy}
                   onPress={() => onLeave(place, f)}
                 />
@@ -373,17 +420,16 @@ function PlaceCard({ place, busy, onLeave }: {
             </View>
           ))}
           {place.leaveBlock === 'LEAVE_SOLE_ADMIN' ? (
-            <Text style={[styles.body, { color: c.error }]}>{t('accountPlaces.soleAdminNote')}</Text>
+            <Text style={[typeScale.detail, { color: status.danger.fg }]}>{t('accountPlaces.soleAdminNote')}</Text>
           ) : place.leaveBlock === 'LEAVE_SOLE_OWNER' ? (
-            <Text style={[styles.body, { color: c.error }]}>{t('accountPlaces.soleOwnerNote', { flats: soleOwnerFlats.join(', ') })}</Text>
+            <Text style={[typeScale.detail, { color: status.danger.fg }]}>{t('accountPlaces.soleOwnerNote', { flats: soleOwnerFlats.join(', ') })}</Text>
           ) : null}
           {place.canLeave ? (
-            <AppButton
+            <Button
               label={t('accountPlaces.leaveSociety')}
               icon="exit-run"
-              mode="outlined"
-              fullWidth={false}
-              style={styles.inlineButton}
+              variant="outline"
+              size="sm"
               disabled={busy}
               onPress={() => onLeave(place)}
             />
@@ -396,21 +442,23 @@ function PlaceCard({ place, busy, onLeave }: {
 // <<< M01 audit
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  section: { gap: 10 },
   // >>> M01 audit
-  place: { gap: 8 },
-  flat: { gap: 4 },
-  inlineButton: { alignSelf: 'flex-start', maxWidth: '100%' },
-  check: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, minHeight: 44, paddingVertical: 4 },
+  place: { gap: 10 },
+  placeHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  placeIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  placeIconFill: { borderRadius: 14 },
+  flat: { gap: 6 },
+  check: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, minHeight: 44, padding: 12, borderWidth: 1, borderRadius: radius.row },
   checkText: { flex: 1, gap: 2 },
   // <<< M01 audit
-  warning: { borderWidth: 1 },
+  warning: { borderRadius: radius.card, padding: 16, gap: 8 },
   warningHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  warningTitle: { flex: 1, fontSize: 15, fontWeight: '700' },
-  body: { fontSize: 13, lineHeight: 19 },
   item: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   itemText: { flex: 1, fontSize: 13.5, lineHeight: 19 },
-  link: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4 },
-  alert: { borderWidth: 1, borderRadius: radii.sm, padding: 12, gap: 4 },
-  alertTitle: { fontSize: 13, fontWeight: '600', lineHeight: 19 },
-  resend: { alignSelf: 'center', paddingVertical: 10 },
+  link: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 4, minHeight: 44 },
+  alert: { borderRadius: radius.row, padding: 14, gap: 4 },
+  sentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: radius.md, padding: 12 },
+  resend: { alignSelf: 'center', paddingVertical: 10, minHeight: 44, justifyContent: 'center' },
 });

@@ -5,7 +5,9 @@ import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { themeColors, radii, palette } from '../../../src/constants/colors';
+import { themeColors, radii } from '../../../src/constants/colors';
+import { Rise } from '../../../src/theme/motion';
+import { SkeletonList } from '../../../src/components/ui';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { staffApi, PartnerStaffRow } from '../../../src/api/staff.api';
@@ -13,7 +15,7 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { useAuth } from '../../../src/context/AuthContext';
 import { isOwnStaffRow } from '../../../src/lib/staffAccess';
 import { Hero, GlassStat } from '../../../src/components/Hero';
-import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
+import { EmptyBlock, ErrorBlock, Screen } from '../../../src/features/more/ui';
 
 /**
  * The staff member's own name where the row is populated, and a translated
@@ -85,14 +87,16 @@ export default function StaffListScreen() {
   const rolesInUse = new Set(active.map(roleNameOf).filter(Boolean)).size;
   const bookingReady = active.filter((r) => r.canTakeBookings).length;
 
-  const renderRow = (row: PartnerStaffRow) => (
-    <View key={row._id} style={[styles.card, { backgroundColor: c.surface, opacity: row.isActive ? 1 : 0.7 }]}>
+  // M10: each card rises in on open (staggered, capped); reduce-motion shows them at once.
+  const renderRow = (row: PartnerStaffRow, i: number) => (
+    <Rise key={row._id} index={Math.min(i, 6)}>
+    <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.border, opacity: row.isActive ? 1 : 0.7 }]}>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{nameOf(row, t)}</Text>
+        <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={2}>{nameOf(row, t)}</Text>
         {/* `designation` is what the partner typed for this person's job, and the
             contact is their own phone or email — both data on the record, shown
             back as they were entered. */}
-        <Text style={[styles.meta, { color: c.textSecondary }]} numberOfLines={1}>
+        <Text style={[styles.meta, { color: c.textSecondary }]} numberOfLines={2}>
           {row.designation}{contactOf(row) ? t('staff.list.contactSuffix', { contact: contactOf(row) }) : ''}
         </Text>
         <View style={styles.badgeRow}>
@@ -107,8 +111,9 @@ export default function StaffListScreen() {
             <Chip
               compact
               icon="calendar-check-outline"
-              style={[styles.chip, { backgroundColor: palette.brand[50] }]}
-              textStyle={[styles.chipText, { color: palette.brand[600] }]}
+              // M10: theme soft-green chip — the fixed light pair stayed pale-on-pale in dark.
+              style={[styles.chip, { backgroundColor: c.primarySoft }]}
+              textStyle={[styles.chipText, { color: c.primary }]}
             >
               {t('staff.list.takesBookings')}
             </Chip>
@@ -133,6 +138,7 @@ export default function StaffListScreen() {
         />
       )}
     </View>
+    </Rise>
   );
 
   return (
@@ -168,7 +174,8 @@ export default function StaffListScreen() {
       </Hero>
 
       {list.isPending ? (
-        <Loading c={c} />
+        // The list's shape while it loads, not a lone spinner.
+        <SkeletonList rows={4} testID="staff-list-loading" />
       ) : list.isError ? (
         <ErrorBlock c={c} message={apiErrorMessage(list.error, t('staff.list.loadFailed'))} onRetry={() => list.refetch()} />
       ) : list.data && list.data.length > 0 ? (
@@ -177,7 +184,7 @@ export default function StaffListScreen() {
           {inactive.length > 0 && (
             <>
               <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('staff.list.noLongerHere')}</Text>
-              {inactive.map(renderRow)}
+              {inactive.map((r, i) => renderRow(r, active.length + i))}
             </>
           )}
         </View>
@@ -189,7 +196,7 @@ export default function StaffListScreen() {
 }
 
 const styles = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', borderRadius: radii.card, padding: 14, gap: 8 },
+  card: { flexDirection: 'row', alignItems: 'center', borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, padding: 14, gap: 8 },
   name: { fontSize: 15, fontWeight: '600' },
   meta: { fontSize: 12, marginTop: 2 },
   badgeRow: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },

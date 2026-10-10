@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Switch, Text } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +16,8 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { AppInput } from '../../../src/components/AppInput';
 import { AppButton } from '../../../src/components/AppButton';
 import { Card, ChipRow, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { Rise, tapHaptic } from '../../../src/theme/motion';
+import { useShake } from '../../../src/components/ui';
 
 const NO_ROLE = '__none__';
 
@@ -42,6 +45,8 @@ export default function StaffFormScreen() {
   const [canTakeBookings, setCanTakeBookings] = useState(false);
   const [skillsText, setSkillsText] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** M10: the form shakes once when a required field is missing. */
+  const formShake = useShake();
 
   useEffect(() => {
     if (!existing) return;
@@ -118,11 +123,14 @@ export default function StaffFormScreen() {
       if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) next.email = t('staff.form.emailInvalid');
     }
     setErrors(next);
-    return Object.keys(next).length === 0;
+    const ok = Object.keys(next).length === 0;
+    if (!ok) formShake.shake();
+    return ok;
   };
 
   const onSubmit = () => {
     if (!validate()) return;
+    tapHaptic();
     if (editing) {
       updateMutation.mutate();
       return;
@@ -138,15 +146,19 @@ export default function StaffFormScreen() {
 
   return (
     <Screen c={c} title={t(editing ? 'staff.form.editTitle' : 'staff.form.addTitle')}>
+      <Animated.View style={formShake.style}>
       {!editing && (
+        <Rise index={0}>
         <Card c={c}>
           <SectionLabel c={c}>{t('staff.form.whoSection')}</SectionLabel>
           <AppInput label={t('staff.form.name')} value={name} onChangeText={setName} error={errors.name} />
           <AppInput label={t('staff.form.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" error={errors.phone} />
           <AppInput label={t('staff.form.email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" error={errors.email} />
         </Card>
+        </Rise>
       )}
 
+      <Rise index={editing ? 0 : 1}>
       <Card c={c}>
         <SectionLabel c={c}>{t('staff.form.jobSection')}</SectionLabel>
         <AppInput
@@ -159,7 +171,7 @@ export default function StaffFormScreen() {
 
         <Text style={[styles.label, { color: c.textSecondary }]}>{t('staff.form.role')}</Text>
         {roles.isPending ? (
-          <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('staff.form.loadingRoles')}</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('staff.form.loadingRoles')}</Text>
         ) : roleLocked ? (
           <>
             <Text style={{ color: c.textPrimary, fontSize: 14 }}>{currentRole?.name ?? t('staff.form.noRole')}</Text>
@@ -186,8 +198,12 @@ export default function StaffFormScreen() {
           placeholder={t('staff.form.skillsPlaceholder')}
         />
       </Card>
+      </Rise>
+      </Animated.View>
 
+      <Rise index={editing ? 1 : 2}>
       <AppButton label={t(editing ? 'staff.form.saveChanges' : 'staff.form.sendInvite')} onPress={onSubmit} loading={saving} disabled={saving} style={{ marginTop: 8 }} />
+      </Rise>
     </Screen>
   );
 }

@@ -42,7 +42,10 @@ import { apiErrorCode } from '../../src/api/axios';
 import { AppButton } from '../../src/components/AppButton';
 import { getGoogleIdToken, isGoogleAvailable, GoogleCancelled } from '../../src/lib/google';
 import { AppInput } from '../../src/components/AppInput';
-import { Hero } from '../../src/components/Hero';
+import { GlassCard, Title } from '../../src/components/ui';
+import { AuthHero, HERO_OVERLAP } from '../../src/components/ui/AuthHero';
+import { Rise, useMotionOK, easeOut } from '../../src/theme/motion';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming, ZoomIn } from 'react-native-reanimated';
 import { OtpDeliveryNotice } from '../../src/components/OtpDeliveryNotice';
 import { MapPicker } from '../../src/components/MapPicker';
 import { themeColors, radii, ColorScheme } from '../../src/constants/colors';
@@ -407,18 +410,20 @@ export default function RegisterScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
+    // 1R: green hero (ResiSmart wordmark + storefront) under the status bar,
+    // the step rail on a glass card on its edge, then the open step, which
+    // rises in each time the step changes.
+    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Hero
-            isDark={isDark}
-            variant="brand"
-            logoSize="small"
-            subtitle={t('auth.register.heroSubtitle')}
-            style={styles.brandHero}
-          />
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <AuthHero compact subtitle={t('auth.register.heroSubtitle')} />
 
-          <StepRail current={step} furthest={furthest} c={c} onJump={setStep} />
+          <View style={styles.content}>
+          <Rise index={1} style={styles.railWrap}>
+            <GlassCard padding={14}>
+              <StepRail current={step} furthest={furthest} c={c} onJump={setStep} />
+            </GlassCard>
+          </Rise>
 
           {rejectionNote ? (
             <View style={[styles.notice, { backgroundColor: c.surface, borderColor: c.warning }]}>
@@ -432,6 +437,7 @@ export default function RegisterScreen() {
             </View>
           ) : null}
 
+          <Rise key={step} index={2}>
           {step === 1 && (
             <StepIdentity
               c={c}
@@ -474,11 +480,12 @@ export default function RegisterScreen() {
           {step === 5 && (
             <StepPapers c={c} busy={busy} setBusy={setBusy} show={show} onSaved={refreshStatus} onJump={setStep} />
           )}
+          </Rise>
 
           {step === 1 && !isAuthenticated && (
             <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.footerLink}>
               <Text style={{ color: c.textSecondary }}>
-                {t('auth.register.alreadyRegistered')}<Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.signIn')}</Text>
+                {t('auth.register.alreadyRegistered')}<Text style={{ color: c.primaryDark, fontWeight: '600' }}>{t('auth.register.signIn')}</Text>
               </Text>
             </TouchableOpacity>
           )}
@@ -486,7 +493,7 @@ export default function RegisterScreen() {
           {/* >>> OWNER-0310 — signed out on step 2: back to step 1 (nothing is lost; the draft is held above). */}
           {step === 2 && !isAuthenticated && (
             <TouchableOpacity onPress={() => setStep(1)} style={styles.footerLink} disabled={busy}>
-              <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.backAStep')}</Text>
+              <Text style={{ color: c.primaryDark, fontWeight: '600' }}>{t('auth.register.backAStep')}</Text>
             </TouchableOpacity>
           )}
           {/* <<< OWNER-0310 */}
@@ -498,7 +505,7 @@ export default function RegisterScreen() {
             <View style={styles.exitRow}>
               {step > 1 ? (
                 <TouchableOpacity onPress={() => setStep((s) => Math.max(1, s - 1))} style={styles.footerLink}>
-                  <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.backAStep')}</Text>
+                  <Text style={{ color: c.primaryDark, fontWeight: '600' }}>{t('auth.register.backAStep')}</Text>
                 </TouchableOpacity>
               ) : (
                 <View />
@@ -508,6 +515,7 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </View>
           )}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -542,8 +550,21 @@ function StepRail({
   onJump: (n: number) => void;
 }) {
   const { t } = useTranslation();
+  const motionOK = useMotionOK();
+  // 1R: a thin track behind the dots that FILLS to the current step (0.6 s).
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    const to = (current - 1) / Math.max(1, STEPS.length - 1);
+    progress.value = motionOK ? withTiming(to, { duration: 600, easing: easeOut }) : to;
+  }, [current, motionOK, progress]);
+  // Transform only (no layout animation): a full-width bar scaled from its left edge.
+  const fill = useAnimatedStyle(() => ({ transform: [{ scaleX: progress.value }] }));
   return (
     <View style={styles.rail}>
+      {/* Track from the first dot's centre to the last's (each item is 1/5 wide). */}
+      <View style={[styles.railTrack, { backgroundColor: c.border }]} pointerEvents="none">
+        <Animated.View style={[styles.railFill, { backgroundColor: c.primary }, fill]} />
+      </View>
       {STEPS.map((n) => {
         const done = n < current;
         const active = n === current;
@@ -556,26 +577,31 @@ function StepRail({
             disabled={!reachable}
             activeOpacity={reachable ? 0.7 : 1}
           >
-            <View
+            <Animated.View
+              key={active ? 'on' : done ? 'done' : 'off'}
+              entering={motionOK && (active || done) ? ZoomIn.duration(220) : undefined}
               style={[
                 styles.railDot,
+                active ? styles.railDotActive : null,
                 {
-                  backgroundColor: active ? c.primary : done ? c.success : c.surfaceVariant,
-                  borderColor: active ? c.primary : c.border,
+                  // Fills carry `textInverse` (white in light, deep ink in dark): the
+                  // AA-safe FILL green and the success green both clear 4.5:1 with it.
+                  backgroundColor: active ? c.primaryFill : done ? c.success : c.surface,
+                  borderColor: active ? c.primaryFill : done ? c.success : c.border,
                 },
               ]}
             >
               {done ? (
                 <MaterialCommunityIcons name="check" size={14} color={c.textInverse} />
               ) : (
-                <Text style={[styles.railNum, { color: active ? c.textInverse : c.textDisabled }]}>{n}</Text>
+                <Text style={[styles.railNum, { color: active ? c.textInverse : c.textSecondary }]}>{n}</Text>
               )}
-            </View>
+            </Animated.View>
             {/* Five labels sharing the width of the screen. Capped at 1.3× and
                 held to one line so a large system font scale shortens the word
                 rather than reflowing the rail into two ragged rows. */}
             <Text
-              style={[styles.railLabel, { color: active ? c.textPrimary : c.textDisabled }]}
+              style={[styles.railLabel, { color: active ? c.textPrimary : c.textSecondary }]}
               numberOfLines={1}
               maxFontSizeMultiplier={1.3}
             >
@@ -599,7 +625,7 @@ interface StepProps {
 function StepHeading({ c, title, blurb }: { c: ColorScheme; title: string; blurb: string }) {
   return (
     <View style={styles.heading}>
-      <Text style={[styles.h1, { color: c.textPrimary }]}>{title}</Text>
+      <Title style={styles.h1} color={c.textPrimary}>{title}</Title>
       <Text style={[styles.h2, { color: c.textSecondary }]}>{blurb}</Text>
     </View>
   );
@@ -979,7 +1005,7 @@ function StepIdentity({
           <Text style={[styles.note, { color: c.textSecondary }]}>{t('auth.register.contactsVerified')}</Text>
           <AppButton label={t('auth.register.continue')} disabled={!canSend} onPress={onContinue} />
           <TouchableOpacity onPress={resetContacts} style={styles.footerLink}>
-            <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.changeContacts')}</Text>
+            <Text style={{ color: c.primaryDark, fontWeight: '600' }}>{t('auth.register.changeContacts')}</Text>
           </TouchableOpacity>
         </>
       ) : !sent ? (
@@ -1032,7 +1058,7 @@ function StepIdentity({
           {/* >>> OWNER-0310 — Google already vouched for an address: the way to change it. */}
           {tokens.email || tokens.phone ? (
             <TouchableOpacity onPress={resetContacts} style={styles.footerLink}>
-              <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.changeContacts')}</Text>
+              <Text style={{ color: c.primaryDark, fontWeight: '600' }}>{t('auth.register.changeContacts')}</Text>
             </TouchableOpacity>
           ) : null}
           {/* <<< OWNER-0310 */}
@@ -1095,7 +1121,7 @@ function StepIdentity({
             disabled={busy || !!sendingPhone}
             style={styles.footerLink}
           >
-            <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.resendBoth')}</Text>
+            <Text style={{ color: c.primaryDark, fontWeight: '600' }}>{t('auth.register.resendBoth')}</Text>
           </TouchableOpacity>
         </>
       )}
@@ -1404,7 +1430,9 @@ function StepWhat({ c, busy, setBusy, show, onSaved }: StepProps) {
               onPress={() => setKind(k)}
               style={[
                 styles.choiceCard,
-                { backgroundColor: active ? c.surfaceVariant : c.surface, borderColor: active ? c.primary : c.border },
+                // 1R: chosen = green edge, 2 px, on the plain surface (muted words on the
+                // soft green would drop under 4.5:1).
+                { backgroundColor: c.surface, borderColor: active ? c.primary : c.border, borderWidth: active ? 2 : 1.5 },
               ]}
             >
               <MaterialCommunityIcons
@@ -1534,7 +1562,9 @@ function StepHow({ c, busy, setBusy, show, onSaved }: StepProps) {
               style={[
                 styles.choiceCard,
                 styles.choiceCardTall,
-                { backgroundColor: active ? c.surfaceVariant : c.surface, borderColor: active ? c.primary : c.border },
+                // 1R: chosen = green edge, 2 px, on the plain surface (muted words on the
+                // soft green would drop under 4.5:1).
+                { backgroundColor: c.surface, borderColor: active ? c.primary : c.border, borderWidth: active ? 2 : 1.5 },
               ]}
             >
               <MaterialCommunityIcons
@@ -1813,7 +1843,7 @@ function StepPapers({ c, busy, setBusy, show, onSaved, onJump }: StepProps & { o
               style={styles.missingRow}
             >
               <Text style={[styles.flex, { color: c.textSecondary }]}>
-                • {m.message} <Text style={{ color: c.primary, fontWeight: '600' }}>{t('auth.register.stepNumber', { step: m.step })}</Text>
+                • {m.message} <Text style={{ color: c.primaryDark, fontWeight: '600' }}>{t('auth.register.stepNumber', { step: m.step })}</Text>
               </Text>
               <MaterialCommunityIcons name="chevron-right" size={18} color={c.textDisabled} />
             </TouchableOpacity>
@@ -1838,23 +1868,29 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  scroll: { flexGrow: 1 },
   content: {
-    padding: 18,
+    paddingHorizontal: 18,
     paddingBottom: 48,
     gap: 8,
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
   },
-  brandHero: { paddingVertical: 22, marginBottom: 10 },
-  rail: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18, marginTop: 6 },
+  // The rail's glass card sits on the hero's lower edge.
+  railWrap: { marginTop: -HERO_OVERLAP, marginBottom: 12 },
+  rail: { flexDirection: 'row', justifyContent: 'space-between' },
+  // From the centre of item 1 (10 %) to the centre of item 5 (90 %), behind the dots.
+  railTrack: { position: 'absolute', left: '10%', right: '10%', top: 15, height: 3, borderRadius: 2, overflow: 'hidden' },
+  railFill: { height: 3, width: '100%', borderRadius: 2, transformOrigin: 'left' },
   railItem: { alignItems: 'center', gap: 6, flex: 1, paddingHorizontal: 2 },
-  railDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  railNum: { fontSize: 12, fontWeight: '600' },
+  railDot: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  railDotActive: { transform: [{ scale: 1.1 }] },
+  railNum: { fontSize: 12, fontWeight: '700' },
   railLabel: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   step: { gap: 4 },
   heading: { marginBottom: 10, gap: 4 },
-  h1: { fontSize: 23, fontWeight: '600' },
+  h1: { fontSize: 22 },
   h2: { fontSize: 14, lineHeight: 20 },
   label: { fontSize: 14, fontWeight: '600', marginTop: 10, marginBottom: 6 },
   note: { fontSize: 12.5, lineHeight: 18 },

@@ -1,247 +1,215 @@
 /**
- * The partner app's palette.
+ * The partner (shop) app's palette — Design System v1, GREEN (2026-10-06).
  *
- * The brand ramp is GREEN — this app is RS Partner and it is deliberately its
- * own colour, not mobile-society's `#0A5BD7` blue. The neutrals, the coral
- * accent and the dark-mode surfaces stay shared with mobile-society so the two
- * apps still read as siblings; only the brand hue diverges.
+ * The values now come from `src/theme/tokens.ts` (DS §1, shop columns: primary
+ * `#2E9C68` / dark `#3FB27B`, ground `#F2F8F4` / `#060A16`, ink `#16302A`).
  *
- * This file is a TOKEN change only — the exported key names are exactly the ones
- * the existing screens already import, so nothing that renders had to be touched
- * to adopt it. Adding a key is safe; renaming one is not, because `login.tsx`,
- * `AppInput` and `AppButton` read these by name. That is why `brand.azure` keeps
- * a blue's name while holding a green: it is the ramp's bright accent step, and
- * the contract here is that values change and keys do not.
+ * The CONTRACT of this file is unchanged: the exported key names are the ones
+ * ~180 screens already import, so values change and keys do not. That is how
+ * every existing screen adopts the new look without being edited. Adding a key
+ * is safe (it must be added to BOTH maps — `ColorScheme` enforces it);
+ * renaming one is not. `brand.azure` keeps its old blue name for that reason.
  *
- * ── How the green ramp was chosen ─────────────────────────────────────────
+ * Two rules every value here obeys:
  *
- * `brand[800]` is `#0A4020` VERBATIM. That is already `app.json`'s
- * `android.adaptiveIcon.backgroundColor` and `splash.backgroundColor`, and it is
- * baked into the generated `assets/icon.png`, `splash-icon.png` and
- * `favicon.png` (see `scripts/generate-brand-assets.mjs`). Anchoring the ramp to
- * it rather than the other way round is what keeps the cold-start splash and the
- * login hero the same colour — and it fixes the ramp's hue at ~148°, which every
- * other decision below has to live with.
+ *   1. Every key in `Colors` / `DarkColors` except `overlay` and `shadow` is a
+ *      6-digit hex. Screens build tints as `${c.warning}1A`; an rgba() value
+ *      would silently produce an invalid colour. `colors-contract` in
+ *      `__tests__/design-kit.test.tsx` checks this.
+ *   2. `Colors` is the LIGHT map, kept flat because module-level
+ *      `StyleSheet.create` calls captured it at import time. Anything that has
+ *      to follow the phone's light/dark setting reads `themeColors(isDark)` (or
+ *      `useAppTheme()`) at render.
  *
- * Contrast, measured, not eyeballed:
- *   white on `500` (#0E7C43)          5.27:1   AA  — every contained button
- *   ink   on `400` (#2FA96C)          5.96:1   AA  — dark-mode button fill
- *   `400` on dark surface (#131C2E)   5.69:1   AA  — dark-mode link text
- *   `600` on `50`  (chip ink on bg)   6.57:1   AA  — StatusBadge, staff chips
- *   `700` on `50`  (onPrimaryContainer) 8.66:1 AA
- *   `500` on `50`  (active card ink)  4.84:1   AA  — the wizard's choice cards
- *
- * `400` on WHITE is only 2.99:1, so it is a dark-mode colour and a light-mode
- * FILL — never light-mode text. The auth screens used to colour their links with
- * it; they now use `primary`, which is AA on white.
- *
- * ── success vs primary, with a green brand ────────────────────────────────
- *
- * Once the brand is green, hue can no longer carry "this succeeded" on its own,
- * and pretending a few degrees of hue shift fixed that would be a lie. So:
- *
- *   1. `success` STAYS GREEN. It is the positive half of a red/green money pair
- *      on roughly fifteen screens (balance owed vs balance in credit, payment in
- *      vs payment out, in stock vs out of stock). Moving it to teal or blue
- *      would make "money received" read as "information".
- *   2. It is separated from the brand by CHROMA and VALUE instead. The brand's
- *      mid steps are deliberately muted pine (`400` sits at S 56%); `success` is
- *      full chroma at a cooler 163°. And it is now split per scheme the way
- *      `primary` always was — the old single `#10B981` was tuned for dark
- *      surfaces and failed AA on white at 2.54:1, which was a real legibility
- *      bug on every light-mode screen that prints a credit balance.
- *   3. Where the two would genuinely sit side by side as PEERS — the reports
- *      ageing chart's series list was `[success, primary, warning, error]` — the
- *      brand swatch is replaced by `info`, which is now a real blue rather than
- *      the old brand blue. That removes the collision structurally.
- *   4. In the signup wizard's step rail, "done" (success) sits next to "active"
- *      (primary), but the two are already told apart by glyph — a tick versus
- *      the step number — so hue is not the only signal there.
- *
- * `info` is worth its own note: it used to BE the brand blue, which made it
- * indistinguishable from `primary`. With a green brand it is free to be an
- * actual blue, which finally gives four status colours nobody can confuse —
- * green, blue, amber, rose.
- *
- * `Colors` stays a flat LIGHT-mode map because that is what the existing
- * StyleSheet.create calls captured at module load, and a StyleSheet built once
- * at import time cannot react to a theme change anyway. Anything that must
- * follow the system theme reads `themeColors(isDark)` at render instead — see
- * `constants/theme.ts`, which feeds react-native-paper both schemes.
+ * Contrast notes (measured):
+ *   white on `#2E9C68` is 3.46:1 — below AA for button labels, so every FILL
+ *     that carries white text uses `primaryFill` `#1F7F55` (4.97:1; Owner
+ *     2026-10-06). `#2E9C68` stays for accents, icons and charts. Small TEXT in
+ *     brand green uses `primaryDark` `#237A50` (5.3:1 on white).
+ *   dark scheme: white on `#3FB27B` is 2.7:1, so `textInverse` there is deep
+ *     green ink `#062B17` (5.76:1), and the dark `primaryFill` stays `#3FB27B`.
+ *   `success` `#217A48` (5.33:1 on white, 4.73:1 on `#E3F6EA`; was `#2A8A50`
+ *     at 4.33:1) and `primary` are both green (DS decision); they are
+ *     told apart by context and by the soft status ground, not by hue alone.
  */
+import { dsDark, dsLight } from '../theme/tokens';
 
 /** The raw ramps. One list, so a designer edits colour in exactly one place. */
 export const palette = {
   brand: {
-    50: '#ECF8F1',
-    100: '#D2EFDF',
-    200: '#A7DFC2',
-    300: '#69C797',
-    400: '#2FA96C',
-    500: '#0E7C43',
-    600: '#0B6537',
-    700: '#08512C',
-    /** `app.json`'s splash / adaptive-icon ground, verbatim. See the header. */
+    50: '#EEF8F2',
+    100: '#E1F4E8',
+    200: '#C6EBD3',
+    300: '#8FD0A8',
+    400: '#3FB27B',
+    500: '#2E9C68',
+    600: '#237A50',
+    700: '#1E6B47',
+    /** `app.json`'s splash / adaptive-icon ground, verbatim. Do not change. */
     800: '#0A4020',
     900: '#062B17',
-    /**
-     * The ramp's bright accent — the third stop of the hero gradient, and the
-     * only step that is meant to lift rather than sit. Named `azure` from the
-     * blue ramp this replaced; the name is kept because renaming a palette key
-     * is the one change this file forbids.
-     */
-    azure: '#0E9A63',
+    /** The hero sky's middle stop. Named `azure` from the old blue ramp; keys never change. */
+    azure: '#62BF8F',
   },
-  coral: { soft: '#FFE9E9', 100: '#FFE0E0', 400: '#FF8A8A', 500: '#FF6B6B', 600: '#F04E4E' },
-  ink: '#0F172A',
-  soft: '#475569',
-  muted: '#94A3B8',
-  faint: '#CBD5E1',
-  line: '#EEF1F6',
-  bg: '#F5F7FB',
-  surface: '#FFFFFF',
+  coral: { soft: '#FFF0EC', 100: '#F9CFC5', 400: '#F0907C', 500: '#E46F57', 600: '#C2553D' },
+  ink: dsLight.ink,
+  soft: dsLight.muted,
+  muted: '#8AA396',
+  faint: '#C9D9CF',
+  line: '#E3EEE7',
+  bg: dsLight.ground,
+  surface: dsLight.surface,
   dark: {
-    bg: '#0B1220',
-    surface: '#131C2E',
-    elevated: '#1B2740',
-    line: '#24314A',
-    muted: '#64748B',
-    ink: '#E7EDF7',
+    bg: dsDark.ground,
+    surface: dsDark.surface,
+    elevated: dsDark.surfaceAlt,
+    line: dsDark.line,
+    muted: '#7482A6',
+    ink: dsDark.ink,
   },
   /**
-   * The RESTING outline of a text field, per scheme.
-   *
-   * Deliberately heavier than `border`, which is `brand[200]` — a 1.5:1 tint
-   * that is right for a card hairline and far too faint for the boundary of
-   * something you are meant to tap and type in. Both of these clear 3:1 against
-   * their own surface, the AA target for a non-text UI boundary. Read by
-   * `AppInput`; see its header for why Paper's default was not enough.
+   * The RESTING outline of a text field / outlined button, per scheme. Heavier
+   * than `border` on purpose: both clear 3:1 against their own surface, the AA
+   * target for a non-text UI boundary. Read by `AppInput` and `AppButton`.
    */
-  fieldLine: { light: '#8593AA', dark: '#64748B' },
-  /** Light-scheme success: 4.95:1 on white, so it works as text AND as a fill. */
-  success: '#00805C',
-  /** Dark-scheme success: 8.90:1 on `dark.surface`. */
-  successLight: '#2FD3A5',
-  warn: '#F59E0B',
-  danger: '#F43F5E',
-  /** A real blue now, not the brand. 5.17:1 on white. */
-  info: '#2563EB',
-  infoLight: '#60A5FA',
+  fieldLine: { light: '#7A9488', dark: '#64748B' },
+  /** DS success, light: text on `#E3F6EA` (4.73:1) and on white (5.33:1). */
+  success: '#217A48',
+  /** Dark-scheme success. */
+  successLight: '#6FD3A0',
+  /** DS warn, deepened (1R review): 5.25:1 on white, 4.73:1 on its soft fill (was #B9651A, 4.25). */
+  warn: '#A3591A',
+  danger: '#C0344A',
+  info: '#3B5BDB',
+  infoLight: '#8EA6F5',
   white: '#FFFFFF',
 } as const;
 
 export const Colors = {
   // Brand
-  primary: palette.brand[500],
-  primaryLight: palette.brand[400],
-  primaryDark: palette.brand[700],
+  /**
+   * COLOUR sweep (2026-10-06). The legacy `primary` is read by ~180 screens:
+   * 154 times as a TEXT/ICON colour, 15 as a border, 5 as a FILL under white
+   * text (counted from source). At the DS accent #2E9C68 that is 3.46:1 on
+   * white and 3.0:1 on the green soft fill — the "faded" green links, labels
+   * and buttons. It now carries the DS shop-deep `#237A50` (5.29:1 on white,
+   * 4.61:1 on `#E1F4E8`, white text on it 5.29:1). The approved accent
+   * #2E9C68 stays in `ds.primary` (theme/tokens.ts) for the kit's rings,
+   * charts, focus lines and icons.
+   */
+  primary: dsLight.primaryDeep,
+  primaryLight: palette.brand.azure,
+  primaryDark: dsLight.primaryDeep,
+  /** NEW (D0 final): fill behind white text — buttons, active tab pill, solid badges. */
+  primaryFill: dsLight.primaryFill,
+  /** NEW (DS `shop-soft`): secondary-soft buttons, selected chips. */
+  primarySoft: dsLight.primarySoft,
 
-  // Secondary — coral, the product's accent. It is the only warm colour in the
-  // system, so it is reserved for one thing per screen (the primary action, or
-  // the count that needs attention). Used twice on a screen it stops meaning
-  // anything.
-  secondary: palette.coral[500],
+  // Secondary — coral, the warm accent (template badge / awning colour).
+  // Reserved for one thing per screen.
+  // COLOUR sweep: a FILL under white counts (badges, Paper `onSecondary`):
+  // white on coral-500 #E46F57 was 3.13:1, on coral-600 #C2553D 4.51:1.
+  secondary: palette.coral[600],
   secondaryLight: palette.coral[400],
   secondaryDark: palette.coral[600],
 
   // Backgrounds
-  background: palette.bg,
-  surface: palette.surface,
-  surfaceVariant: palette.brand[50],
+  background: dsLight.ground,
+  surface: dsLight.surface,
+  surfaceVariant: dsLight.primarySoft,
+  /** NEW: menus, snackbars, raised cells — a neutral raised surface. */
+  surfaceElevated: dsLight.surface,
 
   // Text
-  textPrimary: palette.ink,
-  textSecondary: palette.soft,
-  textDisabled: palette.muted,
-  textInverse: palette.white,
+  textPrimary: dsLight.ink,
+  textSecondary: dsLight.muted,
+  textDisabled: dsLight.faint,
+  textInverse: dsLight.onPrimary,
 
-  // Status
+  // Status (DS §1)
   success: palette.success,
   error: palette.danger,
   warning: palette.warn,
   info: palette.info,
 
   // Lines
-  border: palette.brand[200],
+  border: dsLight.line,
   divider: palette.line,
 
-  // Gradients — the auth hero. Deep → brand → accent, so the white wordmark at
-  // the TOP of the ramp sits on the darkest stop and keeps its contrast; the
-  // bright accent lands in the far corner where no text goes.
-  gradientStart: palette.brand[900],
-  gradientEnd: palette.brand[600],
-  gradientAccent: palette.brand.azure,
+  // Gradients — the legacy `Hero` (auth + old dashboard). Kept DEEP so the white
+  // text it draws at every corner stays readable; the new pastel sky lives in
+  // `theme/tokens.ts → heroSky` and is drawn by `HeroHeader`.
+  gradientStart: '#124D33',
+  gradientEnd: dsLight.primaryDeep,
+  gradientAccent: dsLight.primary,
 
   // Misc
-  overlay: 'rgba(4, 30, 17, 0.65)',
-  shadow: 'rgba(6, 43, 23, 0.12)',
+  overlay: dsLight.scrim,
+  shadow: 'rgba(20, 90, 55, 0.14)',
 } as const;
 
-/** The dark-scheme twin of the semantic subset. Same keys, different values. */
+/** The dark-scheme twin. Same keys, different values. */
 export const DarkColors = {
-  primary: palette.brand[400],
-  primaryLight: palette.brand[300],
-  primaryDark: palette.brand[600],
+  primary: dsDark.primary,
+  primaryLight: '#6FCB98',
+  primaryDark: '#8FDDB3',
+  primaryFill: dsDark.primaryFill,
+  primarySoft: dsDark.primarySoft,
   secondary: palette.coral[400],
-  secondaryLight: palette.coral[100],
+  secondaryLight: '#F7B9AA',
   secondaryDark: palette.coral[500],
-  background: palette.dark.bg,
-  surface: palette.dark.surface,
-  surfaceVariant: palette.dark.elevated,
-  textPrimary: palette.dark.ink,
-  textSecondary: '#AEBAD0',
-  textDisabled: palette.dark.muted,
-  textInverse: palette.ink,
-  // The light-scheme `success`/`info` are tuned to be legible on WHITE, which
-  // makes both of them too dark to read on `dark.surface`. The dark scheme takes
-  // the lighter twin of each — same hue, same meaning, legible on its own ground.
+  background: dsDark.ground,
+  surface: dsDark.surface,
+  surfaceVariant: dsDark.primarySoft,
+  surfaceElevated: dsDark.surfaceAlt,
+  textPrimary: dsDark.ink,
+  textSecondary: dsDark.muted,
+  textDisabled: dsDark.faint,
+  textInverse: dsDark.onPrimary,
   success: palette.successLight,
-  error: palette.danger,
-  warning: palette.warn,
+  error: '#F27A8C',
+  warning: '#F2B567',
   info: palette.infoLight,
-  border: palette.dark.line,
-  divider: palette.dark.line,
-  // Near-black green rather than near-black navy, and the accent is `500` rather
-  // than `600` so the ramp keeps the same lightness spread (4% → 15% → 27%) the
-  // blue one had. A gradient whose three stops sit within seven points of each
-  // other just looks like a flat fill that failed.
-  gradientStart: '#04120A',
-  gradientEnd: palette.brand[800],
-  gradientAccent: palette.brand[500],
-  overlay: 'rgba(2, 10, 6, 0.72)',
+  border: dsDark.line,
+  divider: '#1C2539',
+  // D0 final: green night (was navy), same stops as `heroSky.dark`.
+  gradientStart: '#04140D',
+  gradientEnd: '#0D3A26',
+  gradientAccent: '#1B6A45',
+  overlay: dsDark.scrim,
   shadow: 'rgba(0, 0, 0, 0.5)',
 } as const;
 
 /**
- * Widened to `string` per key rather than `typeof Colors`.
- *
- * `Colors` and `DarkColors` are both `as const`, so their property types are the
- * literal hex strings they hold — which makes them structurally DIFFERENT types
- * and `DarkColors` unassignable to `typeof Colors`. Naming the shape once, with
- * string values, is what lets `themeColors` return either.
+ * Widened to `string` per key rather than `typeof Colors`: both maps are
+ * `as const`, so their literal types differ. Naming the shape once is what lets
+ * `themeColors` return either — and makes a key missing from one map a compile
+ * error.
  */
 export type ColorScheme = { readonly [K in keyof typeof Colors]: string };
 
+// Compile-time proof that DarkColors has every key Colors has.
+const _darkHasEveryKey: ColorScheme = DarkColors;
+void _darkHasEveryKey;
+
 /**
- * The palette for the scheme currently in force.
- *
- * Call this INSIDE a component (`useColorScheme()` feeds the argument) for
- * anything that has to follow the system theme. `Colors` is the light map and
- * is what module-level `StyleSheet.create` calls already froze — passing
- * `Colors` where a dark surface is wanted is the one mistake this pair invites,
- * so any screen that supports dark mode should take its colours from here and
- * from nowhere else.
+ * The palette for the scheme currently in force. Call it INSIDE a component
+ * (`useColorScheme()` feeds the argument), or use `useAppTheme()`.
  */
 export const themeColors = (isDark: boolean): ColorScheme => (isDark ? DarkColors : Colors);
 
-/** Radii and shadows, matching mobile-society so cards read the same in both apps. */
+/**
+ * Radii. Existing keys keep their names; values follow DS §3 (cards 20–28,
+ * rows 18–20, fields 16, buttons/chips fully round). New code: `radius` in
+ * `theme/tokens.ts`.
+ */
 export const radii = {
   xs: 8,
-  sm: 10,
-  field: 14,
+  sm: 12,
+  field: 16,
   md: 16,
-  card: 18,
-  lg: 20,
-  sheet: 24,
+  card: 22,
+  lg: 24,
+  sheet: 28,
   pill: 999,
 } as const;

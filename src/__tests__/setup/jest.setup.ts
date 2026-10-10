@@ -34,6 +34,18 @@ jest.mock('expo-linear-gradient', () => {
   const { View } = require('react-native');
   return { LinearGradient: View };
 });
+/*
+  D0 design kit: tests run as a phone with "reduce motion" ON. Every motion
+  helper (src/theme/motion.tsx) then renders its final state at once — no
+  infinite ambient loops or count-up frames ticking between assertions, which
+  otherwise overlap React's act() scopes. Behaviour is identical; only the
+  animation is skipped, exactly as on a real reduce-motion phone.
+*/
+jest.mock('react-native-reanimated', () => {
+  const actual = jest.requireActual('react-native-reanimated');
+  // `default` (the Animated namespace) is not enumerable, so name it.
+  return { __esModule: true, ...actual, default: actual.default, useReducedMotion: () => true };
+});
 
 require('../../i18n').initI18n('en');
 

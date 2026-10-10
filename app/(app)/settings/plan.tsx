@@ -4,7 +4,14 @@ import { ActivityIndicator, Text } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { themeColors, radii, palette, ColorScheme } from '../../../src/constants/colors';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { themeColors, ColorScheme } from '../../../src/constants/colors';
+// >>> M05 — Design System v1 (green): kit badges/skeletons, theme tokens, rise + count-up motion.
+import { SkeletonList, Skeleton, StatusBadge, Title } from '../../../src/components/ui';
+import { useAppTheme } from '../../../src/theme/useAppTheme';
+import { radius, type StatusTone } from '../../../src/theme/tokens';
+import { Rise, useCountUp } from '../../../src/theme/motion';
+// <<< M05
 import { IN_APP_PLAN_PURCHASES, WEB_BILLING_URL } from '../../../src/constants/app';
 import { usePartnerEntitlements, usePlanUsage, CATALOG_ITEMS_KEY } from '../../../src/hooks'; // X2F: module list removed
 import { platformBillingApi, TenantInvoice } from '../../../src/api/billing.api';
@@ -110,10 +117,42 @@ function daysUntil(iso: string | null | undefined): number | null {
 }
 
 function KeyValue({ c, label, value, tone }: { c: ColorScheme; label: string; value: string; tone?: string }) {
+  // M05: a calm panel row (surfaceAlt) — muted label, ink value; `tone` still colours the value.
+  const { ds } = useAppTheme();
   return (
-    <View style={styles.kv}>
-      <Text style={[styles.kvLabel, { color: c.textSecondary }]}>{label}</Text>
+    <View style={[styles.kv, { backgroundColor: ds.surfaceAlt }]}>
+      <Text style={[styles.kvLabel, { color: ds.muted }]}>{label}</Text>
       <Text style={[styles.kvValue, { color: tone ?? c.textPrimary }]}>{value}</Text>
+    </View>
+  );
+}
+
+/** M05: the state of the plan as a kit badge tone. */
+const STATUS_TONE: Record<string, StatusTone> = {
+  active: 'success', trialing: 'info', scheduled: 'info', free: 'neutral',
+  past_due: 'danger', pending_payment: 'warn', expired: 'danger', cancelled: 'neutral',
+};
+
+/** M05: a soft status notice (tinted fill, a round icon, ink-strong text in the tone's colour). */
+function Notice({ tone, icon, children, testID }: { tone: StatusTone; icon: string; children: React.ReactNode; testID?: string }) {
+  const { status } = useAppTheme();
+  const s = status[tone];
+  return (
+    <View testID={testID} style={[styles.banner, { backgroundColor: s.bg, borderColor: `${s.fg}33` }]}>
+      <MaterialCommunityIcons name={icon as never} size={18} color={s.fg} style={{ marginTop: 1 }} />
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>{children}</View>
+    </View>
+  );
+}
+
+/** M05: the trial's days left as a big Sora number that counts up (instant under reduce-motion). */
+function DaysTile({ days, label }: { days: number; label: string }) {
+  const { ds } = useAppTheme();
+  const shown = useCountUp(days);
+  return (
+    <View style={[styles.daysTile, { backgroundColor: ds.primarySoft }]} accessible accessibilityLabel={`${label}: ${days}`}>
+      <Title style={{ fontSize: 26, lineHeight: 32, color: ds.ink }}>{String(Math.round(shown))}</Title>
+      <Text style={{ color: ds.muted, fontSize: 11.5, textAlign: 'center' }}>{label}</Text>
     </View>
   );
 }
@@ -122,6 +161,7 @@ export default function PlanScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { ds, status: tones } = useAppTheme(); // M05
   const { entitlements, ready, refresh } = usePartnerEntitlements();
   const { capacity } = usePlanUsage();
   const catalogItems = capacity(CATALOG_ITEMS_KEY); // X2F: the one meter
@@ -215,7 +255,8 @@ export default function PlanScreen() {
   if (!ready) {
     return (
       <Screen c={c} title={t('settings.plan.title')}>
-        <View style={styles.center}><ActivityIndicator color={c.primary} /></View>
+        {/* M05: a skeleton in the screen's shape, not a lone spinner. */}
+        <SkeletonList rows={3} testID="plan-loading" />
       </Screen>
     );
   }
@@ -274,23 +315,35 @@ export default function PlanScreen() {
   return (
     <Screen c={c} title={t('settings.plan.title')} subtitle={planName}>
       {/* ── the headline ─────────────────────────────────────────────── */}
+      {/* M05 (Design System v1, green): the sections rise in with a stagger; the plan sits on a
+          solid icon tile with its name in Sora and its state as a kit badge; notices are soft
+          status tints (light + dark tokens, no palette hex); the trial's days count up. */}
+      <Rise index={0}>
       <Card c={c}>
         <View style={styles.headlineRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.planName, { color: c.textPrimary }]} numberOfLines={2}>{planName}</Text>
-            <Text style={{ color: ALARMING.has(status) ? c.error : c.textSecondary, fontSize: 13, marginTop: 2 }}>
-              {statusLabel}
-              {plan.isFreeTier ? t('settings.plan.freeTierSuffix') : ''}
-            </Text>
+          <View style={[styles.planIcon, { backgroundColor: ds.primaryFill }]}>
+            <MaterialCommunityIcons name="crown-outline" size={24} color={ds.onPrimary} />
           </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Title style={styles.planName} numberOfLines={2}>{planName}</Title>
+            <View style={styles.badgeRow}>
+              <StatusBadge label={statusLabel} tone={STATUS_TONE[status] ?? 'neutral'} />
+              {plan.isFreeTier ? (
+                <Text style={{ color: ds.muted, fontSize: 12.5 }}>{t('settings.plan.freeTierSuffix').replace(/^\s*[·•-]\s*/, '')}</Text>
+              ) : null}
+            </View>
+          </View>
+          {plan.isTrial && trialDays !== null && trialDays > 0 ? (
+            <DaysTile days={trialDays} label={t('settings.plan.daysLeftLabel')} />
+          ) : null}
         </View>
 
         {/* A trial with a deadline nobody can see is worse than no trial: the
             product simply stops one morning. Phase 4 put `isTrial`/`trialEndsAt`
             on the entitlements payload for exactly this line. */}
         {plan.isTrial && (
-          <View style={[styles.banner, { backgroundColor: (trialDays !== null && trialDays <= 3) ? palette.coral.soft : c.surfaceVariant }]}>
-            <Text style={{ color: (trialDays !== null && trialDays <= 3) ? palette.coral[600] : c.textPrimary, fontWeight: '600', fontSize: 13 }}>
+          <Notice tone={(trialDays !== null && trialDays <= 3) ? 'danger' : 'info'} icon="timer-sand" testID="plan-trial-notice">
+            <Text style={{ color: (trialDays !== null && trialDays <= 3) ? tones.danger.fg : ds.ink, fontWeight: '600', fontSize: 13 }}>
               {/* `_one` / `_other`, not an `-s`. Hindi cannot suffix, and CLDR
                   puts 0 AND 1 in `one` for it — which is why zero is handled by
                   its own branch above rather than left to the plural. */}
@@ -305,7 +358,7 @@ export default function PlanScreen() {
                       : t('settings.plan.trialEndsOnLeft', { count: trialDays, date: formatDay(plan.trialEndsAt, t) })}
             </Text>
             {IN_APP_PLAN_PURCHASES ? (
-              <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>
+              <Text style={{ color: ds.muted, fontSize: 12, marginTop: 2 }}>
                 {plan.trialEndsAt ? t('settings.plan.trialEndsOn', { date: formatDay(plan.trialEndsAt, t) }) : ''}
                 {t('settings.plan.trialChoose')}
               </Text>
@@ -313,25 +366,25 @@ export default function PlanScreen() {
               // `trialEndsOnLeft` already carries this promise; every other
               // branch gets it on its own line.
               (trialDays === null || trialDays <= 0) && (
-                <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 2 }}>
+                <Text style={{ color: ds.muted, fontSize: 12, marginTop: 2 }}>
                   {t('settings.plan.trialDetailsNote')}
                 </Text>
               )
             )}
-          </View>
+          </Notice>
         )}
 
         {planEndingDays !== null && (
-          <View style={[styles.banner, { backgroundColor: c.surfaceVariant }]}>
-            <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>
+          <Notice tone="warn" icon="calendar-clock">
+            <Text style={{ color: ds.ink, fontWeight: '600', fontSize: 13 }}>
               {t('settings.plan.planEndsOnLeft', { count: planEndingDays, date: formatDay(endDate, t) })}
             </Text>
-          </View>
+          </Notice>
         )}
 
         {graceEndsAt && (
-          <View style={[styles.banner, { backgroundColor: palette.coral.soft }]}>
-            <Text style={{ color: palette.coral[600], fontWeight: '600', fontSize: 13 }}>
+          <Notice tone="danger" icon="alert-circle-outline">
+            <Text style={{ color: tones.danger.fg, fontWeight: '600', fontSize: 13 }}>
               {/* The date it ended, and how long the features stay on — no
                   "payment is overdue", which reads as "go and pay somewhere". */}
               {IN_APP_PLAN_PURCHASES
@@ -340,13 +393,17 @@ export default function PlanScreen() {
                   ? t('settings.plan.graceEnded', { date: formatDay(endDate, t), until: formatDay(graceEndsAt, t) })
                   : t('settings.plan.graceUntil', { until: formatDay(graceEndsAt, t) })}
             </Text>
-          </View>
+          </Notice>
         )}
 
         {isAdmin && subError && <ErrorBlock c={c} message={subError} onRetry={() => void subscriptionQuery.refetch()} />}
 
         {isAdmin && !subError && subscriptionQuery.isPending && (
-          <ActivityIndicator color={c.primary} style={{ alignSelf: 'flex-start' }} />
+          // M05: rows-shaped shimmer while the subscription loads (was a lone spinner).
+          <View style={{ gap: 8 }} testID="plan-sub-loading">
+            <Skeleton height={40} rounded={radius.row} />
+            <Skeleton height={40} rounded={radius.row} />
+          </View>
         )}
 
         {isAdmin && sub && (
@@ -354,7 +411,10 @@ export default function PlanScreen() {
             <KeyValue
               c={c}
               label={t('settings.plan.billingCycle')}
-              value={sub.subscription?.tenure ?? (plan.isFreeTier ? t('settings.plan.notBilled') : '—')}
+              // M05: the cycle in the reader's words (was the raw value, e.g. "halfYearly", in Hindi too).
+              value={sub.subscription?.tenure
+                ? t(`settings.plan.tenure.${sub.subscription.tenure}`, { defaultValue: sub.subscription.tenure })
+                : (plan.isFreeTier ? t('settings.plan.notBilled') : '—')}
             />
             <KeyValue
               c={c}
@@ -372,7 +432,7 @@ export default function PlanScreen() {
             {/* The whole point of `nextPriceNotice`: they are told the new rate
                 and the date, instead of finding out on an invoice. */}
             {IN_APP_PLAN_PURCHASES && sub.nextPriceNotice && (
-              <Text style={{ color: c.warning, fontSize: 12, marginTop: 2 }}>
+              <Text style={{ color: tones.warn.fg, fontSize: 12, marginTop: 2 }}>
                 {t('settings.plan.priceNotice', {
                   date: formatDay(sub.nextPriceNotice.effectiveFrom, t),
                   amount: formatPaise(sub.nextPriceNotice.wouldBecomePaise),
@@ -394,12 +454,14 @@ export default function PlanScreen() {
         )}
 
         {!isAdmin && (
-          <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>
+          <Text style={{ color: ds.muted, fontSize: 12.5 }}>
             {t('settings.plan.staffNotice')}
           </Text>
         )}
       </Card>
+      </Rise>
 
+      <Rise index={1}>
       {IN_APP_PLAN_PURCHASES ? (
         <Row
           c={c}
@@ -411,34 +473,37 @@ export default function PlanScreen() {
       ) : (
         // Shown to everybody, trial or not, admin or not: the one answer to
         // "how do I change this", with no link and no place to go and pay.
-        <Card c={c} style={{ backgroundColor: c.surfaceVariant }}>
-          <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('settings.plan.changesNotInApp')}</Text>
-        </Card>
+        <Notice tone="neutral" icon="information-outline">
+          <Text style={{ color: ds.ink, fontSize: 13 }}>{t('settings.plan.changesNotInApp')}</Text>
+        </Notice>
       )}
+      </Rise>
 
       {/* >>> X2F — ONE-FACTOR PLANS (Owner, 2026-10-04). Every feature is on every
           plan; the plan sets one number, catalogue items (active products +
           services). The old per-module list and its ON/OFF/LOCKED rows are gone. */}
+      <Rise index={2} style={{ gap: 12 }}>
       <SectionLabel c={c}>{t('planItems.heading')}</SectionLabel>
       <Card c={c}>
         <Text style={{ color: c.textPrimary, fontSize: 13 }}>{t('planItems.oneFactorNote')}</Text>
         {/* Usage is sent only to people who can act on it, so an UNKNOWN answer
             (not included) draws no meter rather than a row of zeroes. */}
         <UsageMeterBar cap={catalogItems} c={c} />
-        <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('planItems.countsNote')}</Text>
+        <Text style={{ color: ds.muted, fontSize: 12 }}>{t('planItems.countsNote')}</Text>
         {(catalogItems.overBy ?? 0) > 0 && (
-          <View style={[styles.banner, { backgroundColor: palette.coral.soft }]}>
-            <Text style={{ color: palette.coral[600], fontWeight: '600', fontSize: 13 }}>
+          <Notice tone="danger" icon="alert-circle-outline">
+            <Text style={{ color: tones.danger.fg, fontWeight: '600', fontSize: 13 }}>
               {t('planItems.overBy', { n: catalogItems.overBy, limit: catalogItems.limit ?? 0 })}
             </Text>
-          </View>
+          </Notice>
         )}
       </Card>
+      </Rise>
       {/* <<< X2F */}
 
       {/* ── the receipts ─────────────────────────────────────────────── */}
       {isAdmin && (
-        <>
+        <Rise index={3} style={{ gap: 12 }}>
           <SectionLabel c={c}>{t('settings.plan.invoicesHeading')}</SectionLabel>
           {invoicesQuery.isError ? (
             <ErrorBlock
@@ -447,13 +512,13 @@ export default function PlanScreen() {
               onRetry={() => void invoicesQuery.refetch()}
             />
           ) : invoicesQuery.isPending ? (
-            <Card c={c}><ActivityIndicator color={c.primary} /></Card>
+            <SkeletonList rows={2} testID="plan-invoices-loading" />
           ) : invoices.length === 0 ? (
-            <Card c={c}>
-              <Text style={{ color: c.textSecondary, fontSize: 13 }}>
+            <Notice tone="neutral" icon="receipt">
+              <Text style={{ color: ds.ink, fontSize: 13 }}>
                 {t('settings.plan.invoicesEmpty')}
               </Text>
-            </Card>
+            </Notice>
           ) : (
             <Card c={c} style={styles.listCard}>
               {invoices.map((invoice, i) => {
@@ -469,20 +534,22 @@ export default function PlanScreen() {
                       c={c}
                       icon={paid ? 'receipt' : invoice.status === 'REFUNDED' ? 'cash-refund' : 'clock-outline'}
                       title={invoice.customInvoiceNumber || formatDay(invoice.paidAt || invoice.createdAt, t)}
+                      // M05: the status in the reader's words (was the raw "PAID"/"PENDING" in Hindi too).
                       subtitle={
-                        `${formatPaise(invoice.amount)} · ${invoice.status ?? 'PENDING'}` +
+                        `${formatPaise(invoice.amount)} · ${t(`settings.plan.invoiceStatus.${invoice.status ?? 'PENDING'}`, { defaultValue: invoice.status ?? 'PENDING' })}` +
                         (invoice.planId?.name ? ` · ${invoice.planId.name}` : '') +
                         (invoice.pricingSnapshot?.line ? `\n${invoice.pricingSnapshot.line}` : '')
                       }
                       right={
                         sharingId === invoice._id ? (
-                          <ActivityIndicator color={c.primary} size={18} />
+                          <ActivityIndicator color={tones.brand.fg} size={18} />
                         ) : hasFile ? (
-                          <Text style={{ color: c.primary, fontSize: 12, fontWeight: '600' }}>
+                          // M05: the AA green for text (shop `primary` is a fill: 3.5:1 as 12 px text on white).
+                          <Text style={{ color: tones.brand.fg, fontSize: 12, fontWeight: '600' }}>
                             {invoice.razorpayInvoiceUrl ? t('settings.plan.invoiceOpen') : t('settings.plan.invoiceShare')}
                           </Text>
                         ) : awaitingPayment ? (
-                          <Text style={{ color: c.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                          <Text style={{ color: ds.muted, fontSize: 12, fontWeight: '600' }}>
                             {t('settings.plan.invoicePaymentPending')}
                           </Text>
                         ) : undefined
@@ -497,9 +564,9 @@ export default function PlanScreen() {
                         title={t('settings.plan.creditNote', { number: invoice.creditNoteNumber })}
                         right={
                           openingNoteId === invoice._id ? (
-                            <ActivityIndicator color={c.primary} size={18} />
+                            <ActivityIndicator color={tones.brand.fg} size={18} />
                           ) : (
-                            <Text style={{ color: c.primary, fontSize: 12, fontWeight: '600' }}>{t('settings.plan.invoiceOpen')}</Text>
+                            <Text style={{ color: tones.brand.fg, fontSize: 12, fontWeight: '600' }}>{t('settings.plan.invoiceOpen')}</Text>
                           )
                         }
                         onPress={() => void openCreditNote(invoice)}
@@ -512,7 +579,7 @@ export default function PlanScreen() {
               })}
             </Card>
           )}
-        </>
+        </Rise>
       )}
 
       <Row
@@ -531,11 +598,14 @@ export default function PlanScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { paddingVertical: 48, alignItems: 'center' },
-  headlineRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  planName: { fontSize: 20, fontWeight: '700' },
-  banner: { borderRadius: radii.sm, padding: 10 },
-  kv: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  headlineRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  planName: { fontSize: 20, lineHeight: 26 },
+  // M05 (DS v1): the plan's icon tile, the badge row, the trial days tile, soft notices, panel rows.
+  planIcon: { width: 48, height: 48, borderRadius: radius.tile, alignItems: 'center', justifyContent: 'center' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 6 },
+  daysTile: { minWidth: 72, borderRadius: radius.tile, paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center' },
+  banner: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: radius.row, borderWidth: 1, padding: 12 },
+  kv: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, borderRadius: radius.row, paddingHorizontal: 12, paddingVertical: 9 },
   kvLabel: { fontSize: 12.5 },
   kvValue: { fontSize: 13, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
   listCard: { padding: 0, overflow: 'hidden' },

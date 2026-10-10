@@ -1,11 +1,18 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, useColorScheme, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { themeColors, radii, ColorScheme } from '../../src/constants/colors';
+import { themeColors } from '../../src/constants/colors';
+import { useIsOnline } from '../../src/hooks/useIsOnline';
+import { EmptyState, SkeletonList } from '../../src/components/ui';
+import { useAppTheme } from '../../src/theme/useAppTheme';
+import { radius, typeScale, motion } from '../../src/theme/tokens';
+import { PressableScale, easeOut, useMotionOK } from '../../src/theme/motion';
 import { formatTime, Translate } from '../../src/features/bookings/format';
 import { usePartnerEntitlements } from '../../src/hooks';
 import { apiErrorMessage } from '../../src/api/axios';
@@ -16,7 +23,7 @@ import {
   useMarkNotificationsRead,
   useNotifications,
 } from '../../src/features/notifications/hooks';
-import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../src/features/more/ui';
+import { ErrorBlock, Loading, Screen } from '../../src/features/more/ui';
 import { HelpButton } from '../../src/features/help/HelpButton';
 
 /**
@@ -91,40 +98,63 @@ function whenLabel(iso: string, t: Translate): string {
   });
 }
 
+/** Rows past the first screenful mount without the entrance (rule 14). */
+const STAGGER_ROWS = 7;
+
+/**
+ * One notification (1R): a tinted round icon, the title (bold while unread),
+ * the body and the time, and an unread dot. Unread rows sit on the brand soft
+ * ground with a green edge; read rows are plain cards with a hairline. The
+ * first screenful rises in with a short stagger; press = scale 0.97.
+ */
 function NotificationItem({
-  row, c, onPress,
-}: { row: NotificationRow; c: ColorScheme; onPress: () => void }) {
+  row, index, onPress,
+}: { row: NotificationRow; index: number; onPress: () => void }) {
   const { t } = useTranslation();
+  const { ds, tints, shadow } = useAppTheme();
+  const motionOK = useMotionOK();
   const unread = !row.readAt;
+  const tn = tints[unread ? 'green' : 'blue'];
   return (
-    <Pressable onPress={onPress} accessibilityRole="button">
-      <View style={[styles.row, { backgroundColor: c.surface }]}>
-        <View style={[styles.icon, { backgroundColor: unread ? c.surfaceVariant : 'transparent' }]}>
-          <MaterialCommunityIcons
-            name={iconForKind(row.kind) as never}
-            size={20}
-            color={unread ? c.primary : c.textDisabled}
-          />
+    <Animated.View
+      entering={motionOK && index < STAGGER_ROWS
+        ? FadeInDown.duration(motion.rise.duration * 0.6).delay(index * 60).easing(easeOut)
+        : undefined}
+    >
+      <PressableScale
+        onPress={onPress}
+        accessibilityRole="button"
+        style={[
+          styles.row,
+          // Unread = green edge (+ dot + bold title) on the plain surface, not a
+          // soft fill: muted body text on the soft green would drop under 4.5:1.
+          { backgroundColor: ds.surface, borderColor: unread ? ds.primary : ds.line, borderWidth: unread ? 1.5 : 1 },
+          shadow('card'),
+        ]}
+      >
+        <View style={styles.icon}>
+          <LinearGradient colors={[tn.from, tn.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, styles.iconFill]} />
+          <MaterialCommunityIcons name={iconForKind(row.kind) as never} size={20} color={tn.icon} />
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={styles.text}>
           {/* `row.title` and `row.body` are the server's own words — the
               notification as it was composed and sent — and are shown exactly as
               they arrive. See `UsageMeter.tsx` for the trade this app makes on
               server-supplied text. */}
           <Text
-            style={[styles.title, { color: c.textPrimary, fontWeight: unread ? '700' : '500' }]}
+            style={[styles.title, { color: ds.ink, fontWeight: unread ? '700' : '500' }]}
             numberOfLines={2}
           >
             {row.title}
           </Text>
           {row.body ? (
-            <Text style={[styles.body, { color: c.textSecondary }]} numberOfLines={3}>{row.body}</Text>
+            <Text style={[typeScale.detail, styles.body, { color: ds.muted }]} numberOfLines={3}>{row.body}</Text>
           ) : null}
-          <Text style={[styles.when, { color: c.textDisabled }]}>{whenLabel(row.createdAt, t)}</Text>
+          <Text style={[typeScale.caption, styles.when, { color: ds.muted }]}>{whenLabel(row.createdAt, t)}</Text>
         </View>
-        {unread && <View style={[styles.dot, { backgroundColor: c.primary }]} />}
-      </View>
-    </Pressable>
+        {unread ? <View style={[styles.dot, { backgroundColor: ds.primary }]} /> : null}
+      </PressableScale>
+    </Animated.View>
   );
 }
 
@@ -132,6 +162,8 @@ export default function NotificationsScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { ds, status } = useAppTheme();
+  const online = useIsOnline();
   const { hasModule, entitlements } = usePartnerEntitlements();
   const query = useNotifications();
   const markRead = useMarkNotificationsRead();
@@ -242,7 +274,7 @@ export default function NotificationsScreen() {
               accessibilityLabel={t('notifications.screen.markAllA11y')}
             >
               <Text
-                style={{ color: c.primary, fontSize: 12.5, fontWeight: '600', textAlign: 'right' }}
+                style={{ color: status.brand.fg, fontSize: 12.5, fontWeight: '600', textAlign: 'right' }}
                 numberOfLines={2}
               >
                 {markRead.isPending ? '…' : t('notifications.screen.markAll')}
@@ -256,26 +288,38 @@ export default function NotificationsScreen() {
       {loadError ? (
         <ErrorBlock c={c} message={loadError} onRetry={() => void query.refetch()} />
       ) : query.isPending ? (
-        <Loading c={c} label={t('notifications.screen.loading')} />
+        // Skeleton rows while the first page loads; offline keeps the shared
+        // "waiting for signal" words.
+        online ? (
+          <View style={styles.listContent}><SkeletonList rows={5} testID="notifications-loading" /></View>
+        ) : (
+          <Loading c={c} label={t('notifications.screen.loading')} />
+        )
       ) : (
         <FlatList
           data={rows}
           keyExtractor={(row) => row._id}
-          renderItem={({ item }) => <NotificationItem row={item} c={c} onPress={() => openRow(item)} />}
+          renderItem={({ item, index }) => <NotificationItem row={item} index={index} onPress={() => openRow(item)} />}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          onRefresh={refresh}
-          refreshing={query.isRefetching}
+          refreshControl={
+            <RefreshControl
+              refreshing={query.isRefetching}
+              onRefresh={refresh}
+              tintColor={ds.primary}
+              colors={[ds.primary]}
+              progressBackgroundColor={ds.surface}
+            />
+          }
           onEndReachedThreshold={0.4}
           onEndReached={loadOlder}
           ListFooterComponent={
             loadingOlder ? (
-              <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
+              <ActivityIndicator color={ds.primary} style={{ marginVertical: 16 }} />
             ) : null
           }
           ListEmptyComponent={
-            <EmptyBlock
-              c={c}
+            <EmptyState
               icon="bell-outline"
               title={t('notifications.screen.emptyTitle')}
               body={t('notifications.screen.emptyBody')}
@@ -289,12 +333,14 @@ export default function NotificationsScreen() {
 
 const styles = StyleSheet.create({
   listContent: { padding: 16, paddingBottom: 40, flexGrow: 1 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderRadius: radii.card, padding: 14 },
-  icon: { width: 36, height: 36, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 14.5 },
-  body: { fontSize: 12.5, marginTop: 2, lineHeight: 18 },
-  when: { fontSize: 11, marginTop: 4 },
-  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderRadius: radius.row, padding: 14, borderWidth: 1 },
+  icon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  iconFill: { borderRadius: 20 },
+  text: { flex: 1, minWidth: 0 },
+  title: { fontSize: 14.5, lineHeight: 20 },
+  body: { marginTop: 2 },
+  when: { marginTop: 4 },
+  dot: { width: 9, height: 9, borderRadius: 5, marginTop: 6 },
   headerRight: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, maxWidth: 160 },
   markAll: {
     minWidth: 48, minHeight: 44, maxWidth: 104, flexShrink: 1,

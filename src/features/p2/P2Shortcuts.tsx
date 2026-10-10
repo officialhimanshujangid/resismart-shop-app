@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next';
 
 import { ColorScheme } from '../../constants/colors';
 import { usePartnerEntitlements } from '../../hooks';
-import { ActionRow, PillButton } from '../p1/ui';
+import { ActionRow } from '../p1/ui';
+import { Button } from '../../components/ui';
+import { Rise } from '../../theme/motion';
 import { categoryModulesOf, P2Module } from './modules';
 import type { PartnerAccessModule, PartnerModule } from '../../types/api-contract.generated';
 
@@ -77,24 +79,34 @@ export function useP2Doors(): P2Door[] {
     && d.anyOf.some(([m, level]) => can(m, level)));
 }
 
-/** Today's quick buttons for the daily P2 work (deliveries, attendance, expiry, diary, jobs). */
-export function P2TodayShortcuts({ c }: { c: ColorScheme }) {
+/**
+ * Today's quick buttons for the daily P2 work (deliveries, attendance, expiry, diary, jobs).
+ *
+ * M04-H redesign: DS v1 kit `Button`s (soft, small) in a wrapping row. They were
+ * `PillButton`s with the first one filled — white on `c.primary` `#2E9C68` is
+ * 3.46:1 (below AA) and its label was cut to one line ("…" in Hindi). Today's
+ * single primary action is "New bill" on the sales card, so these are all the
+ * secondary-soft look. Same doors, same gates, same testIDs.
+ */
+export function P2TodayShortcuts(_props: { c: ColorScheme }) {
   const { t } = useTranslation();
   const doors = useP2Doors().filter((d) => d.today);
   if (!doors.length) return null;
   return (
-    <ActionRow>
-      {doors.map((d, i) => (
-        <PillButton
-          key={d.key}
-          c={c}
-          tone={i === 0 ? 'primary' : 'outline'}
-          icon={d.icon}
-          label={t(d.labelKey)}
-          onPress={() => router.push(d.href)}
-          testID={`p2-today-${d.key}`}
-        />
-      ))}
-    </ActionRow>
+    <Rise index={4}>
+      <ActionRow>
+        {doors.map((d) => (
+          <Button
+            key={d.key}
+            variant="soft"
+            size="sm"
+            icon={d.icon}
+            label={t(d.labelKey)}
+            onPress={() => router.push(d.href)}
+            testID={`p2-today-${d.key}`}
+          />
+        ))}
+      </ActionRow>
+    </Rise>
   );
 }

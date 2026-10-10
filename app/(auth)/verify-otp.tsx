@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -9,17 +8,22 @@ import {
   useColorScheme,
   TextInput as RNTextInput,
 } from 'react-native';
-import { Text, Snackbar, ActivityIndicator } from 'react-native-paper';
+import { Text, Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '../../src/context/AuthContext';
-import { AppButton } from '../../src/components/AppButton';
-import { Hero } from '../../src/components/Hero';
+import { Button, EmptyState, GlassCard, Title } from '../../src/components/ui';
+import { AuthHero, HERO_OVERLAP } from '../../src/components/ui/AuthHero';
+import { OtpCells } from '../../src/components/ui/OtpCells';
+import { SuccessCheck } from '../../src/components/ui/Feedback';
+import { BrandWordmark } from '../../src/components/ui/BrandWordmark';
+import { useAppTheme } from '../../src/theme/useAppTheme';
+import { Rise } from '../../src/theme/motion';
 import { OtpDeliveryNotice } from '../../src/components/OtpDeliveryNotice';
 import { OtpAltVia, OtpDeliveredVia, OtpVia, ProfileInfo } from '../../src/api/auth.api';
-import { themeColors, radii } from '../../src/constants/colors';
+import { themeColors } from '../../src/constants/colors';
 import { ContextPickerModal } from '../../src/components/ContextPickerModal'; // M01 audit
 import { apiErrorMessage } from '../../src/api/axios'; // M01 audit
 
@@ -99,6 +103,12 @@ export default function VerifyOtpScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { status } = useAppTheme();
+  const link = status.brand.fg; // brand green that clears AA as small text
+  /** 1R presentation only: green boxes + a tick once accepted; a shake on a refused code. */
+  const [accepted, setAccepted] = useState(false);
+  const [refused, setRefused] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
   const params = useLocalSearchParams<{
     identifier?: string;
     reason?: string;
@@ -167,6 +177,7 @@ export default function VerifyOtpScreen() {
       try {
         const result = await verifyLoginOtp(identifier, value);
         if (result.success) {
+          setAccepted(true);
           /**
            * No navigation, and TWO guards do the moving — which is worth being
            * precise about, because for a long time only one of them did and a
@@ -199,6 +210,8 @@ export default function VerifyOtpScreen() {
         }
         // <<< M01 audit
         show(result.error ?? t('auth.verifyOtp.codeFailed'), true);
+        setRefused(true);
+        setShakeKey((k) => k + 1);
         setCode('');
       } finally {
         setBusy(false);
@@ -258,6 +271,7 @@ export default function VerifyOtpScreen() {
   const onChange = (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, CODE_LENGTH);
     setCode(digits);
+    if (refused) setRefused(false); // presentation: retyping clears the red boxes
     // Submitted as soon as the last digit lands. A partner holding a phone in
     // one hand and a customer's order in the other should not have to find a
     // button as well.
@@ -290,34 +304,36 @@ export default function VerifyOtpScreen() {
   if (!identifier) {
     return (
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]}>
-        <View style={styles.centre}>
-          <Text style={[styles.title, { color: c.textPrimary }]}>{t('auth.verifyOtp.nothingToVerifyTitle')}</Text>
-          <Text style={[styles.subtitle, { color: c.textSecondary }]}>
-            {t('auth.verifyOtp.nothingToVerifyBody')}
-          </Text>
-          <AppButton label={t('auth.verifyOtp.backToSignIn')} onPress={() => router.replace('/(auth)/login')} />
-        </View>
+        <Rise index={0} style={styles.centre}>
+          <BrandWordmark style={styles.centreLogo} />
+          <EmptyState
+            icon="message-lock-outline"
+            title={t('auth.verifyOtp.nothingToVerifyTitle')}
+            body={t('auth.verifyOtp.nothingToVerifyBody')}
+            actionLabel={t('auth.verifyOtp.backToSignIn')}
+            actionIcon="login"
+            onAction={() => router.replace('/(auth)/login')}
+          />
+        </Rise>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
+    // 1R: green hero under the status bar; the code card sits on its edge.
+    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Hero
-            isDark={isDark}
-            variant="brand"
-            logoSize="medium"
-            style={styles.brandHero}
-          />
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <AuthHero compact />
 
-          <Text style={[styles.title, { color: c.textPrimary }]}>
+          <Rise index={1} style={styles.cardWrap}>
+          <GlassCard padding={20}>
+          <Title>
             {isNewAccount ? t('auth.verifyOtp.titleNewAccount') : t('auth.verifyOtp.title')}
-          </Text>
+          </Title>
           <Text style={[styles.subtitle, { color: c.textSecondary }]}>
             {/* The identifier lives here and the TRANSPORT lives in the notice
                 below, which prints the server's own sentence. Saying "we have
@@ -329,54 +345,33 @@ export default function VerifyOtpScreen() {
           </Text>
 
           {/*
-            One hidden input behind six boxes, rather than six inputs.
-            Six real inputs have to hand focus along on every keystroke and on
-            every backspace, and they fight the OS autofill that reads the code
-            out of the SMS — which is the only reason anybody gets this screen
-            right on the first try.
+            One hidden input behind six boxes, rather than six inputs (the kit's
+            `OtpCells`): six real inputs fight the OS autofill that reads the
+            code out of the SMS. Same value, handler and autofill hints as before;
+            the next box lifts, a refused code shakes red, an accepted one goes green.
           */}
-          <TouchableOpacity
-            activeOpacity={1}
-            style={styles.boxes}
-            onPress={() => inputRef.current?.focus()}
-          >
-            {Array.from({ length: CODE_LENGTH }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.box,
-                  {
-                    backgroundColor: c.surface,
-                    borderColor: i === code.length ? c.primary : c.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.boxText, { color: c.textPrimary }]}>{code[i] ?? ''}</Text>
-              </View>
-            ))}
-          </TouchableOpacity>
-
-          <RNTextInput
+          <OtpCells
             ref={inputRef}
             value={code}
             onChangeText={onChange}
-            keyboardType="number-pad"
-            textContentType="oneTimeCode"
-            autoComplete="sms-otp"
-            maxLength={CODE_LENGTH}
+            length={CODE_LENGTH}
             autoFocus
-            style={styles.hidden}
+            state={accepted ? 'success' : refused ? 'error' : 'idle'}
+            shakeKey={shakeKey}
+            accessibilityLabel={t('auth.verifyOtp.title')}
+            inputProps={{ textContentType: 'oneTimeCode', autoComplete: 'sms-otp' }}
+            testID="otp-cells"
           />
+          {accepted ? <SuccessCheck size={48} testID="otp-accepted" /> : null}
 
-          {busy ? (
-            <ActivityIndicator style={styles.spinner} />
-          ) : (
-            <AppButton
-              label={t('auth.verifyOtp.verify')}
-              onPress={() => void submit(code)}
-              disabled={code.length !== CODE_LENGTH}
-            />
-          )}
+          <Button
+            label={t('auth.verifyOtp.verify')}
+            icon="check-circle-outline"
+            onPress={() => void submit(code)}
+            loading={busy}
+            disabled={code.length !== CODE_LENGTH}
+            fullWidth
+          />
 
           {/* Under the code input, as the obvious next move for somebody who is
               watching the wrong app. `onUseEmail` is offered only where there is
@@ -404,7 +399,7 @@ export default function VerifyOtpScreen() {
             disabled={cooldown > 0 || !!sending}
             style={styles.resend}
           >
-            <Text style={{ color: cooldown > 0 || sending ? c.textDisabled : c.primary, fontWeight: '600' }}>
+            <Text style={{ color: cooldown > 0 || sending ? c.textDisabled : link, fontWeight: '600' }}>
               {cooldown > 0 ? t('auth.verifyOtp.resendIn', { seconds: cooldown }) : t('auth.verifyOtp.resend')}
             </Text>
           </TouchableOpacity>
@@ -412,6 +407,8 @@ export default function VerifyOtpScreen() {
           <TouchableOpacity onPress={() => router.replace('/(auth)/login')} style={styles.resend}>
             <Text style={{ color: c.textSecondary }}>{t('auth.verifyOtp.differentAccount')}</Text>
           </TouchableOpacity>
+          </GlassCard>
+          </Rise>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -440,34 +437,17 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
   centre: { flex: 1, justifyContent: 'center', padding: 22, gap: 12 },
-  // 22, not 28: six code boxes plus their gaps have to fit between these two
-  // edges, and at 28 on a 360dp screen each box was down to 44dp.
-  content: {
-    padding: 22,
-    gap: 14,
-    flexGrow: 1,
-    justifyContent: 'center',
+  centreLogo: { alignSelf: 'center' },
+  content: { flexGrow: 1, paddingBottom: 24 },
+  // 16 + the card's own 20: six code boxes plus their gaps still fit at 360 dp
+  // (each box ≈ 40+ dp wide, 58 tall).
+  cardWrap: {
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
+    paddingHorizontal: 16,
+    marginTop: -HERO_OVERLAP,
   },
-  brandHero: { paddingVertical: 24, marginBottom: 12 },
-  title: { fontSize: 24, fontWeight: '600' },
-  subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 10 },
-  boxes: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginVertical: 10 },
-  box: {
-    flex: 1,
-    // `minHeight`, so a digit rendered at a large system font scale grows the
-    // box instead of being clipped by it.
-    minHeight: 58,
-    paddingVertical: 10,
-    borderRadius: radii.field,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  boxText: { fontSize: 24, fontWeight: '600' },
-  hidden: { position: 'absolute', opacity: 0, height: 1, width: 1 },
-  spinner: { marginVertical: 14 },
-  resend: { alignSelf: 'center', paddingVertical: 10 },
+  subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 4 },
+  resend: { alignSelf: 'center', paddingVertical: 10, minHeight: 44, justifyContent: 'center' },
 });

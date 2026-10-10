@@ -11,6 +11,9 @@ import { newIdempotencyKey } from '../../../lib/idempotency';
 import { parseRupeesToPaise } from '../../../lib/money';
 import { dateOfDay, dayOf, paidFormErrors, rupeesInput } from '../logic';
 import { useIHavePaid } from '../hooks';
+import Animated from 'react-native-reanimated';
+import { useShake } from '../../../components/ui';
+import { tapHaptic } from '../../../theme/motion';
 import { RENT_PAID_MODES, RentPaidMode } from '../types';
 
 /**
@@ -48,17 +51,20 @@ export function IHavePaidDialog({
   const errors = paidFormErrors({ amount, reference, paidOn }, today);
   const show = tried ? errors : null;
 
+  // M15: a refused form shakes once (invalid fields, or the server said no); success taps a haptic.
+  const { style: shakeStyle, shake } = useShake();
   const submit = () => {
     setTried(true);
-    if (errors) return;
+    if (errors) { shake(); return; }
     paid.mutate(
       { body: { amountPaise: parseRupeesToPaise(amount)!, reference, paidOn: paidOn || undefined, mode }, key: key.current },
       {
         onSuccess: () => {
+          tapHaptic();
           onClose();
           Alert.alert(t('rent.paid.doneTitle'), t('rent.paid.doneBody'));
         },
-        onError: (e) => Alert.alert(t('rent.paid.failedTitle'), apiErrorMessage(e, t('rent.paid.failedBody'))),
+        onError: (e) => { shake(); Alert.alert(t('rent.paid.failedTitle'), apiErrorMessage(e, t('rent.paid.failedBody'))); },
       },
     );
   };
@@ -69,6 +75,7 @@ export function IHavePaidDialog({
         <Dialog.Title>{t('rent.paid.title')}</Dialog.Title>
         <Dialog.ScrollArea style={styles.scrollArea}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
+          <Animated.View style={shakeStyle}>
             <Text style={[styles.body, { color: c.textSecondary }]}>{t('rent.paid.body')}</Text>
             <TextInput
               mode="outlined"
@@ -107,6 +114,7 @@ export function IHavePaidDialog({
               maximumDate={dateOfDay(today)}
               error={show?.paidOn ? t(show.paidOn) : undefined}
             />
+          </Animated.View>
           </ScrollView>
         </Dialog.ScrollArea>
         <Dialog.Actions style={styles.actions}>

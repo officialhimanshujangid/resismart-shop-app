@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 import { Text, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -8,6 +9,14 @@ import { useTranslation } from 'react-i18next';
 
 import { BarcodeScannerView } from '../../../src/features/scanner';
 import type { ProductScanOutcome } from '../../../src/features/scanner';
+import { PressableScale } from '../../../src/theme';
+
+/**
+ * Camera chrome (M09): this screen is always a live camera feed, whatever the
+ * theme, so its overlay is white-on-black by design rather than a theme token —
+ * the one deliberate exception, named once here.
+ */
+const CAMERA = { ground: '#000000', ink: '#FFFFFF', glass: 'rgba(0,0,0,0.45)' } as const;
 
 /**
  * Look a product up (or start creating it) by camera or manual entry —
@@ -62,10 +71,25 @@ export default function CatalogScanScreen() {
       <BarcodeScannerView active={!suppressed} onResult={handleResult} hint={t('catalog.scan.hint')} cartonCodes />
 
       <SafeAreaView style={styles.headerOverlay} edges={['top']} pointerEvents="box-none">
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
-          <MaterialCommunityIcons name="arrow-left" size={22} color="#fff" />
-        </Pressable>
-        <Text style={styles.headerTitle}>{t('catalog.scan.title')}</Text>
+        <Animated.View
+          entering={FadeInDown.duration(300).reduceMotion(ReduceMotion.System)}
+          style={styles.headerRow}
+          pointerEvents="box-none"
+        >
+          {/* A labelled, 44 pt back control with press scale + haptic (M09): it was an
+              unlabelled 36 pt icon a screen reader announced as nothing. */}
+          <PressableScale
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={10}
+            haptic
+            accessibilityRole="button"
+            accessibilityLabel={t('common.back')}
+          >
+            <MaterialCommunityIcons name="arrow-left" size={22} color={CAMERA.ink} />
+          </PressableScale>
+          <Text style={styles.headerTitle}>{t('catalog.scan.title')}</Text>
+        </Animated.View>
       </SafeAreaView>
 
       <Snackbar visible={Boolean(snackbar)} onDismiss={() => setSnackbar(null)} duration={4000}>
@@ -76,14 +100,15 @@ export default function CatalogScanScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
+  root: { flex: 1, backgroundColor: CAMERA.ground },
   headerOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0,
-    flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingTop: 6,
+    paddingHorizontal: 12, paddingTop: 6,
   },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   backBtn: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.45)',
+    width: 44, height: 44, borderRadius: 22, backgroundColor: CAMERA.glass,
     alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  headerTitle: { color: CAMERA.ink, fontSize: 15, fontWeight: '600', flexShrink: 1 },
 });

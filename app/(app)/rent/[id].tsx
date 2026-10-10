@@ -5,7 +5,9 @@ import { useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii, ColorScheme } from '../../../src/constants/colors';
-import { Card, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { Card, ErrorBlock, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { SkeletonList } from '../../../src/components/ui';
+import { Rise, tapHaptic, useCountUp } from '../../../src/theme/motion';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { formatI18nDate } from '../../../src/i18n';
 import { formatPaise } from '../../../src/lib/money';
@@ -34,7 +36,7 @@ export default function RentBillScreen() {
 
   const d = query.data;
   if (query.isPending) {
-    return <Screen c={c} title={t('rent.bill.title')}><Loading c={c} /></Screen>;
+    return <Screen c={c} title={t('rent.bill.title')}><SkeletonList rows={4} testID="rent-bill-loading" /></Screen>;
   }
   if (query.isError || !d) {
     return (
@@ -64,11 +66,10 @@ export default function RentBillScreen() {
 
   return (
     <Screen c={c} title={what} subtitle={bill.invoiceNumber}>
+      <Rise index={0}>
       <Card c={c}>
         <Text style={[styles.label, { color: c.textSecondary }]}>{open ? t('rent.bill.due') : t('rent.bill.total')}</Text>
-        <Text style={[styles.amount, { color: overdue ? c.error : c.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit testID="rent-bill-amount">
-          {formatPaise(open ? bill.outstandingPaise : bill.totalPaise)}
-        </Text>
+        <CountUpPaise paise={open ? bill.outstandingPaise : bill.totalPaise} style={[styles.amount, { color: overdue ? c.error : c.textPrimary }]} />
         <View style={[styles.pill, { borderColor: overdue ? c.error : c.border }]}>
           <Text style={[styles.pillText, { color: overdue ? c.error : bill.status === 'PAID' ? c.success : c.textPrimary }]}>
             {overdue && bill.overdueDays > 0 ? t('rent.overdueDays', { count: bill.overdueDays }) : statusKey ? t(statusKey) : bill.status}
@@ -85,9 +86,10 @@ export default function RentBillScreen() {
         {bill.reverseCharge ? <Text style={[styles.note, { color: c.textSecondary }]}>{t('rent.bill.reverseCharge')}</Text> : null}
         {bill.kind === 'LEASE_DEPOSIT' ? <Text style={[styles.note, { color: c.textSecondary }]}>{t('rent.bill.depositNote')}</Text> : null}
       </Card>
+      </Rise>
 
       {open ? (
-        <>
+        <Rise index={1} style={{ gap: 12 }}>
           <SectionLabel c={c}>{t('rent.bill.payTo')}</SectionLabel>
           <Card c={c}>
             <Text style={[styles.payee, { color: c.textPrimary }]}>{d.payTo.payeeName}</Text>
@@ -105,12 +107,12 @@ export default function RentBillScreen() {
               <Text style={[styles.note, { color: c.textSecondary }]}>{t('rent.bill.noPayDetails')}</Text>
             ) : null}
             {d.upi ? (
-              <Button mode="contained" icon="cellphone-arrow-down" onPress={payByUpi} style={styles.primary} testID="rent-pay-upi">
+              <Button mode="contained" icon="cellphone-arrow-down" onPress={() => { tapHaptic(); payByUpi(); }} style={styles.primary} testID="rent-pay-upi">
                 {t('rent.bill.payUpi')}
               </Button>
             ) : null}
           </Card>
-        </>
+        </Rise>
       ) : null}
 
       <View style={styles.actions}>
@@ -131,6 +133,16 @@ export default function RentBillScreen() {
 
       <IHavePaidDialog visible={paidOpen} billId={bill.id} outstandingPaise={bill.outstandingPaise} onClose={() => setPaidOpen(false)} />
     </Screen>
+  );
+}
+
+/** M15 — the bill's headline amount counts up once (reduce-motion → lands at once; the label is the real figure). */
+function CountUpPaise({ paise, style }: { paise: number; style: React.ComponentProps<typeof Text>['style'] }) {
+  const shown = useCountUp(paise);
+  return (
+    <Text style={style} numberOfLines={1} adjustsFontSizeToFit testID="rent-bill-amount" accessibilityLabel={formatPaise(paise)}>
+      {formatPaise(Math.round(shown))}
+    </Text>
   );
 }
 

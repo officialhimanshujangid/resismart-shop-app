@@ -70,4 +70,6 @@ export interface MyReach {
   homeFlatLabel?: string;
   canWiden: boolean;
   nearbyKm?: number;
+  /** P2A (M04-Q13): the home society's account is paused (suspended by ResiSmart). */
+  homeSocietySuspended?: boolean;
 }

@@ -4,6 +4,7 @@ import { router, usePathname } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { ColorScheme } from '../../constants/colors';
+import { IconButton as KitIconButton } from '../../components/ui';
 
 /**
  * The "?" that opens Help for the screen it sits on.
@@ -17,11 +18,18 @@ import { ColorScheme } from '../../constants/colors';
  * One size everywhere (IconButton at 26, the back button's size in `Screen`):
  *   - `default` — in the shared `Screen` header and native stack headers;
  *   - `hero`    — top-right on the gradient `Hero`, white on a glass circle so
- *                 it reads on both the light and dark ramps.
+ *                 it reads on both the light and dark ramps;
+ *   - `glass`   — M04-H: the DS v1 kit glass `IconButton` (44 dp, press scale)
+ *                 for the redesigned `HeroHeader` sky (Today). Same label, same
+ *                 destination.
  */
-export function HelpButton({ c, variant = 'default' }: { c: ColorScheme; variant?: 'default' | 'hero' }) {
+export function HelpButton({ c, variant = 'default' }: { c: ColorScheme; variant?: 'default' | 'hero' | 'glass' }) {
   const { t } = useTranslation();
   const pathname = usePathname();
+  const open = () => router.push(`/help?from=${encodeURIComponent(pathname)}`);
+  if (variant === 'glass') {
+    return <KitIconButton icon="help-circle-outline" variant="glass" accessibilityLabel={t('help.openHelp')} onPress={open} />;
+  }
   const onHero = variant === 'hero';
   return (
     <IconButton
@@ -31,7 +39,7 @@ export function HelpButton({ c, variant = 'default' }: { c: ColorScheme; variant
       containerColor={onHero ? 'rgba(255,255,255,0.16)' : undefined}
       style={{ margin: 0 }}
       accessibilityLabel={t('help.openHelp')}
-      onPress={() => router.push(`/help?from=${encodeURIComponent(pathname)}`)}
+      onPress={open}
     />
   );
 }

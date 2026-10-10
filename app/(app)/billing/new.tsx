@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// M06b — kit card (DS hairline + soft shadow, light + dark).
+import { Card } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
 import {
   Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, useColorScheme, View,
 } from 'react-native';
@@ -939,6 +942,8 @@ export default function NewInvoiceScreen() {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* M06b: the composer rises in as one block (reduce-motion: instant). */}
+          <Rise index={0} style={styles.riseStack}>
           <SegmentedButtons
             value={direction}
             onValueChange={(v) => setDirection(v as DocumentDirection)}
@@ -964,7 +969,7 @@ export default function NewInvoiceScreen() {
             />
           {/* <<< WEB-UI */}
 
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+          <Card style={styles.card}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
               {direction === 'PURCHASE' ? t('billing.new.supplier') : t('billing.new.customer')}
             </Text>
@@ -1062,9 +1067,9 @@ export default function NewInvoiceScreen() {
                 ))}
               </View>
             )}
-          </Surface>
+          </Card>
 
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+          <Card style={styles.card}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.new.dates')}</Text>
             <DateField
               label={t('billing.new.documentDate')}
@@ -1164,9 +1169,9 @@ export default function NewInvoiceScreen() {
               <RefundToChoice c={c} value={refundChoice.value} onChange={refundChoice.choose} disabled={submitting} />
             ) : null}
             {/* <<< MP1-COMPLETE */}
-          </Surface>
+          </Card>
 
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+          <Card style={styles.card}>
             <View style={styles.cardHeaderRow}>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.new.items')}</Text>
               <Button mode="contained-tonal" icon="barcode-scan" compact onPress={() => setScannerOpen(true)}>
@@ -1321,7 +1326,7 @@ export default function NewInvoiceScreen() {
             <Button mode="text" icon="pencil-plus-outline" compact onPress={() => setEditingKey('NEW')} style={{ alignSelf: 'flex-start' }}>
               {t('billing.new.addOneOff')}
             </Button>
-          </Surface>
+          </Card>
 
           {/* P2 PHARMACY: a Schedule H/H1 medicine on the bill → the prescription goes on it. */}
           {pharmacy.rxDrugs.length > 0 && (
@@ -1335,7 +1340,7 @@ export default function NewInvoiceScreen() {
             </Surface>
           )}
 
-          <Surface style={[styles.card, { backgroundColor: c.surface }]} elevation={1}>
+          <Card style={styles.card}>
             {/*
               A real breakup, priced by the mirror of the server's own function.
 
@@ -1417,7 +1422,7 @@ export default function NewInvoiceScreen() {
                 {t('billing.new.untaxed', { count: untaxedLineCount })}
               </Text>
             )}
-          </Surface>
+          </Card>
 
           {limitMessage && limitViolation?.lineIndex === undefined && (
             <Surface style={[styles.errorCard, { backgroundColor: c.error + '18' }]} elevation={0}>
@@ -1429,6 +1434,7 @@ export default function NewInvoiceScreen() {
               <Text style={{ color: c.error, fontSize: 13 }}>{errorMessage}</Text>
             </Surface>
           )}
+          </Rise>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1656,6 +1662,7 @@ const styles = StyleSheet.create({
   // MP1-COMPLETE — at least the close button's width, so the title stays centred.
   topBarRight: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 48, paddingRight: 4 },
   content: { padding: 16, gap: 12, paddingBottom: 24 },
+  riseStack: { gap: 12 },
   card: { borderRadius: radii.card, padding: 14, gap: 10 },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontSize: 14, fontWeight: '600' },

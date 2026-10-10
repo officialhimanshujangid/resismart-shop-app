@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
+import { SkeletonList } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
 import { Text } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 
@@ -70,9 +72,10 @@ export default function InsightsScreen() {
 
         {tab === 'OVERVIEW' ? (
           <>
-            {overview.isPending ? <ActivityIndicator color={c.primary} /> : null}
+            {overview.isPending ? <SkeletonList rows={3} /> : null}
             {overview.isError ? <ErrorBlock c={c} message={apiErrorMessage(overview.error)} onRetry={() => void overview.refetch()} /> : null}
             {overview.data ? (
+              <Rise>
               <StatGrid>
                 <StatTile c={c} label={t('commerce.insights.aov')} value={formatPaise(overview.data.aovPaise)} testID="insight-aov" />
                 <StatTile c={c} label={t('commerce.insights.sales')} value={formatPaise(overview.data.revenuePaise)} />
@@ -83,9 +86,10 @@ export default function InsightsScreen() {
                 {overview.data.storeCreditUsedPaise > 0 ? <StatTile c={c} label={t('commerce.insights.credit')} value={formatPaise(overview.data.storeCreditUsedPaise)} /> : null}
                 {overview.data.deliveryFeesPaise > 0 ? <StatTile c={c} label={t('commerce.insights.delivery')} value={formatPaise(overview.data.deliveryFeesPaise)} /> : null}
               </StatGrid>
+              </Rise>
             ) : null}
             <SectionLabel c={c}>{t('commerce.insights.busyHours')}</SectionLabel>
-            {heat.isPending ? <ActivityIndicator color={c.primary} /> : null}
+            {heat.isPending ? <SkeletonList rows={3} /> : null}
             {heat.isError ? <ErrorBlock c={c} message={apiErrorMessage(heat.error)} onRetry={() => void heat.refetch()} /> : null}
             {heat.data ? <BusyHours c={c} grid={heat.data.grid} /> : null}
           </>
@@ -93,11 +97,12 @@ export default function InsightsScreen() {
 
         {tab === 'CUSTOMERS' ? (
           <>
-            {customers.isPending ? <ActivityIndicator color={c.primary} /> : null}
+            {customers.isPending ? <SkeletonList rows={3} /> : null}
             {customers.isError ? <ErrorBlock c={c} message={apiErrorMessage(customers.error)} onRetry={() => void customers.refetch()} /> : null}
             {customers.isSuccess && customers.data.length === 0 ? <EmptyBlock c={c} title={t('commerce.insights.noData')} /> : null}
             {(customers.data ?? []).map((r, i) => (
-              <Card key={r.partyId} c={c} style={styles.rowCard}>
+              <Rise key={r.partyId} index={Math.min(i, 6)}>
+              <Card c={c} style={styles.rowCard}>
                 <View style={styles.rowHead}>
                   <Text style={[styles.rank, { color: c.primary }]}>{i + 1}</Text>
                   <Text style={{ color: c.textPrimary, fontWeight: '700', flex: 1, minWidth: 0 }} numberOfLines={1}>{r.name}</Text>
@@ -112,17 +117,19 @@ export default function InsightsScreen() {
                   ].filter(Boolean).join(' · ')}
                 </Text>
               </Card>
+              </Rise>
             ))}
           </>
         ) : null}
 
         {tab === 'STAFF' ? (
           <>
-            {staff.isPending ? <ActivityIndicator color={c.primary} /> : null}
+            {staff.isPending ? <SkeletonList rows={3} /> : null}
             {staff.isError ? <ErrorBlock c={c} message={apiErrorMessage(staff.error)} onRetry={() => void staff.refetch()} /> : null}
             {staff.isSuccess && staff.data.length === 0 ? <EmptyBlock c={c} title={t('commerce.insights.noData')} /> : null}
-            {(staff.data ?? []).map((r) => (
-              <Card key={r.userId} c={c} style={styles.rowCard}>
+            {(staff.data ?? []).map((r, i) => (
+              <Rise key={r.userId} index={Math.min(i, 6)}>
+              <Card c={c} style={styles.rowCard}>
                 <View style={styles.rowHead}>
                   <Text style={{ color: c.textPrimary, fontWeight: '700', flex: 1, minWidth: 0 }} numberOfLines={1}>{r.name}</Text>
                   <Text style={{ color: c.textPrimary, fontWeight: '700' }}>{formatPaise(r.billsPaise)}</Text>
@@ -131,6 +138,7 @@ export default function InsightsScreen() {
                   {t('commerce.insights.staffLine', { bills: r.bills, handled: r.ordersHandled, delivered: r.ordersDelivered })}
                 </Text>
               </Card>
+              </Rise>
             ))}
           </>
         ) : null}
@@ -216,7 +224,7 @@ function StockTab({
             value={classes}
             onChange={setClasses}
           />
-          {dead.isPending ? <ActivityIndicator color={c.primary} /> : null}
+          {dead.isPending ? <SkeletonList rows={3} /> : null}
           {dead.isError ? <ErrorBlock c={c} message={apiErrorMessage(dead.error)} onRetry={() => void dead.refetch()} /> : null}
           {dead.data && rows.length === 0 ? <EmptyBlock c={c} icon="check-circle-outline" title={t('commerce.insights.noSlow')} /> : null}
           {rows.map((r) => (
@@ -239,7 +247,7 @@ function StockTab({
       {showAlerts ? (
         <>
           <SectionLabel c={c}>{t('commerce.insights.waiting')}</SectionLabel>
-          {alerts.isPending ? <ActivityIndicator color={c.primary} /> : null}
+          {alerts.isPending ? <SkeletonList rows={3} /> : null}
           {alerts.data && alerts.data.length === 0 ? <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>{t('commerce.insights.noneWaiting')}</Text> : null}
           {(alerts.data ?? []).map((r) => (
             <View key={r.productId} style={[styles.waitRow, { borderColor: c.divider }]}>

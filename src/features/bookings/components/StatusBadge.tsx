@@ -1,32 +1,25 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Text } from 'react-native-paper';
 import { BookingStatus } from '../booking.types';
 import { useTranslation } from 'react-i18next';
 
 import { STATUS_LABEL_KEYS, STATUS_TONE, StatusTone } from '../format';
-import { palette, radii } from '../../../constants/colors';
+import { StatusBadge as KitBadge } from '../../../components/ui/StatusBadge';
+import type { StatusTone as DsTone } from '../../../theme/tokens';
 
-/** Tone → (background, ink), light and dark share the same tone rather than the theme's own colours — a status chip has to read the same regardless of card background. */
-const TONE_COLORS: Record<StatusTone, { bg: string; ink: string }> = {
-  attention: { bg: palette.coral.soft, ink: palette.coral[600] },
-  active: { bg: palette.brand[50], ink: palette.brand[600] },
-  success: { bg: '#DCFCE7', ink: '#15803D' },
-  neutral: { bg: palette.line, ink: palette.soft },
-  danger: { bg: '#FEE2E2', ink: '#B91C1C' },
+/**
+ * Booking status pill. D0: drawn by the shared kit badge on the DS v1 status
+ * pairs, so it now has a real dark-mode version (it used fixed light pills on
+ * every background). Same labels, same tone per status.
+ */
+const TONE: Record<StatusTone, DsTone> = {
+  attention: 'warn',
+  active: 'brand',
+  success: 'success',
+  neutral: 'neutral',
+  danger: 'danger',
 };
 
 export function StatusBadge({ status }: { status: BookingStatus }) {
   const { t } = useTranslation();
-  const tone = TONE_COLORS[STATUS_TONE[status]];
-  return (
-    <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.text, { color: tone.ink }]}>{t(STATUS_LABEL_KEYS[status])}</Text>
-    </View>
-  );
+  return <KitBadge label={t(STATUS_LABEL_KEYS[status])} tone={TONE[STATUS_TONE[status]]} />;
 }
-
-const styles = StyleSheet.create({
-  badge: { borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
-  text: { fontSize: 12, fontWeight: '600' },
-});

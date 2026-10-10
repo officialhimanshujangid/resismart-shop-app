@@ -9,8 +9,11 @@ import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
-import { ChipRow, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
-import { ActionRow, Banner, PillButton } from '../../../src/features/p1/ui';
+import { ChipRow, Screen } from '../../../src/features/more/ui';
+import { ActionRow, Banner } from '../../../src/features/p1/ui';
+// M06b — Design System v1 kit (green, light + dark, reduce-motion aware).
+import { Button, EmptyState, ErrorState, SkeletonList } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
 import { istToday, monthLabel, periodOf } from '../../../src/features/p2/dates';
 import { subKeys, subscriptionsApi } from '../../../src/features/subscriptions/api';
 import { billRunSummary, defaultBillPeriod, isPeriod } from '../../../src/features/subscriptions/logic';
@@ -82,7 +85,7 @@ export default function BillsScreen() {
   const counts = summary ? billRunSummary(summary) : null;
   const rows = bills.data ?? [];
   const header = (
-    <View style={styles.header}>
+    <Rise index={0} style={styles.header}>
       <MonthSwitcher c={c} period={period} onChange={(p) => { setPeriod(p); setSummary(null); }} max={periodOf(today)} testID="bills-month" />
       <ChipRow<StatusKey>
         c={c}
@@ -94,8 +97,8 @@ export default function BillsScreen() {
       />
       {canRun ? (
         <ActionRow>
-          <PillButton c={c} icon="file-document-edit-outline" label={run.isPending ? t('p2.subscriptions.bills.running') : t('p2.subscriptions.bills.run')}
-            onPress={confirmRun} disabled={run.isPending} testID="bills-run" />
+          <Button icon="file-document-edit-outline" label={run.isPending ? t('p2.subscriptions.bills.running') : t('p2.subscriptions.bills.run')}
+            onPress={confirmRun} disabled={run.isPending} loading={run.isPending} testID="bills-run" />
         </ActionRow>
       ) : null}
       {counts ? (
@@ -106,12 +109,12 @@ export default function BillsScreen() {
           body={(Object.keys(counts) as BillStatus[]).map((s) => `${t(`p2.subscriptions.billStatus.${s}`)}: ${counts[s]}`).join(' · ') || t('p2.subscriptions.bills.nothing')}
         />
       ) : null}
-    </View>
+    </Rise>
   );
 
-  const empty = bills.isPending ? <Loading c={c} />
-    : bills.isError ? <ErrorBlock c={c} message={apiErrorMessage(bills.error, t('p2.common.loadFailed'))} onRetry={() => void bills.refetch()} />
-      : <EmptyBlock c={c} icon="file-document-outline" title={t('p2.subscriptions.bills.empty')} />;
+  const empty = bills.isPending ? <SkeletonList rows={3} />
+    : bills.isError ? <ErrorState message={apiErrorMessage(bills.error, t('p2.common.loadFailed'))} onRetry={() => void bills.refetch()} />
+      : <EmptyState icon="file-document-outline" title={t('p2.subscriptions.bills.empty')} />;
 
   return (
     <Screen
@@ -127,10 +130,14 @@ export default function BillsScreen() {
         ListEmptyComponent={empty}
         ItemSeparatorComponent={Gap}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <BillRow c={c} bill={item} showCustomer onRetry={canRun ? () => retry.mutate(item.id) : undefined}
-            retrying={retry.isPending && retry.variables === item.id} />
-        )}
+        renderItem={({ item, index }) => {
+          const row = (
+            <BillRow c={c} bill={item} showCustomer onRetry={canRun ? () => retry.mutate(item.id) : undefined}
+              retrying={retry.isPending && retry.variables === item.id} />
+          );
+          // The first screenful rises in; a long month never animates row by row.
+          return index < 8 ? <Rise index={Math.min(index, 4) + 1} distance={10}>{row}</Rise> : row;
+        }}
       />
     </Screen>
   );

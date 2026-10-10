@@ -4,6 +4,7 @@ import Svg, { Rect } from 'react-native-svg';
 
 import { useTranslation } from 'react-i18next';
 import { ColorScheme } from '../../constants/colors';
+import { GrowIn } from './GrowIn';
 
 /**
  * A trailing bar chart over the same dense `{t, v}[]` a `Series` carries —
@@ -29,7 +30,7 @@ export function MiniBars({
   color,
   height = 64,
   width = 260,
-  radius = 3,
+  radius = 4,
   label,
   valueFormatter,
   accessibilityLabel,
@@ -89,6 +90,8 @@ export function MiniBars({
 
   return (
     <View accessible accessibilityRole="image" accessibilityLabel={accessibilityLabel ?? defaultA11yLabel}>
+      {/* DS v1: bars grow in from the baseline (reduce-motion: instant). */}
+      <GrowIn dataKey={values.join(',')}>
       <Svg width={width} height={height}>
         {values.map((v, i) => {
           const h = allZero ? MIN_BAR_H : Math.max(MIN_BAR_H, (v / max) * innerH);
@@ -108,6 +111,7 @@ export function MiniBars({
           );
         })}
       </Svg>
+      </GrowIn>
     </View>
   );
 }

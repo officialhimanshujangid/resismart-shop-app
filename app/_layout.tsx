@@ -1,4 +1,6 @@
 import '@/lib/web-alert';
+// 1R dark-mode safety: light until the shop restyle is done — see the file.
+import '@/lib/forceLightScheme';
 import React, { useEffect, useRef, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
@@ -16,6 +18,8 @@ import { AppLightTheme, AppDarkTheme } from '../src/constants/theme';
 import { LoadingOverlay } from '../src/components/LoadingOverlay';
 import { queryClient } from '../src/lib/queryClient';
 import { useOnboardingGate } from '../src/hooks';
+import { useAppFonts } from '../src/theme/fonts';
+import { ToastProvider } from '../src/components/ui/Toast';
 
 /**
  * Which half of the app exists, decided by `Stack.Protected`.
@@ -132,7 +136,15 @@ export default function RootLayout() {
     })();
   }, []);
 
-  if (!languageReady) return null;
+  /**
+   * Design System v1: Sora for titles and money. Held like the language — a
+   * title that swaps face a frame after it paints is a visible jump — but it
+   * never blocks for long: `useAppFonts` resolves on load, on error, or after
+   * 2.5 s, and every Sora style falls back to the system face.
+   */
+  const fontsReady = useAppFonts();
+
+  if (!languageReady || !fontsReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -145,10 +157,12 @@ export default function RootLayout() {
         */}
         <QueryClientProvider client={queryClient}>
           <PaperProvider theme={theme}>
-            <AuthProvider>
-              <StatusBar style={isDark ? 'light' : 'dark'} />
-              <RootNavigator />
-            </AuthProvider>
+            <ToastProvider>
+              <AuthProvider>
+                <StatusBar style={isDark ? 'light' : 'dark'} />
+                <RootNavigator />
+              </AuthProvider>
+            </ToastProvider>
           </PaperProvider>
         </QueryClientProvider>
       </SafeAreaProvider>

@@ -1,13 +1,13 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, useColorScheme, View } from 'react-native';
-import { ActivityIndicator, Button, Searchbar, Surface, Text } from 'react-native-paper';
+import React, { useCallback, useDeferredValue, useMemo, useState } from 'react';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { Text } from 'react-native-paper';
 import { FitSegments } from '../../../src/components/FitSegments'; // >>> WEB-UI
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { themeColors, radii, ColorScheme } from '../../../src/constants/colors';
+import { radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { formatPaise } from '../../../src/lib/money';
@@ -22,8 +22,11 @@ import { UsageMeter } from '../../../src/features/billing/components/UsageMeter'
 import { toHref } from '../../../src/features/billing/routeHref';
 import { Hero, GlassStat } from '../../../src/components/Hero';
 import { HelpButton } from '../../../src/features/help/HelpButton';
-import { ErrorBlock } from '../../../src/features/more/ui';
 import { apiErrorMessage } from '../../../src/api/axios';
+// M06b — Design System v1 kit (green, light + dark, reduce-motion aware).
+import { Button, Card, EmptyState, ErrorState, Money, SearchField, SkeletonList } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
+import { useAppTheme } from '../../../src/theme/useAppTheme';
 
 /**
  * Billing: the two-tap invoice, offline drafts and WhatsApp share
@@ -32,6 +35,15 @@ import { apiErrorMessage } from '../../../src/api/axios';
  * see that file's header — but the "New Invoice" action below still checks
  * `INVOICING_MANAGE` at FULL itself: READ opened this tab, and READ is not
  * permission to raise a bill.
+ *
+ * M06b (2026-10-09):
+ *  - the list PAGES now. It asked for the newest 30 and stopped there, so a
+ *    shop with 31 bills could not scroll to its oldest one (the web pages);
+ *    the next 30 load as the list nears its end (`useInfiniteQuery`).
+ *  - the search box waits for the typing to settle (`useDeferredValue`)
+ *    instead of one request per keystroke;
+ *  - kit states (skeleton rows, error with Retry, empty), kit cards and
+ *    buttons on the DS tokens, and the first screenful rises in.
  */
 
 type FilterKey = 'ALL' | 'DRAFT' | 'UNPAID' | 'ISSUED';
@@ -47,6 +59,8 @@ const FILTERS: { value: FilterKey; labelKey: string }[] = [
   { value: 'DRAFT', labelKey: 'billing.list.filterDraft' },
 ];
 
+const PAGE = 30;
+
 function filterToStatus(filter: FilterKey): string | undefined {
   if (filter === 'ALL') return undefined;
   if (filter === 'DRAFT') return documentStatusGroup.DRAFT;
@@ -56,8 +70,7 @@ function filterToStatus(filter: FilterKey): string | undefined {
 
 export default function BillingScreen() {
   const { t } = useTranslation();
-  const isDark = useColorScheme() === 'dark';
-  const c = themeColors(isDark);
+  const { isDark, c, ds, status } = useAppTheme();
   const { can } = usePartnerEntitlements();
   const { capacity } = usePlanUsage();
   const { pendingCount, online, syncing, syncPending } = useOfflineDrafts();
@@ -65,6 +78,7 @@ export default function BillingScreen() {
 
   const [filter, setFilter] = useState<FilterKey>('ALL');
   const [search, setSearch] = useState('');
+  const q = useDeferredValue(search.trim());
   // C5 — All/Sales/Purchase, on top of the status filter above. 'ALL' asks for
   // every one of the nine types at once (the server accepts the CSV either way).
   const [direction, setDirection] = useState<'ALL' | DocumentDirection>('ALL');
@@ -73,19 +87,34 @@ export default function BillingScreen() {
     () => ({
       status: filterToStatus(filter),
       type: direction === 'ALL' ? undefined : (direction === 'SALES' ? SALES_DOCUMENT_TYPES : PURCHASE_DOCUMENT_TYPES).join(','),
-      q: search.trim() || undefined,
-      limit: 30,
+      q: q || undefined,
+      limit: PAGE,
     }),
-    [filter, direction, search],
+    [filter, direction, q],
   );
 
-  const query = useQuery({
-    queryKey: qk.billing.documents(filters),
-    queryFn: () => documentsApi.list(filters),
+  // Its own key under `billing/documents` (an infinite list keeps pages, a
+  // different cache shape); `qk.billing.all()` still refreshes it after a save.
+  const query = useInfiniteQuery({
+    queryKey: [...qk.billing.documents(filters), 'pages'],
+    queryFn: ({ pageParam }) => documentsApi.list({ ...filters, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => {
+      const page = last.page || 1;
+      const limit = last.limit || PAGE;
+      return page * limit < (last.total ?? 0) ? page + 1 : undefined;
+    },
     staleTime: 15_000,
   });
 
-  const rows = query.data?.data ?? [];
+  // P3R: offset pages shift when a bill is saved while the list is open (a
+  // synced draft, another device), so page 2 can repeat page 1's last row —
+  // keep the first copy (the FlatList keys by `_id`).
+  const rows = useMemo(() => {
+    const seen = new Set<string>();
+    return (query.data?.pages ?? []).flatMap((p) => p.data ?? []).filter((r) => (seen.has(r._id) ? false : (seen.add(r._id), true)));
+  }, [query.data]);
+  const total = query.data?.pages?.[0]?.total;
   const canManage = can('INVOICING_MANAGE', 'FULL');
   const invoiceCapacity = capacity('max_invoices_month');
 
@@ -104,7 +133,7 @@ export default function BillingScreen() {
    * `onlineManager` (see `lib/queryClient.ts`) deliberately holds the request
    * rather than firing it into a dead radio.
    */
-  const loadError = query.isError
+  const loadError = query.isError && rows.length === 0
     ? apiErrorMessage(query.error, t('billing.list.loadFailed'))
     : query.isPending && query.isPaused
       ? t('billing.list.noConnection')
@@ -121,87 +150,90 @@ export default function BillingScreen() {
    */
   const listHeader = (
     <View>
-      <Hero
-        action={<HelpButton c={c} variant="hero" />}
-        isDark={isDark}
-        eyebrow={t('billing.list.eyebrow')}
-        title={t('billing.list.title')}
-        subtitle={online ? t('billing.list.subtitleOnline') : t('billing.list.subtitleOffline')}
-        style={styles.hero}
-      >
-        {query.data ? (
-          <GlassStat icon="file-document-outline" label={t('billing.list.inThisView')} value={String(query.data.total)} />
-        ) : null}
-      </Hero>
+      <Rise index={0}>
+        <Hero
+          action={<HelpButton c={c} variant="hero" />}
+          isDark={isDark}
+          eyebrow={t('billing.list.eyebrow')}
+          title={t('billing.list.title')}
+          subtitle={online ? t('billing.list.subtitleOnline') : t('billing.list.subtitleOffline')}
+          style={styles.hero}
+        >
+          {typeof total === 'number' ? (
+            <GlassStat icon="file-document-outline" label={t('billing.list.inThisView')} value={String(total)} />
+          ) : null}
+        </Hero>
+      </Rise>
 
       {pendingCount > 0 && (
-        <Surface style={[styles.draftBanner, { backgroundColor: c.surfaceVariant }]} elevation={0}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.draftBannerTitle, { color: c.textPrimary }]}>
-              {t('billing.list.waitingToSync', { count: pendingCount })}
-            </Text>
-            <Text style={[styles.draftBannerBody, { color: c.textSecondary }]}>
-              {syncing ? t('billing.list.syncingNow') : online ? t('billing.list.willSyncShortly') : t('billing.list.willSyncOnline')}
-            </Text>
-          </View>
-          <Button mode="text" compact onPress={() => router.push('/(app)/billing/drafts')}>
-            {t('billing.list.view')}
-          </Button>
-        </Surface>
+        <Rise index={1} style={styles.side}>
+          <Card tone="soft" padding={12} onPress={() => router.push('/(app)/billing/drafts')} accessibilityLabel={t('billing.list.view')}>
+            <View style={styles.draftBanner}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.draftBannerTitle, { color: ds.ink }]}>
+                  {t('billing.list.waitingToSync', { count: pendingCount })}
+                </Text>
+                <Text style={[styles.draftBannerBody, { color: ds.muted }]}>
+                  {syncing ? t('billing.list.syncingNow') : online ? t('billing.list.willSyncShortly') : t('billing.list.willSyncOnline')}
+                </Text>
+              </View>
+              <Text style={[styles.draftBannerLink, { color: status.brand.fg }]}>{t('billing.list.view')}</Text>
+            </View>
+          </Card>
+        </Rise>
       )}
 
       {canManage && (
-        <View style={styles.newInvoiceRow}>
+        <Rise index={2} style={styles.newInvoiceRow}>
           <UsageMeter capacity={invoiceCapacity} c={c} />
           <Button
-            mode="contained"
+            label={t('billing.list.newInvoice')}
             icon="plus"
             onPress={() => router.push('/(app)/billing/new')}
             disabled={invoiceCapacity.atLimit}
-            style={styles.newInvoiceButton}
-          >
-            {t('billing.list.newInvoice')}
-          </Button>
-        </View>
+            fullWidth
+          />
+        </Rise>
       )}
 
-      <Searchbar
-        placeholder={t('billing.list.searchPlaceholder')}
-        value={search}
-        onChangeText={setSearch}
-        style={[styles.search, { backgroundColor: c.surface }]}
-        inputStyle={{ fontSize: 14 }}
-      />
-
-      {/* >>> WEB-UI — FitSegments: each segment as wide as its words, so
-          "Unpaid" is never cut to "Unp…" on a narrow phone. */}
-      <View style={styles.filterRow}>
-        <FitSegments
-          value={direction}
-          onValueChange={(v) => setDirection(v as 'ALL' | DocumentDirection)}
-          buttons={[
-            { value: 'ALL', label: t('billing.list.dirAll') },
-            { value: 'SALES', label: t('billing.list.dirSales') },
-            { value: 'PURCHASE', label: t('billing.list.dirPurchase') },
-          ]}
-          density="small"
+      <Rise index={3}>
+        <SearchField
+          placeholder={t('billing.list.searchPlaceholder')}
+          value={search}
+          onChangeText={setSearch}
+          style={styles.search}
         />
-      </View>
 
-      <View style={styles.filterRow}>
-        <FitSegments
-          value={filter}
-          onValueChange={(v) => setFilter(v as FilterKey)}
-          buttons={FILTERS.map((f) => ({ value: f.value, label: t(f.labelKey) }))}
-          density="small"
-        />
-      </View>
+        {/* >>> WEB-UI — FitSegments: each segment as wide as its words, so
+            "Unpaid" is never cut to "Unp…" on a narrow phone. */}
+        <View style={styles.filterRow}>
+          <FitSegments
+            value={direction}
+            onValueChange={(v) => setDirection(v as 'ALL' | DocumentDirection)}
+            buttons={[
+              { value: 'ALL', label: t('billing.list.dirAll') },
+              { value: 'SALES', label: t('billing.list.dirSales') },
+              { value: 'PURCHASE', label: t('billing.list.dirPurchase') },
+            ]}
+            density="small"
+          />
+        </View>
+
+        <View style={styles.filterRow}>
+          <FitSegments
+            value={filter}
+            onValueChange={(v) => setFilter(v as FilterKey)}
+            buttons={FILTERS.map((f) => ({ value: f.value, label: t(f.labelKey) }))}
+            density="small"
+          />
+        </View>
+      </Rise>
       {/* <<< WEB-UI */}
     </View>
   );
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.root, { backgroundColor: ds.ground }]} edges={['top']}>
       {/* >>> WEB-UI — one list for the whole screen; the error / loading /
           empty states sit in the space under the header. */}
       <FlatList
@@ -209,23 +241,27 @@ export default function BillingScreen() {
         keyExtractor={(item) => item._id}
         ListHeaderComponent={listHeader}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={query.isFetching && !query.isPending} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={query.isRefetching && !query.isFetchingNextPage} onRefresh={onRefresh} />}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => (
-          <DocumentRow item={item} c={c} isGstRegistered={isGstRegistered} onPress={() => router.push(toHref(`/(app)/billing/${item._id}`))} />
+        onEndReachedThreshold={0.4}
+        onEndReached={() => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }}
+        initialNumToRender={10}
+        windowSize={7}
+        renderItem={({ item, index }) => (
+          <DocumentRow index={index} item={item} isGstRegistered={isGstRegistered} onPress={() => router.push(toHref(`/(app)/billing/${item._id}`))} />
         )}
+        ListFooterComponent={query.isFetchingNextPage ? <View style={styles.side}><SkeletonList rows={2} /></View> : null}
         ListEmptyComponent={
           loadError ? (
-            <ErrorBlock c={c} message={loadError} onRetry={onRefresh} />
+            <View style={styles.side}><ErrorState message={loadError} onRetry={onRefresh} /></View>
           ) : query.isPending ? (
-            <ActivityIndicator style={{ marginTop: 32 }} />
+            <View style={styles.side}><SkeletonList rows={4} /></View>
           ) : (
-            <View style={styles.empty}>
-              <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('billing.list.emptyTitle')}</Text>
-              <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
-                {canManage ? t('billing.list.emptyManage') : t('billing.list.emptyRead')}
-              </Text>
-            </View>
+            <EmptyState
+              icon="file-document-outline"
+              title={t('billing.list.emptyTitle')}
+              body={canManage ? t('billing.list.emptyManage') : t('billing.list.emptyRead')}
+            />
           )
         }
       />
@@ -235,60 +271,54 @@ export default function BillingScreen() {
 }
 
 function DocumentRow({
-  item, c, isGstRegistered, onPress,
+  index, item, isGstRegistered, onPress,
 }: {
+  index: number;
   item: PartnerDocumentRecord;
-  c: ColorScheme;
   /** Business Settings' answer — renames an untaxed TAX_INVOICE to a bill of supply. */
   isGstRegistered: boolean | undefined;
   onPress: () => void;
 }) {
   const { t } = useTranslation();
-  return (
-    <Pressable onPress={onPress} style={styles.rowWrap /* >>> WEB-UI */}>
-      <Surface style={[styles.row, { backgroundColor: c.surface }]} elevation={1}>
-        <View style={styles.rowTop}>
-          <Text style={[styles.rowNumber, { color: c.textPrimary }]}>
-            {item.number ?? t('billing.list.draftNumber', { type: t(documentTypeLabelKey(item.type, isGstRegistered, item.totals.taxPaise)) })}
-          </Text>
-          <Text style={[styles.rowAmount, { color: c.textPrimary }]}>{formatPaise(item.totals.grandPaise)}</Text>
-        </View>
-        <View style={styles.rowBottom}>
-          <Text style={[styles.rowParty, { color: c.textSecondary }]} numberOfLines={1}>
-            {item.partySnapshot.name}
-          </Text>
-          <DocumentStatusChip status={item.status} c={c} />
-        </View>
-      </Surface>
-    </Pressable>
+  const { c, ds } = useAppTheme();
+  const number = item.number ?? t('billing.list.draftNumber', { type: t(documentTypeLabelKey(item.type, isGstRegistered, item.totals.taxPaise)) });
+  const row = (
+    <Card onPress={onPress} padding={14} accessibilityLabel={`${number}, ${formatPaise(item.totals.grandPaise)}`} style={styles.rowWrap}>
+      <View style={styles.rowTop}>
+        <Text style={[styles.rowNumber, { color: ds.ink }]} numberOfLines={1}>{number}</Text>
+        <Money style={styles.rowAmount}>{formatPaise(item.totals.grandPaise)}</Money>
+      </View>
+      <View style={styles.rowBottom}>
+        <Text style={[styles.rowParty, { color: ds.muted }]} numberOfLines={1}>
+          {item.partySnapshot.name}
+        </Text>
+        <DocumentStatusChip status={item.status} c={c} />
+      </View>
+    </Card>
   );
+  // Only the first screenful rises in; a long list never animates row by row.
+  return index < 8 ? <Rise index={Math.min(index, 4)} distance={10}>{row}</Rise> : row;
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  side: { marginHorizontal: 20 },
   hero: { marginHorizontal: 16, marginTop: 8, marginBottom: 4 },
-  draftBanner: {
-    marginHorizontal: 20, marginTop: 12, borderRadius: radii.card, padding: 12,
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-  },
+  draftBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
   draftBannerTitle: { fontSize: 13, fontWeight: '600' },
   draftBannerBody: { fontSize: 12, marginTop: 2 },
+  draftBannerLink: { fontSize: 13, fontWeight: '700' },
   newInvoiceRow: { paddingHorizontal: 20, marginTop: 14, gap: 8 },
-  newInvoiceButton: { borderRadius: radii.field },
-  search: { marginHorizontal: 20, marginTop: 12, borderRadius: radii.field },
+  search: { marginHorizontal: 20, marginTop: 12 },
   filterRow: { paddingHorizontal: 20, marginTop: 10 },
   // >>> WEB-UI — the header is inside the list now, so the 20dp side padding
   // moved onto each bill (`rowWrap`); the gap still gives 10dp above the first.
   list: { paddingBottom: 20, gap: 10 },
-  rowWrap: { marginHorizontal: 20 },
+  rowWrap: { marginHorizontal: 20, borderRadius: radii.card },
   // <<< WEB-UI
-  row: { borderRadius: radii.card, padding: 14 },
-  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  rowNumber: { fontSize: 14, fontWeight: '600' },
-  rowAmount: { fontSize: 15, fontWeight: '600' },
+  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
+  rowNumber: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  rowAmount: { fontSize: 15, flexShrink: 0, maxWidth: '50%' },
   rowBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
   rowParty: { fontSize: 13, flex: 1, marginRight: 8 },
-  empty: { padding: 32, alignItems: 'center', gap: 6 },
-  emptyTitle: { fontSize: 16, fontWeight: '600' },
-  emptyBody: { fontSize: 13, textAlign: 'center' },
 });

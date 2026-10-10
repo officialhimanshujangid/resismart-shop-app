@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Text, Modal, Portal, Divider, Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated from 'react-native-reanimated';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,10 +24,13 @@ import { useAuth, LoginResult } from '../../src/context/AuthContext';
 import { SessionNoticeBanner } from '../../src/features/owners/components/SessionNoticeBanner';
 import { ProfileInfo } from '../../src/api/auth.api';
 import { apiErrorMessage } from '../../src/api/axios';
-import { AppButton } from '../../src/components/AppButton';
 import { getGoogleIdToken, isGoogleAvailable, GoogleCancelled } from '../../src/lib/google';
 import { AppInput } from '../../src/components/AppInput';
-import { Hero } from '../../src/components/Hero';
+import { Button, GlassCard, Title } from '../../src/components/ui';
+import { AuthHero, HERO_OVERLAP } from '../../src/components/ui/AuthHero';
+import { useShake } from '../../src/components/ui/Feedback';
+import { useAppTheme } from '../../src/theme/useAppTheme';
+import { Rise } from '../../src/theme/motion';
 import { ContextPicker } from '../../src/components/ContextPicker';
 import { LoadingOverlay } from '../../src/components/LoadingOverlay';
 import { themeColors } from '../../src/constants/colors';
@@ -111,6 +115,10 @@ export default function LoginScreen() {
   const { toggle } = useLanguage();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { status } = useAppTheme();
+  /** 1R presentation only: the form card shakes once when sign-in is refused. */
+  const shake = useShake();
+  const link = status.brand.fg; // brand green that clears AA as small text, both schemes
   const { login, selectContext, requestLoginOtp, loginWithGoogle, sessionNotice, clearSessionNotice } = useAuth();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -186,8 +194,10 @@ export default function LoginScreen() {
     defaultValues: { identifier: '', password: '' },
   });
 
-  const showSnack = (message: string, error = false) =>
+  const showSnack = (message: string, error = false) => {
     setSnackbar({ visible: true, message, error });
+    if (error) shake.shake();
+  };
 
   const openHelp = () => {
     Linking.openURL(PUBLIC_SUPPORT_URL).catch(() =>
@@ -326,7 +336,9 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
+    // 1R: the hero paints under the status bar (no top edge); the form is a
+    // glass card that sits on the sky's lower edge and rises in after it.
+    <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
       {/* `light-content` in BOTH schemes: the bar sits over the hero, and the
           hero's gradient is a deep green whichever scheme is in force. */}
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
@@ -343,16 +355,12 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Hero
-            isDark={isDark}
-            variant="brand"
-            logoSize="large"
-            rounded={false}
-            subtitle={t('auth.login.heroSubtitle')}
-          />
+          <AuthHero subtitle={t('auth.login.heroSubtitle')} />
 
-          <View style={[styles.card, { backgroundColor: c.surface, shadowColor: c.shadow }]}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('auth.login.title')}</Text>
+          <Rise index={1} style={styles.cardWrap}>
+          <Animated.View style={shake.style}>
+          <GlassCard padding={22}>
+            <Title>{t('auth.login.title')}</Title>
             <Text style={[styles.cardSubtitle, { color: c.textSecondary }]}>
               {t('auth.login.subtitle')}
             </Text>
@@ -366,7 +374,7 @@ export default function LoginScreen() {
             {/* Labelled in the OTHER language, always — a reader who cannot read
                 the current one has to be able to read the way out of it. */}
             <TouchableOpacity onPress={toggle} style={styles.languageLink} activeOpacity={0.7}>
-              <Text style={[styles.linkText, { color: c.primary }]} accessibilityRole="button">
+              <Text style={[styles.linkText, { color: link }]} accessibilityRole="button">
                 {t('auth.login.switchLanguage')}
               </Text>
             </TouchableOpacity>
@@ -415,17 +423,18 @@ export default function LoginScreen() {
                 style={styles.forgotLink}
                 activeOpacity={0.7}
               >
-                {/* `primary`, not `primaryLight`: `brand[400]` is only 2.99:1
-                    on white and is a dark-mode / fill colour, never light-mode
-                    link text. See the ramp note in `constants/colors.ts`. */}
-                <Text style={[styles.linkText, { color: c.primary }]}>{t('auth.login.forgot')}</Text>
+                {/* The brand green that clears AA as small text (`status.brand`):
+                    plain `primary` is a fill colour, 3.5:1 on white. */}
+                <Text style={[styles.linkText, { color: link }]}>{t('auth.login.forgot')}</Text>
               </TouchableOpacity>
 
-              <AppButton
+              {/* The ONE primary action: the kit button on the green FILL token. */}
+              <Button
                 label={t('auth.login.signIn')}
-                onPress={handleSubmit(onSubmit)}
+                onPress={handleSubmit(onSubmit, () => shake.shake())}
                 loading={isLoading}
                 icon="login"
+                fullWidth
                 style={styles.signInButton}
               />
 
@@ -437,12 +446,13 @@ export default function LoginScreen() {
                 every partner the signup wizard created — gets in, and it has to
                 be visible without a failed attempt first.
               */}
-              <AppButton
+              <Button
                 label={t('auth.login.otpButton')}
                 onPress={() => sendCode(getValues('identifier'))}
                 loading={!!sendingCode}
                 icon="message-lock-outline"
-                mode="outlined"
+                variant="outline"
+                fullWidth
               />
               {/* Says what it is doing while it does it. A bare spinner here
                   is what left partners staring at a screen with no idea
@@ -458,12 +468,13 @@ export default function LoginScreen() {
                 same way the backend answers 503 rather than pretending. */}
             {isGoogleAvailable() ? (
               <View style={styles.googleRow}>
-                <AppButton
+                <Button
                   label={t('auth.login.google')}
                   onPress={signInWithGoogle}
                   loading={googling}
                   icon="google"
-                  mode="outlined"
+                  variant="outline"
+                  fullWidth
                 />
               </View>
             ) : null}
@@ -476,7 +487,7 @@ export default function LoginScreen() {
               <TouchableOpacity onPress={() => router.push('/(auth)/register')} activeOpacity={0.7}>
                 <Text style={[styles.footerText, { color: c.textSecondary }]}>
                   {t('auth.login.newHere')}
-                  <Text style={[styles.footerLink, { color: c.primary }]}>{t('auth.login.register')}</Text>
+                  <Text style={[styles.footerLink, { color: link }]}>{t('auth.login.register')}</Text>
                 </Text>
               </TouchableOpacity>
               {/* Help for somebody who cannot sign in. The in-app Help screens
@@ -487,10 +498,12 @@ export default function LoginScreen() {
                 activeOpacity={0.7}
                 accessibilityRole="link"
               >
-                <Text style={[styles.linkText, { color: c.primary }]}>{t('auth.login.help')}</Text>
+                <Text style={[styles.linkText, { color: link }]}>{t('auth.login.help')}</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </GlassCard>
+          </Animated.View>
+          </Rise>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -557,25 +570,16 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
-  scrollContent: { flexGrow: 1 },
-  card: {
-    flex: 1,
+  scrollContent: { flexGrow: 1, paddingBottom: 24 },
+  // The glass form card overlaps the hero's lower edge (template depth).
+  cardWrap: {
     width: '100%',
     maxWidth: 560,
     alignSelf: 'center',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 22,
-    paddingTop: 32,
-    paddingBottom: 48,
-    marginTop: -24,
-    elevation: 8,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
+    paddingHorizontal: 16,
+    marginTop: -HERO_OVERLAP,
   },
-  cardTitle: { fontSize: 26, fontWeight: '600', marginBottom: 4 },
-  cardSubtitle: { fontSize: 14, marginBottom: 28 },
+  cardSubtitle: { fontSize: 14, lineHeight: 20, marginBottom: 22 },
   form: { gap: 4 },
   forgotLink: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 8, paddingVertical: 4 },
   languageLink: { alignSelf: 'flex-start', marginTop: -18, marginBottom: 20, paddingVertical: 4 },
