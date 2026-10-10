@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // M06b — kit card (DS hairline + soft shadow, light + dark).
-import { Card } from '../../../src/components/ui';
-import { Rise } from '../../../src/theme/motion';
+import { Card, CountUp, ScanLine, SnapSheet } from '../../../src/components/ui';
+import { PressableScale, Rise, successHaptic } from '../../../src/theme/motion';
+// UX-P (A ShopOrders counter / idea P3): scan hero, cart summary + cart sheet.
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useAppTheme } from '../../../src/theme/useAppTheme';
+import { fontFamily, heroSky, radius as dsRadius, tintsFor } from '../../../src/theme/tokens';
 import {
   Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, useColorScheme, View,
 } from 'react-native';
@@ -102,6 +106,8 @@ type EditableLine = DraftLineInput & {
 };
 let lineKeySeq = 0;
 const nextLineKey = () => `line-${(lineKeySeq += 1)}`;
+/** M23 — papers that sell or quote goods out: a view-only (frozen) item is refused on them (backend `FROZEN_SALE_DOCUMENT_TYPES`). */
+const FROZEN_SALE_TYPES: ReadonlySet<string> = new Set(['TAX_INVOICE', 'QUOTATION', 'PROFORMA', 'DELIVERY_CHALLAN']);
 
 /**
  * A catalogue product as a billable line.
@@ -309,6 +315,9 @@ export default function NewInvoiceScreen() {
    * are the same sheet and cannot both be true.
    */
   const [editingKey, setEditingKey] = useState<string | 'NEW' | null>(null);
+  /** UX-P: the cart sheet (a read of `lines` + `totals`; its steppers call the same `updateQty`). */
+  const [cartOpen, setCartOpen] = useState(false);
+  const { ds, status: dsStatus } = useAppTheme();
   /** C6: "which size?" for a scanned / searched / quick-key PARENT. */
   const [variantPick, setVariantPick] = useState<{ parentName: string; parentId?: string; variants?: VariantChoice[] } | null>(null);
 
@@ -391,8 +400,19 @@ export default function NewInvoiceScreen() {
     });
   }, []);
 
+  // >>> M23 — a sale / quote refuses a view-only (frozen) item up front (the server
+  // refuses it too, ITEM_VIEW_ONLY_SALE). Purchases and returns are unchanged.
+  const refusesViewOnly = direction === 'SALES' && FROZEN_SALE_TYPES.has(docType);
+  const viewOnlyRefused = useCallback((p: { name: string; viewOnly?: boolean }): boolean => {
+    if (!p.viewOnly || !refusesViewOnly) return false;
+    setScanError(t('billing.new.viewOnlyItem', { name: p.name }));
+    return true;
+  }, [refusesViewOnly, t]);
+  // <<< M23
+
   const handleScanResult = useCallback(
     (outcome: ProductScanOutcome) => {
+      if (outcome.status === 'found' && viewOnlyRefused(outcome.product)) return; // M23
       if (outcome.status === 'found' && outcome.product.isVariantParent) {
         // C6 (D-8): a parent is not sold — the cashier picks the size. The camera
         // closes for the question and is one tap away again after it.
@@ -423,7 +443,7 @@ export default function NewInvoiceScreen() {
       }
       setScanError(outcome.message);
     },
-    [addOrBumpLine],
+    [addOrBumpLine, viewOnlyRefused],
   );
 
   // >>> SCANNER — the one "Add new product with this barcode" offer. Exactly the
@@ -684,6 +704,7 @@ export default function NewInvoiceScreen() {
       if (sourceType === 'ORDER' && sourceId) {
         await ordersApi.transition(sourceId, 'invoice').catch(() => {});
       }
+      successHaptic(); // UX-P: the bill is issued — one success buzz.
       const go = () => router.replace(toHref(`/(app)/billing/${settled.syncedDocumentId}`));
       // §4.4 WARN: the bill IS issued; the partner is told once, then lands on it.
       const warnings = (settled.issueWarnings ?? []).map((w) => warningText(w, t)).filter(Boolean);
@@ -886,6 +907,7 @@ export default function NewInvoiceScreen() {
     if (sourceType === 'BOOKING' && sourceId) await bookingApi.invoice(sourceId).catch(() => {});
     if (sourceType === 'ORDER' && sourceId) await ordersApi.transition(sourceId, 'invoice').catch(() => {});
     void queryClient.invalidateQueries({ queryKey: qk.billing.all() });
+    successHaptic(); // UX-P
     router.replace(toHref(`/(app)/billing/${documentId}`));
   }, [sourceType, sourceId, queryClient]);
 
@@ -1061,7 +1083,7 @@ export default function NewInvoiceScreen() {
                 />
                 {partyResults.map((p) => (
                   <Pressable key={p._id} onPress={() => setSelectedParty(p)} style={styles.resultRow}>
-                    <Text style={[styles.resultName, { color: c.textPrimary }]}>{p.name}</Text>
+                    <Text style={[styles.resultName, { color: c.textPrimary }, { flexShrink: 1 }]}>{p.name}</Text>
                     {!!p.phone && <Text style={[styles.resultMeta, { color: c.textSecondary }]}>{p.phone}</Text>}
                   </Pressable>
                 ))}
@@ -1173,11 +1195,28 @@ export default function NewInvoiceScreen() {
 
           <Card style={styles.card}>
             <View style={styles.cardHeaderRow}>
-              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.new.items')}</Text>
-              <Button mode="contained-tonal" icon="barcode-scan" compact onPress={() => setScannerOpen(true)}>
-                {t('billing.new.scan')}
-              </Button>
+              <Text style={[styles.cardTitle, { color: c.textPrimary }, { flexShrink: 1 }]}>{t('billing.new.items')}</Text>
             </View>
+            {/* UX-P (idea P3 "big scan button hero"): the same scanner as before, as
+                the counter's biggest target — a dark tile with the sweeping line. */}
+            <PressableScale
+              onPress={() => setScannerOpen(true)}
+              haptic
+              accessibilityRole="button"
+              accessibilityLabel={t('billing.new.scan')}
+              testID="counter-scan-hero"
+              style={[styles.scanHero, { backgroundColor: heroSky.dark[1] }]}
+            >
+              <View style={styles.scanIcon}>
+                <MaterialCommunityIcons name="barcode-scan" size={26} color={SCAN_INK} />
+                <ScanLine color={tintsFor(true).green.icon} inset={4} period={1100} />
+              </View>
+              <View style={styles.scanText}>
+                <Text style={[styles.scanTitle, { color: SCAN_INK }]}>{t('billing.new.scan')}</Text>
+                <Text style={[styles.scanSub, { color: SCAN_SOFT }]} numberOfLines={2}>{t('billing.new.scanHeroSub')}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={22} color={SCAN_SOFT} />
+            </PressableScale>
 
             {/* C6 quick keys: one tap = one unit. Only when the shop set some. */}
             {salesSide && (quickKeysQuery.data?.length ?? 0) > 0 ? (
@@ -1202,7 +1241,7 @@ export default function NewInvoiceScreen() {
             />
             {productResults.map((p) => {
               // C6: a parent asks "which size?" instead of going on the bill (it is not sellable).
-              const pick = () => (p.isVariantParent
+              const pick = () => (viewOnlyRefused(p) ? undefined : p.isVariantParent // M23
                 ? setVariantPick({ parentName: p.name, parentId: p._id })
                 : addOrBumpLine(lineFromProduct(p)));
               return (
@@ -1210,6 +1249,7 @@ export default function NewInvoiceScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.resultName, { color: c.textPrimary }]}>{p.name}</Text>
                     <Text style={[styles.resultMeta, { color: c.textSecondary }]}>
+                      {p.viewOnly && refusesViewOnly ? `${t('billing.new.viewOnlyTag')} · ` : ''}
                       {p.isVariantParent
                         ? t('commerce.counter.sizesCount', { count: p.variantCount ?? 0 })
                         : t('billing.new.perUnit', { price: formatPaise(p.sellPaise), unit: p.unit })}
@@ -1377,7 +1417,7 @@ export default function NewInvoiceScreen() {
             {totals.roundOffPaise !== 0 && <TotalLine label={t('billing.new.roundOff')} value={totals.roundOffPaise} c={c} />}
             <Divider style={{ marginVertical: 6 }} />
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: c.textSecondary }]}>{t('billing.new.total')}</Text>
+              <Text style={[styles.totalLabel, { color: c.textSecondary }, { flexShrink: 1 }]}>{t('billing.new.total')}</Text>
               <Text style={[styles.totalAmount, { color: c.textPrimary }]}>{formatPaise(totals.grandPaise)}</Text>
             </View>
             <Text style={[styles.totalHint, { color: c.textSecondary }]}>
@@ -1440,6 +1480,27 @@ export default function NewInvoiceScreen() {
 
       <View style={[styles.bottomBar, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
         <UsageMeter capacity={invoiceCapacity} c={c} />
+        {/* UX-P (A ShopOrders "3 items · ₹312"): what is on the bill, counting up as
+            items go on; tap to see the cart as a sheet. */}
+        {lines.length > 0 ? (
+          <PressableScale
+            onPress={() => setCartOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('billing.new.cartOpenA11y', { count: lines.length, amount: formatPaise(totals.grandPaise) })}
+            testID="counter-cart-summary"
+            style={[styles.cartSummary, { backgroundColor: ds.surfaceAlt }]}
+          >
+            <View style={[styles.cartBadge, { backgroundColor: ds.primaryFill }]}>
+              <MaterialCommunityIcons name="cart-outline" size={18} color={ds.onPrimary} />
+            </View>
+            <View style={styles.cartText}>
+              <Text style={[styles.cartCount, { color: ds.muted }]}>{t('billing.new.cartItems', { count: lines.length })}</Text>
+              <CountUp value={totals.grandPaise} format={formatPaise} duration={500} style={[styles.cartTotal, { color: ds.ink }]} numberOfLines={1} />
+            </View>
+            <Text style={[styles.cartView, { color: dsStatus.brand.fg }]} numberOfLines={1}>{t('billing.new.cartView')}</Text>
+            <MaterialCommunityIcons name="chevron-up" size={20} color={dsStatus.brand.fg} />
+          </PressableScale>
+        ) : null}
         {/*
           C6 / C3 at the counter: Hold (park this customer) and, when the shop has
           offers / points / split payment on, Checkout is the main action and the
@@ -1479,6 +1540,60 @@ export default function NewInvoiceScreen() {
               : t('billing.new.saveAndIssue')}
         </Button>
       </View>
+
+      {/* UX-P: the cart as a snap sheet — the same lines, the same steppers
+          (`updateQty`), tap a line to open its editor; the totals breakup underneath. */}
+      <SnapSheet
+        visible={cartOpen && lines.length > 0}
+        onDismiss={() => setCartOpen(false)}
+        title={t('billing.new.cartTitle')}
+        subtitle={t('billing.new.cartItems', { count: lines.length })}
+        snapPoints={[0.6, 0.92]}
+        testID="counter-cart-sheet"
+        footer={(
+          <View style={styles.sheetTotal}>
+            <Text style={[styles.totalLabel, { color: ds.muted }]}>{t('billing.new.total')}</Text>
+            <CountUp value={totals.grandPaise} format={formatPaise} duration={500} style={[styles.sheetTotalAmount, { color: ds.ink }]} numberOfLines={1} />
+          </View>
+        )}
+      >
+        <ScrollView contentContainerStyle={styles.sheetList} keyboardShouldPersistTaps="handled">
+          {lines.map((line, idx) => {
+            const priced = preview.lines[idx];
+            return (
+              <View key={line.key} style={[styles.sheetRow, { borderBottomColor: ds.line }]}>
+                <Pressable
+                  style={styles.flex1}
+                  onPress={() => { setCartOpen(false); setEditingKey(line.key); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('billing.new.editLine', { item: line.itemName })}
+                >
+                  <Text style={[styles.lineName, { color: ds.ink }]} numberOfLines={2}>{line.itemName}</Text>
+                  <Text style={[styles.lineMeta, { color: ds.muted }]}>{formatPaise(line.ratePaise)} × {line.qty} {line.unit ?? ''}</Text>
+                </Pressable>
+                <View style={styles.qtyStepper}>
+                  <IconButton icon="minus" size={18} hitSlop={7} disabled={!canStepDown(line.qty)} onPress={() => updateQty(line.key, -1)} accessibilityLabel={t('billing.new.qtyLess', { item: line.itemName })} />
+                  <Text style={{ color: ds.ink, minWidth: 24, textAlign: 'center' }}>{line.qty}</Text>
+                  <IconButton icon="plus" size={18} hitSlop={7} onPress={() => updateQty(line.key, 1)} accessibilityLabel={t('billing.new.qtyMore', { item: line.itemName })} />
+                </View>
+                <Text style={[styles.lineAmount, { color: ds.ink }]}>{formatPaise(priced?.totalPaise ?? 0)}</Text>
+              </View>
+            );
+          })}
+          <View style={styles.sheetBreakup}>
+            <TotalLine label={t('billing.new.taxableValue')} value={totals.subPaise} c={c} />
+            {gstApplicable && preview.interState && <TotalLine label={t('billing.new.igst')} value={totals.igstPaise} c={c} />}
+            {gstApplicable && !preview.interState && (
+              <>
+                <TotalLine label={t('billing.new.cgst')} value={totals.cgstPaise} c={c} />
+                <TotalLine label={t('billing.new.sgst')} value={totals.sgstPaise} c={c} />
+              </>
+            )}
+            {totals.cessPaise > 0 && <TotalLine label={t('billing.new.cess')} value={totals.cessPaise} c={c} />}
+            {totals.roundOffPaise !== 0 && <TotalLine label={t('billing.new.roundOff')} value={totals.roundOffPaise} c={c} />}
+          </View>
+        </ScrollView>
+      </SnapSheet>
 
       {/* ── Commerce at the counter (sheets render nothing until opened) */}
       {variantPick ? (
@@ -1588,7 +1703,7 @@ export default function NewInvoiceScreen() {
           contentContainerStyle={[styles.stateModal, { backgroundColor: c.surface }]}
         >
           <View style={styles.cardHeaderRow}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.new.placeOfSupplyTitle')}</Text>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }, { flexShrink: 1 }]}>{t('billing.new.placeOfSupplyTitle')}</Text>
             <IconButton icon="close" onPress={() => setStatePickerOpen(false)} accessibilityLabel={t('billing.new.close')} />
           </View>
           <ScrollView>
@@ -1649,14 +1764,35 @@ export default function NewInvoiceScreen() {
 function TotalLine({ label, value, c }: { label: string; value: number; c: ReturnType<typeof themeColors> }) {
   return (
     <View style={styles.breakupRow}>
-      <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>{label}</Text>
+      <Text style={{ color: c.textSecondary, fontSize: 12.5, flexShrink: 1 }}>{label}</Text>
       <Text style={{ color: c.textPrimary, fontSize: 12.5, fontWeight: '500' }}>{formatPaise(value)}</Text>
     </View>
   );
 }
 
+/** Scan hero chrome: always on the dark green tile (both themes). */
+const SCAN_INK = '#FFFFFF';
+const SCAN_SOFT = '#CFEFDC';
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  flex1: { flex: 1, minWidth: 0 },
+  scanHero: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: dsRadius.tile, paddingVertical: 14, paddingHorizontal: 14, minHeight: 72 },
+  scanIcon: { width: 48, height: 48, borderRadius: dsRadius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' },
+  scanText: { flex: 1, minWidth: 0, gap: 2 },
+  scanTitle: { fontFamily: fontFamily.sora700, fontSize: 17 },
+  scanSub: { fontSize: 12.5, lineHeight: 17 },
+  cartSummary: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: dsRadius.row, paddingVertical: 8, paddingHorizontal: 10, marginTop: 8 },
+  cartBadge: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  cartText: { flex: 1, minWidth: 0 },
+  cartCount: { fontSize: 12, fontWeight: '600' },
+  cartTotal: { fontFamily: fontFamily.sora700, fontSize: 20 },
+  cartView: { fontSize: 13, fontWeight: '700', flexShrink: 1 },
+  sheetList: { paddingBottom: 12 },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  sheetBreakup: { gap: 6, paddingTop: 12 },
+  sheetTotal: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingBottom: 4 },
+  sheetTotalAmount: { fontFamily: fontFamily.sora700, fontSize: 22, flexShrink: 1 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
   topBarTitle: { fontSize: 16, fontWeight: '600', flexShrink: 1 },
   // MP1-COMPLETE — at least the close button's width, so the title stays centred.

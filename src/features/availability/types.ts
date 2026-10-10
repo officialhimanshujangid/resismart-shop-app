@@ -2,14 +2,10 @@
  * When this business can be booked — the mobile twin of
  * `frontend/src/app/(dashboard)/dashboard/partner/availability/{draft,shared}.ts`.
  *
- * SCOPE NOTE: this app builds the business's OWN schedule only
- * (`staffId: null`), not per-staff overrides. The web screen lets an owner
- * give one staff member their own hours; that is a secondary need (the
- * business cannot take a SINGLE booking without its own schedule, which is
- * C2's actual severity) and is left for a later pass — see the final report.
- * `PartnerAvailability.staffId` still exists on the wire shape below so a
- * business-scoped row round-trips exactly, it is just never set to anything
- * but `null` from this app.
+ * SCOPE: the business's OWN schedule (`staffId: null`) and — P9A (Owner
+ * 2026-10-10, Phase 9 Q7), parity with the web — one staff member's own hours
+ * (`staffId` = their staff row). A person with no row of their own follows the
+ * business's hours; "Back on the business's hours" deletes only their row.
  *
  * These rows are a RULE, not a diary — "Tuesdays, ten till seven,
  * thirty-minute slots, two customers at once, shut for lunch, closed on
@@ -145,10 +141,11 @@ export function draftFromRow(row: AvailabilityRow, fallbackTimezone: string): Av
  * opens on hours it never agreed to. Breaks on closed days are dropped for
  * the same reason.
  */
-export function bodyFromDraft(draft: AvailabilityDraft) {
+export function bodyFromDraft(draft: AvailabilityDraft, staffId: string | null = null) {
   const openDays = new Set(draft.days.filter((d) => d.isOpen).map((d) => d.day));
   return {
-    staffId: null,
+    // P9A (Owner Q7): `null` = the business's own hours; a staff id = that person's own hours.
+    staffId,
     timezone: draft.timezone,
     weekly: draft.days.map((d) => ({
       day: d.day,

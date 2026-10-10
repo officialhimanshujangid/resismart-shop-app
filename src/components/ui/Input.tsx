@@ -115,7 +115,7 @@ export function SearchField({
           accessibilityLabel={t('kit.clearSearch')}
           style={styles.clear}
         >
-          <MaterialCommunityIcons name="close-circle" size={20} color={ds.faint} />
+          <MaterialCommunityIcons name="close-circle" size={20} color={ds.iconMuted} />
         </Pressable>
       ) : null}
     </View>

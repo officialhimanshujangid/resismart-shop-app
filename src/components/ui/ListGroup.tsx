@@ -3,7 +3,7 @@ import { StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from '
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { MIN_TOUCH, radius, typeScale, type TintName } from '../../theme/tokens';
+import { MIN_TOUCH, radius, tileDepth, typeScale, type TintName } from '../../theme/tokens';
 import { useAppTheme } from '../../theme/useAppTheme';
 import { PressableScale } from '../../theme/motion';
 import { useHindiTitleFace } from '../../theme/hindiFace';
@@ -56,10 +56,10 @@ export function ListGroup({
 }
 
 function IconTile({ icon, tint, danger }: { icon: string; tint: TintName; danger?: boolean }) {
-  const { tints } = useAppTheme();
+  const { tints, isDark } = useAppTheme();
   const tn = tints[danger ? 'sos' : tint];
   return (
-    <View style={styles.iconTile}>
+    <View style={[styles.iconTile, tileDepth(tn, isDark, 'soft')]}>
       <LinearGradient colors={[tn.from, tn.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, styles.iconFill]} />
       <MaterialCommunityIcons name={icon as never} size={20} color={tn.icon} />
     </View>
@@ -112,7 +112,7 @@ export function GroupRow({
       {value ? <Text style={[typeScale.detail, styles.value, { color: ds.muted }]}>{value}</Text> : null}
       {trailing}
       {showChevron ? (
-        <MaterialCommunityIcons name="chevron-right" size={22} color={danger ? status.danger.fg : ds.faint} />
+        <MaterialCommunityIcons name="chevron-right" size={22} color={danger ? status.danger.fg : ds.iconMuted} />
       ) : null}
     </>
   );

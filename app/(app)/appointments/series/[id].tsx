@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
 import { Snackbar, Text } from 'react-native-paper';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -16,6 +16,7 @@ import { dayTimeLabel, shortDay } from '../../../../src/features/p2/dates';
 import { appointmentsApi, apptKeys, useApptStaff } from '../../../../src/features/appointments/api';
 import { ruleLabel, statusTone } from '../../../../src/features/appointments/logic';
 import { EndSeriesSheet } from '../../../../src/features/appointments/components/EndSeriesSheet';
+import { PressableScale } from '../../../../src/theme/motion'; // M22
 
 /** One repeating appointment: the rule, what was skipped, every visit; End series (BOOKINGS_MANAGE). */
 export default function SeriesDetailScreen() {
@@ -28,7 +29,7 @@ export default function SeriesDetailScreen() {
   const staff = useApptStaff();
   const q = useQuery({ queryKey: apptKeys.seriesOne(String(id)), queryFn: () => appointmentsApi.seriesOne(String(id)), enabled: !!id });
 
-  if (q.isLoading) return <Screen c={c} title={t('p2.appointments.nav.series')}><Loading c={c} /></Screen>;
+  if (q.isLoading) return <Screen c={c} title={t('p2.appointments.nav.series')}><Loading c={c} skeleton={4} /></Screen>;
   if (q.isError || !q.data) {
     return (
       <Screen c={c} title={t('p2.appointments.nav.series')}>
@@ -45,6 +46,7 @@ export default function SeriesDetailScreen() {
   return (
     <Screen
       c={c}
+      rise
       title={s.code}
       subtitle={s.customerName}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}
@@ -80,15 +82,15 @@ export default function SeriesDetailScreen() {
 
       <SectionLabel c={c}>{t('p2.appointments.series.visits')}</SectionLabel>
       {!visits.length ? <Text style={{ color: c.textSecondary }}>{t('p2.appointments.series.noVisits')}</Text> : visits.map((v) => (
-        <Pressable
+        <PressableScale
           key={v.id}
           onPress={() => router.push(`/(app)/(tabs)/bookings?id=${v.id}` as Href)}
           accessibilityRole="button"
-          style={[styles.visit, { backgroundColor: c.surface }]}
+          style={[styles.visit, { backgroundColor: c.surface, borderColor: c.border }]}
         >
           <Text style={{ color: c.textPrimary, fontWeight: '600', flex: 1, minWidth: 0 }} numberOfLines={1}>{dayTimeLabel(v.slotStart, t)}</Text>
           <Pill c={c} label={t(STATUS_LABEL_KEYS[v.status] ?? v.status)} tone={statusTone(v.status)} />
-        </Pressable>
+        </PressableScale>
       ))}
 
       <EndSeriesSheet
@@ -104,5 +106,5 @@ export default function SeriesDetailScreen() {
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  visit: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radii.card, paddingHorizontal: 14, minHeight: 52 },
+  visit: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radii.card, paddingHorizontal: 14, minHeight: 52, borderWidth: StyleSheet.hairlineWidth },
 });

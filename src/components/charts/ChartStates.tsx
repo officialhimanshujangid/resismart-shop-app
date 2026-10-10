@@ -94,7 +94,7 @@ export function ChartError({
         <Pressable onPress={onRetry} accessibilityRole="button" accessibilityLabel={t('common.tryAgain')}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
             <MaterialCommunityIcons name="refresh" size={12} color={c.error} />
-            <Text style={{ fontSize: 11, color: c.error, fontWeight: '600' }}>{t('common.tryAgain')}</Text>
+            <Text style={{ fontSize: 11, color: c.error, fontWeight: '600', flexShrink: 1 }}>{t('common.tryAgain')}</Text>
           </View>
         </Pressable>
       ) : null}

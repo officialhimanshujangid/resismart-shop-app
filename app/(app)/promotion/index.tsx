@@ -7,6 +7,7 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, palette } from '../../../src/constants/colors';
+import { statusFor } from '../../../src/theme/tokens';
 import { IN_APP_PLAN_PURCHASES } from '../../../src/constants/app';
 import { formatI18nDate } from '../../../src/i18n';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -155,7 +156,7 @@ export default function PromotionScreen() {
       />
 
       {loading ? (
-        <Loading c={c} />
+        <Loading c={c} skeleton={4} />
       ) : packages.isError || boosts.isError || !packages.data || !boosts.data ? (
         <ErrorBlock c={c} message={apiErrorMessage(packages.error ?? boosts.error, t('promotion.screen.loadFailed'))} onRetry={refreshAll} />
       ) : (
@@ -188,6 +189,8 @@ function PromotionBody({
   onRefresh: () => void;
   linkedId?: string;
 }) {
+  // E-VISUAL-APPS: the coral notice pair follows the theme (fixed light pink + coral-600 was a pale slab with 2.6:1 text in dark).
+  const warnPair = useColorScheme() === 'dark' ? statusFor(true).danger : { fg: palette.coral[600], bg: palette.coral.soft };
   const { t } = useTranslation();
   const hasFree = pkgData.packages.some((p) => p.pricePaise === 0);
   /**
@@ -252,8 +255,8 @@ function PromotionBody({
   return (
     <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       {societyOnly && (
-        <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-          <Text testID="boost-society-only" style={{ color: palette.coral[600], fontWeight: '600' }}>{t('errors.BOOST_NOT_FOR_SOCIETY_ONLY')}</Text>
+        <Card c={c} style={{ backgroundColor: warnPair.bg }}>
+          <Text testID="boost-society-only" style={{ color: warnPair.fg, fontWeight: '600' }}>{t('errors.BOOST_NOT_FOR_SOCIETY_ONLY')}</Text>
           {canManageReach && (
             <Button mode="text" compact icon="account-search-outline" onPress={() => router.push('/settings/reach')} style={{ alignSelf: 'flex-start' }}>
               {t('society.reach.title')}
@@ -262,10 +265,10 @@ function PromotionBody({
         </Card>
       )}
       {!pkgData.boostAvailable && (
-        <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
+        <Card c={c} style={{ backgroundColor: warnPair.bg }}>
           {IN_APP_PLAN_PURCHASES ? (
             <>
-              <Text style={{ color: palette.coral[600], fontWeight: '600' }}>{t('promotion.locked.title')}</Text>
+              <Text style={{ color: warnPair.fg, fontWeight: '600' }}>{t('promotion.locked.title')}</Text>
               {/* `pkgData.message` is the server's own refusal — it names the plan
                   and the ceiling — and is shown as it arrives. Only the fallback is
                   ours to translate. */}
@@ -274,7 +277,7 @@ function PromotionBody({
           ) : (
             // Never `pkgData.message` here: the server's sentence says
             // "Upgrade to buy a boost", which this build may not say.
-            <Text style={{ color: palette.coral[600], fontWeight: '600' }}>{t('promotion.locked.body')}</Text>
+            <Text style={{ color: warnPair.fg, fontWeight: '600' }}>{t('promotion.locked.body')}</Text>
           )}
         </Card>
       )}

@@ -29,9 +29,12 @@ export interface PoReceipts {
 
 export interface ReceivePoBody {
   documentDate?: string;
-  lines: { poLineIndex: number; qty: number; ratePaise?: number }[];
+  /** M20: `batch` only for a PHARMACY business (web parity: CONTRACT-partner-P2 §7). */
+  lines: { poLineIndex: number; qty: number; ratePaise?: number; batch?: { batchNo: string; expiryDate: string } }[];
   notes?: string;
   issue?: boolean;
+  /** M20: true only after the user confirmed an already-expired batch was really received. */
+  confirmExpiredBatch?: boolean;
 }
 
 export interface UnbilledGrn {

@@ -10,6 +10,11 @@ import {
   RETAIL_BARCODE_TYPES, EXTENDED_BARCODE_TYPES, CARTON_BARCODE_TYPES, ProductScanOutcome, ProductScanRejection,
 } from './types';
 import { themeColors, radii } from '../../constants/colors';
+// M20 — the result strip shakes on a code that is not a product / a refused read
+// (the beep + buzz already fire); nothing moves under reduce-motion.
+import Animated from 'react-native-reanimated';
+import { SuccessCheck, useShake } from '../../components/ui/Feedback';
+import { ScanLine } from '../../components/ui/ScanLine';
 
 /**
  * THE ready-made scanning surface (PARTNERS_PLAN §12.1). Drop it into any
@@ -94,16 +99,18 @@ export function BarcodeScannerView({
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
 
+  const { style: stripShake, shake: shakeStrip } = useShake();
   const handleResult = useCallback((outcome: ProductScanOutcome) => {
     if (outcome.status === 'found') {
       setStatus({ tone: 'ok', text: t('components.scanner.scannedFound', { code: outcome.hit.code, name: outcome.product.name }) });
     } else if (outcome.status === 'unknown') {
       setStatus({ tone: 'warn', text: t('components.scanner.scannedUnknown', { code: outcome.barcode }), addBarcode: outcome.barcode });
+      shakeStrip();
     } else {
       setStatus(null); // the caller shows the network error
     }
     onResult(outcome);
-  }, [onResult, t]);
+  }, [onResult, t, shakeStrip]);
 
   const { handleBarcodeScanned, submitManualCode, looking } = useProductScanner({
     enabled: active,
@@ -111,7 +118,7 @@ export function BarcodeScannerView({
     allowItf: cartonCodes || extendedSymbologies,
     gate: sameCodeWaitMs ? { cooldownMs: sameCodeWaitMs } : undefined,
     onResult: handleResult,
-    onRejected: (r: ProductScanRejection) => setStatus({ tone: 'warn', text: t(`components.scanner.reject.${r.reason}`) }),
+    onRejected: (r: ProductScanRejection) => { setStatus({ tone: 'warn', text: t(`components.scanner.reject.${r.reason}`) }); shakeStrip(); },
     onAccepted: () => {
       setFlash(true);
       if (flashTimer.current) clearTimeout(flashTimer.current);
@@ -226,19 +233,24 @@ export function BarcodeScannerView({
             {looking && (
               <View style={styles.lookingPill}>
                 <ActivityIndicator size={14} color="#fff" />
-                <Text style={styles.lookingText}>{t('components.scanner.lookingUp')}</Text>
+                <Text style={[styles.lookingText, { flexShrink: 1 }]}>{t('components.scanner.lookingUp')}</Text>
               </View>
             )}
           </View>
         )}
 
         {cameraGranted && (
-          <View pointerEvents="none" style={[styles.frameGuide, flash && styles.frameGuideHit]} />
+          // UX-P (C10): the frame's sweeping line while it is looking; a springing
+          // tick on an accepted read (the beep + buzz were already there).
+          <View pointerEvents="none" style={[styles.frameGuide, flash && styles.frameGuideHit]}>
+            <ScanLine active={active && !looking && !flash} />
+            {flash ? <View style={styles.frameTick}><SuccessCheck size={48} /></View> : null}
+          </View>
         )}
 
         {/* >>> SCANNER — what was read; one Add button for an unknown code. */}
         {status && (
-          <View style={[styles.statusStrip, status.tone === 'ok' ? styles.statusOk : styles.statusWarn]}>
+          <Animated.View style={[styles.statusStrip, status.tone === 'ok' ? styles.statusOk : styles.statusWarn, stripShake]} accessibilityLiveRegion="polite">
             <Text style={styles.statusText} numberOfLines={2}>{status.text}</Text>
             {status.addBarcode && onAddNew && (
               <Button
@@ -253,7 +265,7 @@ export function BarcodeScannerView({
                 {t('components.scanner.addNewShort')}
               </Button>
             )}
-          </View>
+          </Animated.View>
         )}
         {/* <<< SCANNER */}
       </View>
@@ -323,6 +335,7 @@ const styles = StyleSheet.create({
   },
   // >>> SCANNER
   frameGuideHit: { borderColor: '#22C55E', borderWidth: 4 },
+  frameTick: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   statusStrip: {
     position: 'absolute', left: 12, right: 12, bottom: 12,
     flexDirection: 'row', alignItems: 'center', gap: 8,

@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Animated from 'react-native-reanimated';
+// M19 redesign: kit buttons (haptic primary), animated success check, error shake, rise.
+import { Button, SuccessCheck, useShake } from '../../../components/ui';
+import { Rise } from '../../../theme/motion';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
@@ -63,13 +67,16 @@ export function InviteAcceptFlow({
     },
     onError: (e) => setError(apiErrorMessage(e, t('owners.accept.acceptFailed'))),
   });
+  const { style: shakeStyle, shake } = useShake();
+  React.useEffect(() => { if (error) shake(); }, [error, shake]);
+
   const decline = useMutation({
     mutationFn: () => ownersApi.decline(address),
     onSuccess: () => setDeclined(true),
     onError: (e) => setError(apiErrorMessage(e, t('owners.accept.declineFailed'))),
   });
 
-  if (preview.isPending) return <Loading c={c} />;
+  if (preview.isPending) return <Loading c={c} skeleton={2} />;
   if (preview.isError) {
     return <ErrorBlock c={c} message={apiErrorMessage(preview.error, t('owners.accept.loadFailed'))} onRetry={() => void preview.refetch()} />;
   }
@@ -80,12 +87,12 @@ export function InviteAcceptFlow({
   if (accepted) {
     return (
       <Card c={c} style={styles.center}>
-        <MaterialCommunityIcons name="check-decagram" size={40} color={c.success} />
+        <SuccessCheck size={64} />
         <Text style={[styles.title, { color: c.textPrimary }]}>
           {isTransfer ? t('owners.accept.doneTransfer', { business: accepted.partnerName }) : t('owners.accept.doneCoOwner', { business: accepted.partnerName })}
         </Text>
         <Text style={[styles.body, { color: c.textSecondary }]}>{t('owners.accept.doneBody')}</Text>
-        <Button mode="contained" onPress={() => onFinished(accepted)} style={styles.btn}>{finishLabel}</Button>
+        <Button label={finishLabel} onPress={() => onFinished(accepted)} style={styles.center1} />
       </Card>
     );
   }
@@ -110,6 +117,7 @@ export function InviteAcceptFlow({
 
   return (
     <View style={styles.column}>
+      <Rise index={0}>
       <Card c={c}>
         <View style={styles.pills}>
           <Pill c={c} tone={isTransfer ? 'bad' : 'brand'} label={t(`owners.kind.${inv.kind}`, { defaultValue: inv.kind })} />
@@ -129,7 +137,9 @@ export function InviteAcceptFlow({
           {t('owners.expires', { date: formatI18nDate(inv.expiresAt, t) })}
         </Text>
       </Card>
+      </Rise>
 
+      <Rise index={1}>
       {!live ? (
         <Card c={c}>
           <Text style={[styles.body, { color: c.textPrimary }]}>
@@ -171,34 +181,49 @@ export function InviteAcceptFlow({
               />
             </>
           ) : null}
-          {error ? <Text style={[styles.error, { color: c.error }]} accessibilityLiveRegion="polite">{error}</Text> : null}
+          {error ? (
+            <Animated.Text style={[styles.error, { color: c.error }, shakeStyle]} accessibilityLiveRegion="polite">{error}</Animated.Text>
+          ) : null}
           <View style={styles.buttons}>
             {sent ? (
               <>
                 <Button
-                  mode="contained"
+                  label={t('owners.accept.accept')}
                   onPress={() => accept.mutate()}
                   loading={accept.isPending}
                   disabled={!CODE_RE.test(code) || accept.isPending}
-                  style={styles.btn}
-                >
-                  {t('owners.accept.accept')}
-                </Button>
-                <Button mode="text" onPress={() => sendCode.mutate()} loading={sendCode.isPending} disabled={sendCode.isPending}>
-                  {t('owners.accept.resendCode')}
-                </Button>
+                />
+                <Button
+                  variant="ghost"
+                  label={t('owners.accept.resendCode')}
+                  onPress={() => sendCode.mutate()}
+                  loading={sendCode.isPending}
+                  disabled={sendCode.isPending}
+                />
               </>
             ) : (
-              <Button mode="contained" icon="message-lock-outline" onPress={() => sendCode.mutate()} loading={sendCode.isPending} disabled={sendCode.isPending} style={styles.btn}>
-                {t('owners.accept.sendCode')}
-              </Button>
+              <Button
+                icon="message-lock-outline"
+                label={t('owners.accept.sendCode')}
+                onPress={() => sendCode.mutate()}
+                loading={sendCode.isPending}
+                disabled={sendCode.isPending}
+              />
             )}
-            <Button mode="text" textColor={c.error} onPress={confirmDecline} disabled={decline.isPending || accept.isPending}>
-              {t('owners.accept.decline')}
-            </Button>
+          </View>
+          {/* Its own line: at most two labelled buttons share a row at 360 px. */}
+          <View style={styles.buttons}>
+            <Button
+              variant="dangerOutline"
+              size="sm"
+              label={t('owners.accept.decline')}
+              onPress={confirmDecline}
+              disabled={decline.isPending || accept.isPending}
+            />
           </View>
         </Card>
       )}
+      </Rise>
     </View>
   );
 }
@@ -214,5 +239,5 @@ const styles = StyleSheet.create({
   meta: { fontSize: 12 },
   error: { fontSize: 12.5, lineHeight: 18, borderRadius: radii.xs },
   buttons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 },
-  btn: { borderRadius: 12 },
+  center1: { alignSelf: 'center' },
 });

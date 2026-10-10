@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { Alert, View, StyleSheet, useColorScheme } from 'react-native';
-import { ActivityIndicator } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +8,7 @@ import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { ErrorBlock } from '../../../src/features/more/ui';
+import { SkeletonList } from '../../../src/components/ui'; // M23
 import { partnerApi } from '../../../src/api/partner.api';
 import { qk } from '../../../src/lib/queryKeys';
 import {
@@ -89,8 +89,9 @@ export default function ServiceDetailScreen() {
 
   if (!serviceQuery.data) {
     return (
+      // M23 — a skeleton, not a lone spinner (DS v1).
       <View style={[styles.center, { backgroundColor: c.background }]}>
-        <ActivityIndicator color={c.primary} />
+        <SkeletonList rows={5} />
       </View>
     );
   }

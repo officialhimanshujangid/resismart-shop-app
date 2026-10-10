@@ -21,6 +21,7 @@ export function Ring({
   label,
   children,
   colors,
+  trackColor,
   testID,
   style,
 }: {
@@ -33,6 +34,8 @@ export function Ring({
   children?: React.ReactNode;
   /** [light end, deep end]; defaults to the brand green ramp. */
   colors?: [string, string];
+  /** UX-P: the unfilled track (e.g. a translucent white on the green hero). */
+  trackColor?: string;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -63,7 +66,7 @@ export function Ring({
             <Stop offset="1" stopColor={to} />
           </LinearGradient>
         </Defs>
-        <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={ds.primarySoft} strokeWidth={stroke} />
+        <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={trackColor ?? ds.primarySoft} strokeWidth={stroke} />
         <AnimatedCircle
           cx={size / 2}
           cy={size / 2}
@@ -86,3 +89,6 @@ export function Ring({
 const styles = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
 });
+
+/** UX-P kit name for the same animated ring (ideas P1 "sales ring"). */
+export const ProgressRing = Ring;

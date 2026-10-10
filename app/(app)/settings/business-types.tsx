@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, useColorScheme, View } from 'react-native';
-import { Snackbar, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { useToast } from '../../../src/components/ui'; // M19: kit toast (was a Paper Snackbar)
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
@@ -29,7 +30,8 @@ export default function BusinessTypesScreen() {
   const { can, refresh } = usePartnerEntitlements();
   const canManage = can('SETTINGS', 'FULL');
   const [settingsFor, setSettingsFor] = useState<P2Module | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const toast = useToast();
+  const setToast = (message: string) => toast.show({ message, tone: 'success' });
   const [error, setError] = useState<string | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
@@ -78,17 +80,13 @@ export default function BusinessTypesScreen() {
   };
 
   const title = t('p2.settings.title');
-  if (view.isPending) return <Screen c={c} title={title}><Loading c={c} /></Screen>;
+  if (view.isPending) return <Screen c={c} title={title}><Loading c={c} skeleton={4} /></Screen>;
   if (view.isError || !view.data) {
     return <Screen c={c} title={title}><ErrorBlock c={c} message={apiErrorMessage(view.error, t('p2.common.loadFailed'))} onRetry={() => view.refetch()} /></Screen>;
   }
 
   return (
-    <Screen
-      c={c}
-      title={title}
-      floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3000}>{toast}</Snackbar>}
-    >
+    <Screen c={c} title={title} rise>
       <Text style={{ color: c.textSecondary, fontSize: 13, lineHeight: 19 }}>{t('p2.settings.intro')}</Text>
       {!canManage ? <Banner c={c} body={t('p2.common.viewOnly')} /> : null}
       {error ? <Banner c={c} tone="error" body={error} testID="p2-toggle-error" /> : null}

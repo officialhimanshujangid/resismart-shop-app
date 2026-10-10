@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, Share, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, Share, StyleSheet, useColorScheme, View } from 'react-native';
 import { Snackbar, Text, TextInput } from 'react-native-paper';
 import { useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -26,6 +26,7 @@ import { statementReceiptOf } from '../../../../src/features/commerce/logic';
 import { shareWalletReceipt } from '../../../../src/features/commerce/pdf';
 import { TOPUP_MODES, type TopUpMode, type TopUpResult, type WalletBucket, type WalletStatementRow } from '../../../../src/features/commerce/types';
 import { CommerceHint, NoAccess } from '../../../../src/features/commerce/components/ui';
+import { SkeletonList } from '../../../../src/components/ui';
 
 type SheetKind = 'TOPUP' | 'REFUND' | 'ADJUST' | 'PAY_BILL' | null;
 
@@ -83,7 +84,7 @@ export default function WalletDetailScreen() {
   }, [statement.data]);
 
   if (!access.wallet.canView) {
-    return <Screen title={t('commerce.wallet.title')} c={c}><NoAccess c={c} /></Screen>;
+    return <Screen rise title={t('commerce.wallet.title')} c={c}><NoAccess c={c} /></Screen>;
   }
 
   const w = wallet.data;
@@ -98,7 +99,7 @@ export default function WalletDetailScreen() {
   };
 
   return (
-    <Screen
+    <Screen rise
       title={w?.name ?? t('commerce.wallet.title')}
       subtitle={t('commerce.wallet.title')}
       c={c}
@@ -106,7 +107,7 @@ export default function WalletDetailScreen() {
     >
       <View style={styles.wrap}>
         <CommerceHint c={c} helpKey="walletDetail" />
-        {wallet.isPending ? <Loading c={c} /> : null}
+        {wallet.isPending ? <Loading c={c} skeleton={4} /> : null}
         {wallet.isError ? <ErrorBlock c={c} message={apiErrorMessage(wallet.error)} onRetry={() => void wallet.refetch()} /> : null}
         {w ? (
           <>
@@ -195,7 +196,7 @@ export default function WalletDetailScreen() {
           ]}
           onChange={(b) => { setBucket(b); setPage(1); }}
         />
-        {statement.isPending ? <ActivityIndicator color={c.primary} /> : null}
+        {statement.isPending ? <SkeletonList rows={2} /> : null}
         {statement.isError ? <ErrorBlock c={c} message={apiErrorMessage(statement.error)} onRetry={() => void statement.refetch()} /> : null}
         {statement.isSuccess && statement.data.page === 1 && statement.data.data.length === 0 ? (
           <EmptyBlock c={c} icon="format-list-bulleted" title={t('commerce.wallet.noEntries')} />
@@ -465,7 +466,7 @@ function PayBillSheet({ partyId, creditPaise, onDismiss }: { partyId: string; cr
       footer={<PillButton c={c} icon="check" label={t('commerce.wallet.payBill')} onPress={submit} disabled={!picked || pay.isPending} testID="wallet-paybill-save" />}
     >
       <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('commerce.wallet.payBillBody', { amount: formatPaise(creditPaise) })}</Text>
-      {bills.isPending ? <ActivityIndicator color={c.primary} /> : null}
+      {bills.isPending ? <SkeletonList rows={2} /> : null}
       {bills.isError ? <Text style={{ color: c.error }}>{apiErrorMessage(bills.error)}</Text> : null}
       {bills.isSuccess && rows.length === 0 ? <Text style={{ color: c.textSecondary }}>{t('commerce.wallet.noUnpaid')}</Text> : null}
       {rows.map((r) => (

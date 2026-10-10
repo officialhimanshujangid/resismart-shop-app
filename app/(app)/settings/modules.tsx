@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
-import { Button, Chip, Switch, Text } from 'react-native-paper';
+import { Chip, Switch, Text } from 'react-native-paper';
+import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// M19 redesign: kit buttons + toast, spring save bar, skeleton, rise; dark-safe chip colours.
+import { Button, useToast } from '../../../src/components/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { themeColors, radii, palette } from '../../../src/constants/colors';
+import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, PartnerModuleState } from '../../../src/hooks'; // X2F: plan no longer locks a module
 import { partnerApi } from '../../../src/api/partner.api';
 import { PARTNER_MODULES, PartnerModule } from '../../../src/types/api-contract.generated';
@@ -45,6 +49,8 @@ export default function PartnerModulesScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
+  const toast = useToast();
+  const insets = useSafeAreaInsets();
   const { loading: gating, can, refresh: refreshEntitlements } = usePartnerEntitlements(); // X2F: plan limits no longer read here
 
   const mayManage = can('SETTINGS', 'FULL');
@@ -98,7 +104,7 @@ export default function PartnerModulesScreen() {
       // More menu, and every open screen's `can()`/`hasModule()`.
       await queryClient.invalidateQueries({ queryKey: qk.partner.modules() });
       refreshEntitlements();
-      Alert.alert(t('settings.modules.savedTitle'), t('settings.modules.savedBody'));
+      toast.show({ message: `${t('settings.modules.savedTitle')} — ${t('settings.modules.savedBody')}`, tone: 'success' });
     } catch (e: unknown) {
       Alert.alert(t('settings.modules.couldNotSave'), apiErrorMessage(e));
     } finally {
@@ -106,7 +112,7 @@ export default function PartnerModulesScreen() {
     }
   };
 
-  if (gating) return <Screen c={c} title={t('settings.modules.title')}><Loading c={c} label={t('settings.modules.checkingAccess')} /></Screen>;
+  if (gating) return <Screen c={c} title={t('settings.modules.title')}><Loading c={c} label={t('settings.modules.checkingAccess')} skeleton={3} /></Screen>;
 
   if (!mayManage) {
     return (
@@ -120,21 +126,24 @@ export default function PartnerModulesScreen() {
     return <Screen c={c} title={t('settings.modules.title')}><ErrorBlock c={c} message={apiErrorMessage(query.error, t('settings.modules.couldNotLoad'))} onRetry={() => query.refetch()} /></Screen>;
   }
 
-  if (query.isPending) return <Screen c={c} title={t('settings.modules.title')}><Loading c={c} label={t('settings.modules.loadingModules')} /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('settings.modules.title')}><Loading c={c} label={t('settings.modules.loadingModules')} skeleton={5} /></Screen>;
 
   return (
     <Screen
       c={c}
       title={t('settings.modules.title')}
       subtitle={t('settings.modules.subtitle')}
+      rise
       floating={
         dirty ? (
-          <View style={[styles.bottomBar, { backgroundColor: c.surface, borderTopColor: c.divider }]}>
-            <Button onPress={() => setChosen(baseline)} disabled={saving}>{t('settings.modules.undo')}</Button>
-            <Button mode="contained" onPress={save} loading={saving} disabled={saving} style={{ flex: 1 }}>
-              {t('settings.modules.saveChanges')}
-            </Button>
-          </View>
+          <Animated.View
+            entering={FadeInDown.springify().damping(18)}
+            exiting={FadeOutDown.duration(180)}
+            style={[styles.bottomBar, { backgroundColor: c.surface, borderTopColor: c.divider, paddingBottom: 16 + insets.bottom }]}
+          >
+            <Button variant="ghost" label={t('settings.modules.undo')} onPress={() => setChosen(baseline)} disabled={saving} />
+            <Button label={t('settings.modules.saveChanges')} onPress={save} loading={saving} disabled={saving} style={{ flex: 1 }} />
+          </Animated.View>
         ) : undefined
       }
     >
@@ -152,7 +161,7 @@ export default function PartnerModulesScreen() {
                   <Text style={{ fontSize: 15, fontWeight: '600', color: c.textPrimary }}>{label}</Text>
                   <Chip
                     compact
-                    style={[styles.badge, { backgroundColor: state === 'ON' ? palette.brand[50] : c.surfaceVariant }]}
+                    style={[styles.badge, { backgroundColor: state === 'ON' ? c.primarySoft : c.surfaceVariant }]}
                     textStyle={{
                       fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3, marginVertical: 0,
                       color: state === 'ON' ? c.primary : c.textSecondary,
@@ -163,14 +172,14 @@ export default function PartnerModulesScreen() {
                 </View>
                 <Text style={{ fontSize: 12.5, color: c.textSecondary, marginTop: 4, lineHeight: 17 }}>{blurb}</Text>
               </View>
-              <Switch value={state === 'ON'} onValueChange={() => toggle(key)} color={c.primary} />
+              <Switch value={state === 'ON'} onValueChange={() => toggle(key)} color={c.primary} accessibilityLabel={label} />
             </View>
           </Card>
           // <<< X2F
         );
       })}
 
-      <Text style={{ fontSize: 11, color: c.textDisabled, lineHeight: 16 }}>
+      <Text style={{ fontSize: 11, color: c.textSecondary, lineHeight: 16 }}>
         {t('settings.modules.footNote')}
       </Text>
     </Screen>

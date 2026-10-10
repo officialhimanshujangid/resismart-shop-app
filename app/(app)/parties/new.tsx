@@ -182,7 +182,7 @@ export default function PartyFormScreen() {
   const saving = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Screen c={c} title={t(editing ? 'parties.form.editTitle' : 'parties.form.addTitle')}>
+    <Screen c={c} rise title={t(editing ? 'parties.form.editTitle' : 'parties.form.addTitle')}>
       {!editing && cap.atLimit && (
         <View style={[styles.limitBanner, { backgroundColor: c.surfaceVariant }]}>
           <Text style={{ color: c.error, fontWeight: '600' }}>
@@ -214,7 +214,7 @@ export default function PartyFormScreen() {
       {!editing && (
         <>
           <View style={styles.switchRow}>
-            <Text style={{ color: c.textPrimary, fontSize: 14 }}>{t('parties.form.walkIn')}</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 14, flexShrink: 1 }}>{t('parties.form.walkIn')}</Text>
             <Switch value={isWalkIn} onValueChange={setIsWalkIn} color={c.primary} />
           </View>
           <AppInput

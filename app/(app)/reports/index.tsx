@@ -268,7 +268,7 @@ export default function ReportsScreen() {
 
         {isInsights ? (
           insights.isPending ? (
-            <Loading c={c} />
+            <Loading c={c} skeleton={4} />
           ) : insights.isError ? (
             <ErrorBlock c={c} message={apiErrorMessage(insights.error, t('reports.page.insightsLoadFailed'))} onRetry={() => insights.refetch()} />
           ) : (
@@ -286,7 +286,7 @@ export default function ReportsScreen() {
             </Text>
           </Card>
         ) : data.isPending ? (
-          <Loading c={c} />
+          <Loading c={c} skeleton={4} />
         ) : data.isError ? (
           <ErrorBlock c={c} message={apiErrorMessage(data.error, t('reports.page.reportLoadFailed'))} onRetry={() => data.refetch()} />
         ) : (
@@ -473,7 +473,7 @@ function ReportBody({ c, reportKey, data }: { c: ReturnType<typeof themeColors>;
               </View>
             ))}
             {r.rows.length > 50 && (
-              <Text style={{ color: c.textDisabled, fontSize: 11, padding: 12 }}>
+              <Text style={{ color: c.textSecondary, fontSize: 11, padding: 12 }}>
                 {t('reports.body.moreRows', { count: r.rows.length - 50 })}
               </Text>
             )}
@@ -613,7 +613,7 @@ function SummaryLine({ c, label, value, bold, tone }: { c: ReturnType<typeof the
   const color = tone === 'warn' ? c.error : tone === 'good' ? c.success : (bold ? c.textPrimary : c.textSecondary);
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-      <Text style={{ color: c.textSecondary, fontSize: 13 }}>{label}</Text>
+      <Text style={{ color: c.textSecondary, fontSize: 13, flexShrink: 1 }}>{label}</Text>
       <Text style={{ color, fontWeight: bold ? '600' : '500', fontSize: bold ? 16 : 13 }}>{value}</Text>
     </View>
   );

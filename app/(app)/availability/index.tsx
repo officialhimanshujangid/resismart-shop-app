@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, useColorScheme, Pressable } from 'react-native';
-import { Text, ActivityIndicator, Switch, Snackbar, Button } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, useColorScheme, Pressable, Alert } from 'react-native';
+import { Text, Switch, Snackbar, Button } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -11,16 +11,21 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { partnerApi } from '../../../src/api/partner.api';
 import { qk } from '../../../src/lib/queryKeys';
 import { DateField } from '../../../src/components/DateField';
+import { SkeletonList } from '../../../src/components/ui'; // M22 — skeleton, not a lone spinner
+import { PressableScale, Rise } from '../../../src/theme/motion'; // M22
+import { useAssignableStaff } from '../../../src/features/bookings/hooks'; // P9A Q7
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
-  useAvailability, useSaveAvailability, DayCard,
+  useAvailabilityRows, useRemoveStaffHours, useSaveAvailability, DayCard,
   AvailabilityDraft, AvailabilityWindow,
   starterDraft, draftFromRow, bodyFromDraft, draftProblem, deviceTimezone,
 } from '../../../src/features/availability';
 
 /**
  * C2 — the working-hours editor. Mirrors web `availability/page.tsx` +
- * `WeekEditor` for the business's OWN schedule (per-staff overrides are out
- * of scope here — see `src/features/availability/types.ts`'s header).
+ * `WeekEditor`: the business's OWN schedule and — P9A (Owner 2026-10-10,
+ * Phase 9 Q7) — one staff member's own hours ("Whose hours" chips, "Give own
+ * hours", "Back on the business's hours"), the same API the website uses.
  *
  * Without a schedule saved here `booking-slots.service.ts` has nothing to
  * build a slot from, so a service partner literally cannot receive a single
@@ -82,8 +87,20 @@ export default function AvailabilityScreen() {
   const { can } = usePartnerEntitlements();
   const mayManage = can('BOOKINGS_MANAGE', 'FULL');
 
-  const availabilityQuery = useAvailability();
+  // P9A Q7: every schedule at once — the business's own (`staffId: null`) and each person's own hours.
+  const rowsQuery = useAvailabilityRows();
   const saveAvailability = useSaveAvailability();
+  const removeStaffHours = useRemoveStaffHours();
+  // The job picker's own list (BOOKINGS_MANAGE: FULL), active people who take bookings only.
+  const staffQuery = useAssignableStaff(mayManage);
+  const bookableStaff = staffQuery.data ?? [];
+  /** `null` = the business's own hours; a staff id = that person's own hours. */
+  const [selected, setSelected] = useState<string | null>(null);
+  const rows = useMemo(() => rowsQuery.data ?? [], [rowsQuery.data]);
+  const rowFor = (staffId: string | null) => rows.find((r) => (r.staffId || null) === staffId) ?? null;
+  const businessRow = rowFor(null);
+  const overrideIds = useMemo(() => new Set(rows.map((r) => r.staffId).filter(Boolean) as string[]), [rows]);
+  const selectedName = bookableStaff.find((p) => p.id === selected)?.name ?? '';
 
   // L1 — the live "available now" switch. Its own tiny GET/PUT pair, kept
   // apart from the weekly-schedule draft below: it is a live flag a shop
@@ -115,20 +132,27 @@ export default function AvailabilityScreen() {
   const [newBlackout, setNewBlackout] = useState('');
   const [snackbar, setSnackbar] = useState<string | null>(null);
 
+  // Seeded whenever the selection or the loaded rows change (keyed on the ROW, so
+  // a save that returns fresh data re-seeds the form from what the server stored).
   useEffect(() => {
-    if (!availabilityQuery.isSuccess) return;
-    const row = availabilityQuery.data;
-    const fallbackTz = row?.timezone || deviceTimezone();
+    if (!rowsQuery.isSuccess) return;
+    const row = (rowsQuery.data ?? []).find((r) => (r.staffId || null) === selected) ?? null;
+    const shop = (rowsQuery.data ?? []).find((r) => !r.staffId) ?? null;
+    const fallbackTz = row?.timezone || shop?.timezone || deviceTimezone();
     if (row) {
       const next = draftFromRow(row, fallbackTz);
       setDraft(next);
       setBaseline(JSON.stringify(next));
-    } else {
+    } else if (selected === null) {
       const next = starterDraft(fallbackTz);
       setDraft(next);
       setBaseline(null); // nothing saved yet — reads as unsaved, because it is
+    } else {
+      // P9A Q7: a person with no hours of their own follows the business.
+      setDraft(null);
+      setBaseline(null);
     }
-  }, [availabilityQuery.isSuccess, availabilityQuery.data]);
+  }, [rowsQuery.isSuccess, rowsQuery.data, selected]);
 
   const dirty = useMemo(() => Boolean(draft) && JSON.stringify(draft) !== baseline, [draft, baseline]);
   // `t` is a dependency: `draftProblem` renders its sentence through the
@@ -189,32 +213,59 @@ export default function AvailabilityScreen() {
 
   const save = () => {
     if (!draft || problem) return;
-    saveAvailability.mutate(bodyFromDraft(draft), {
+    saveAvailability.mutate(bodyFromDraft(draft, selected), {
       onSuccess: (row) => {
         const next = draftFromRow(row, draft.timezone);
         setDraft(next);
         setBaseline(JSON.stringify(next));
-        setSnackbar(t('availability.screen.saved'));
+        setSnackbar(t(selected ? 'availability.staff.savedTheirs' : 'availability.screen.saved'));
       },
       onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
     });
   };
 
-  if (availabilityQuery.isLoading || !draft) {
+  /** P9A Q7: start this person's own hours from the business's week (the common case is "the shop's hours, minus Thursday"). */
+  const giveOwnHours = () => {
+    const tz = businessRow?.timezone || deviceTimezone();
+    setDraft(businessRow ? draftFromRow(businessRow, tz) : starterDraft(tz));
+    setBaseline(null);
+  };
+
+  /** P9A Q7: drop this person's own hours — they follow the business again. */
+  const backOnBusinessHours = () => {
+    if (!selected) return;
+    Alert.alert(
+      t('availability.staff.dropTitle', { name: selectedName || t('availability.staff.someone') }),
+      t('availability.staff.dropBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('availability.staff.dropConfirm'),
+          style: 'destructive',
+          onPress: () => removeStaffHours.mutate(selected, {
+            onSuccess: () => setSnackbar(t('availability.staff.dropped')),
+            onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
+          }),
+        },
+      ],
+    );
+  };
+
+  if (rowsQuery.isLoading || (selected === null && !draft && !rowsQuery.isError)) {
     return (
-      <View style={[styles.center, { backgroundColor: c.background }]}>
-        <ActivityIndicator color={c.primary} />
+      <View style={[styles.root, { backgroundColor: c.background, padding: 16 }]}>
+        <SkeletonList rows={5} testID="availability-loading" />
       </View>
     );
   }
 
-  if (availabilityQuery.isError) {
+  if (rowsQuery.isError) {
     return (
       <View style={[styles.center, { backgroundColor: c.background, padding: 24 }]}>
         <Text style={{ color: c.textSecondary, textAlign: 'center', marginBottom: 12 }}>
           {t('availability.screen.loadFailed')}
         </Text>
-        <Button mode="contained" onPress={() => availabilityQuery.refetch()}>{t('common.tryAgain')}</Button>
+        <Button mode="contained" onPress={() => rowsQuery.refetch()}>{t('common.tryAgain')}</Button>
       </View>
     );
   }
@@ -222,9 +273,11 @@ export default function AvailabilityScreen() {
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.body}>
+        <Rise index={0}>
         <Text style={[styles.intro, { color: c.textSecondary }]}>
           {t('availability.screen.intro')}
         </Text>
+        </Rise>
 
         {/*
           Says WHY nothing on this screen responds, in the words Orders already
@@ -242,7 +295,8 @@ export default function AvailabilityScreen() {
           </View>
         )}
 
-        {mayManage && meQuery.data && (
+        {mayManage && meQuery.data && selected === null && (
+          <Rise index={1}>
           <View
             style={[
               styles.liveBox,
@@ -250,7 +304,7 @@ export default function AvailabilityScreen() {
             ]}
           >
             <View style={styles.activeRow}>
-              <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600' }}>
+              <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600', flexShrink: 1 }}>
                 {t('availability.live.title')}
               </Text>
               <Switch value={availableNow} onValueChange={setLiveAvailability} disabled={savingAvailableNow} />
@@ -259,19 +313,64 @@ export default function AvailabilityScreen() {
               {t('availability.live.hint')}
             </Text>
           </View>
+          </Rise>
         )}
 
+        {/* ------------------------------------------ P9A Q7: whose hours these are */}
+        {mayManage && bookableStaff.length > 0 && (
+          <Rise index={2}>
+            <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 10 }]}>{t('availability.staff.whose')}</Text>
+            <View style={styles.chipRow} accessibilityRole="radiogroup">
+              {[{ id: null as string | null, label: t('availability.staff.business') },
+                ...bookableStaff.map((p) => ({
+                  id: p.id as string | null,
+                  label: overrideIds.has(p.id) ? p.name : t('availability.staff.follows', { name: p.name }),
+                }))].map((o) => {
+                const active = selected === o.id;
+                return (
+                  <PressableScale
+                    key={o.id ?? 'business'}
+                    onPress={() => setSelected(o.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                    testID={`hours-whose-${o.id ?? 'business'}`}
+                    style={[styles.optionChip, styles.whoseChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
+                  >
+                    <MaterialCommunityIcons name={o.id ? 'account-clock-outline' : 'storefront-outline'} size={15} color={active ? c.textInverse : c.textSecondary} />
+                    <Text style={{ color: active ? c.textInverse : c.textPrimary, fontSize: 12, fontWeight: '600', flexShrink: 1 }}>{o.label}</Text>
+                  </PressableScale>
+                );
+              })}
+            </View>
+            <Text style={[styles.hint, { color: c.textSecondary }]}>{t('availability.staff.whoseHint')}</Text>
+          </Rise>
+        )}
+
+        {selected !== null && !draft ? (
+          <Rise index={3}>
+            <View style={[styles.followsBox, { backgroundColor: c.surface, borderColor: c.divider }]} testID="hours-follows-business">
+              <MaterialCommunityIcons name="account-clock-outline" size={26} color={c.primary} />
+              <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '700', textAlign: 'center' }}>
+                {t('availability.staff.followsTitle', { name: selectedName })}
+              </Text>
+              <Text style={[styles.hint, { color: c.textSecondary, textAlign: 'center' }]}>{t('availability.staff.followsBody')}</Text>
+              <Button mode="contained" icon="clock-edit-outline" onPress={giveOwnHours} style={styles.saveBtn} testID="hours-give-own">
+                {t('availability.staff.giveOwn')}
+              </Button>
+            </View>
+          </Rise>
+        ) : draft ? (<>
         <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('availability.screen.presetsLabel')}</Text>
         <View style={[styles.chipRow, !mayManage && styles.readOnlyRow]}>
           {PRESETS.map((p) => (
-            <Pressable
+            <PressableScale
               key={p.labelKey}
               onPress={() => applyPreset(p)}
               disabled={!mayManage}
               style={[styles.presetChip, { borderColor: mayManage ? c.primary : c.divider }]}
             >
-              <Text style={{ color: mayManage ? c.primary : c.textDisabled, fontSize: 12, fontWeight: '600' }}>{t(p.labelKey)}</Text>
-            </Pressable>
+              <Text style={{ color: mayManage ? c.primary : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{t(p.labelKey)}</Text>
+            </PressableScale>
           ))}
         </View>
 
@@ -280,9 +379,9 @@ export default function AvailabilityScreen() {
             ? t('availability.screen.allClosed')
             : t('availability.screen.openCount', { count: openCount })}
         </Text>
-        {draft.days.map((d) => (
+        {draft.days.map((d, i) => (
+          <Rise key={d.day} index={Math.min(i + 2, 6)}>
           <DayCard
-            key={d.day}
             day={d}
             breaks={draft.breaks.filter((b) => b.day === d.day)}
             disabled={!mayManage}
@@ -290,6 +389,7 @@ export default function AvailabilityScreen() {
             onPatch={(patch) => patchDay(d.day, patch)}
             onPatchBreaks={(list) => patchBreaksForDay(d.day, list)}
           />
+          </Rise>
         ))}
 
         <Text style={[styles.sectionLabel, { color: c.textSecondary, marginTop: 8 }]}>{t('availability.screen.blackoutLabel')}</Text>
@@ -298,11 +398,11 @@ export default function AvailabilityScreen() {
         </Text>
         <View style={styles.chipRow}>
           {draft.blackoutDates.length === 0 && (
-            <Text style={{ color: c.textDisabled, fontSize: 12, fontStyle: 'italic' }}>{t('availability.screen.blackoutNone')}</Text>
+            <Text style={{ color: c.textSecondary, fontSize: 12, fontStyle: 'italic' }}>{t('availability.screen.blackoutNone')}</Text>
           )}
           {draft.blackoutDates.map((dstr) => (
             <View key={dstr} style={[styles.blackoutChip, { backgroundColor: c.surfaceVariant }]}>
-              <Text style={{ color: c.textPrimary, fontSize: 11.5, fontWeight: '600' }}>{dstr}</Text>
+              <Text style={{ color: c.textPrimary, fontSize: 11.5, fontWeight: '600', flexShrink: 1 }}>{dstr}</Text>
               {mayManage && (
                 <Pressable onPress={() => setDraft({ ...draft, blackoutDates: draft.blackoutDates.filter((x) => x !== dstr) })}>
                   <Text style={{ color: c.textSecondary, fontSize: 13, marginLeft: 6 }}>✕</Text>
@@ -331,7 +431,7 @@ export default function AvailabilityScreen() {
                 disabled={!mayManage}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
-                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{t(choice.labelKey)}</Text>
+                <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{t(choice.labelKey)}</Text>
               </Pressable>
             );
           })}
@@ -348,7 +448,7 @@ export default function AvailabilityScreen() {
                 disabled={!mayManage}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
-                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{t(choice.labelKey)}</Text>
+                <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{t(choice.labelKey)}</Text>
               </Pressable>
             );
           })}
@@ -368,7 +468,7 @@ export default function AvailabilityScreen() {
                 disabled={!mayManage}
                 style={[styles.optionChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
               >
-                <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{tz}</Text>
+                <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 12, fontWeight: '600' }}>{tz}</Text>
               </Pressable>
             );
           })}
@@ -384,7 +484,7 @@ export default function AvailabilityScreen() {
           <View style={styles.activeRow}>
             {/* The same phrase `availability.problem.allClosed` quotes back at
                 the partner — one label for one switch, in both languages. */}
-            <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600' }}>{t('availability.screen.takingBookings')}</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 13.5, fontWeight: '600', flexShrink: 1 }}>{t('availability.screen.takingBookings')}</Text>
             <Switch value={draft.isActive} onValueChange={(v) => setDraft({ ...draft, isActive: v })} disabled={!mayManage} />
           </View>
           <Text style={[styles.hint, { color: c.textSecondary }]}>
@@ -409,6 +509,22 @@ export default function AvailabilityScreen() {
             {t(saveAvailability.isPending ? 'common.saving' : 'availability.screen.saveHours')}
           </Button>
         )}
+        {/* P9A Q7: only for a person who HAS their own hours (the business's own schedule has no delete). */}
+        {mayManage && selected !== null && rowFor(selected) && (
+          <Button
+            mode="outlined"
+            icon="backup-restore"
+            onPress={backOnBusinessHours}
+            loading={removeStaffHours.isPending}
+            disabled={removeStaffHours.isPending}
+            textColor={c.error}
+            style={[styles.saveBtn, { borderColor: c.error }]}
+            testID="hours-back-on-business"
+          >
+            {t('availability.staff.backOnBusiness')}
+          </Button>
+        )}
+        </>) : null}
       </ScrollView>
 
       <Snackbar visible={Boolean(snackbar)} onDismiss={() => setSnackbar(null)} duration={4000}>
@@ -441,4 +557,7 @@ const styles = StyleSheet.create({
   activeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   problemBox: { borderRadius: radii.md, borderWidth: 1, padding: 12, marginTop: 14 },
   saveBtn: { borderRadius: radii.card, marginTop: 16 },
+  // P9A Q7
+  whoseChip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%', minHeight: 40 },
+  followsBox: { borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, padding: 18, alignItems: 'center', gap: 6, marginTop: 6 },
 });

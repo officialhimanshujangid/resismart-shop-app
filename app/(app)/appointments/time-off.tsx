@@ -45,6 +45,7 @@ export default function TimeOffScreen() {
   return (
     <Screen
       c={c}
+      rise
       title={t('p2.appointments.nav.timeOff')}
       subtitle={t('p2.appointments.timeOff.subtitle')}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}
@@ -54,7 +55,7 @@ export default function TimeOffScreen() {
           <PillButton c={c} icon="plus" label={t('p2.appointments.timeOff.add')} onPress={() => setAdding(true)} testID="timeoff-add" />
         </ActionRow>
       ) : null}
-      {q.isLoading ? <Loading c={c} />
+      {q.isLoading ? <Loading c={c} skeleton={3} />
         : q.isError ? <ErrorBlock c={c} message={apiErrorMessage(q.error, t('p2.common.loadFailed'))} onRetry={() => q.refetch()} />
         : !groups.length ? <EmptyBlock c={c} icon="calendar-check-outline" title={t('p2.appointments.timeOff.empty')} />
         : groups.map((g) => (

@@ -6,6 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { ColorScheme, radii } from '../../../constants/colors';
 import { BarcodeScannerView, ProductScanOutcome } from '../../scanner';
 import type { QueuedScan } from '../countQueue';
+// M20 — a tick springs in beside each counted scan; a code the catalogue does not
+// know shakes the list (the scanner already beeps + buzzes). None under reduce-motion.
+import Animated from 'react-native-reanimated';
+import { SuccessCheck, useShake } from '../../../components/ui/Feedback';
 
 /**
  * Count-by-scan (screen S11, ADD mode): the camera stays open, every scan adds
@@ -27,6 +31,8 @@ export function CountScanner({
 }) {
   const { t } = useTranslation();
   const [recent, setRecent] = useState<{ label: string; n: number }[]>([]);
+  const [hits, setHits] = useState(0);
+  const { style: shakeStyle, shake } = useShake();
 
   const onResult = (o: ProductScanOutcome) => {
     let scan: QueuedScan;
@@ -34,6 +40,8 @@ export function CountScanner({
     else if (o.status === 'unknown') scan = { barcode: o.barcode, label: o.barcode, qty: 1 };
     else scan = { barcode: o.hit.code, label: o.hit.code, qty: 1 };
     onScan(scan);
+    setHits((h) => h + 1);
+    if (o.status === 'unknown') shake();
     setRecent((r) => {
       const [first, ...rest] = r;
       if (first && first.label === scan.label) return [{ label: first.label, n: first.n + 1 }, ...rest];
@@ -53,16 +61,17 @@ export function CountScanner({
           </View>
           <IconButton icon="check" mode="contained" onPress={onClose} accessibilityLabel={t('stock.count.doneScanning')} size={28} />
         </View>
-        <View style={[styles.recent, { backgroundColor: c.surface }]}>
+        <Animated.View style={[styles.recent, { backgroundColor: c.surface }, shakeStyle]} accessibilityLiveRegion="polite">
           {recent.length === 0 ? (
             <Text style={{ color: c.textSecondary }}>{t('stock.count.scanHint')}</Text>
           ) : recent.map((r, i) => (
             <View key={`${r.label}-${i}`} style={styles.recentRow}>
+              {i === 0 ? <SuccessCheck key={hits} size={28} /> : null}
               <Text style={{ color: c.textPrimary, fontSize: i === 0 ? 18 : 14, fontWeight: i === 0 ? '700' : '500', flex: 1 }} numberOfLines={1}>{r.label}</Text>
               <Text style={{ color: c.primary, fontSize: i === 0 ? 20 : 14, fontWeight: '700' }}>+{r.n}</Text>
             </View>
           ))}
-        </View>
+        </Animated.View>
         {/* >>> SCANNER — counting identical tins: the camera's same-code wait is 1 s
             here (2 s elsewhere), and a carton's full ITF-14 is accepted. */}
         <BarcodeScannerView active={visible} onResult={onResult} hint={t('stock.count.scanHint')} cartonCodes sameCodeWaitMs={1000} />

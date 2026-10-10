@@ -21,6 +21,7 @@ import {
 } from '../fulfilmentLogic';
 import { slotText, whenText } from '../format';
 import { Tag } from './ui';
+import { SkeletonList } from '../../../components/ui';
 
 // ═══════════════════════════════════════════════════════════════ order info block
 
@@ -242,7 +243,7 @@ export function AssignRiderSheet({
   return (
     <Sheet visible onDismiss={onDismiss} title={t('commerce.fulfilment.assignTitle', { code: order.code })} testID="assign-sheet">
       <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('commerce.fulfilment.assignBody')}</Text>
-      {staff.isPending ? <ActivityIndicator color={c.primary} /> : null}
+      {staff.isPending ? <SkeletonList rows={2} /> : null}
       {staff.isError ? <Text style={{ color: c.error }}>{apiErrorMessage(staff.error)}</Text> : null}
       {staff.isSuccess && rows.length === 0 ? <Text style={{ color: c.textSecondary }}>{t('commerce.fulfilment.noStaff')}</Text> : null}
       {rows.map((s) => {

@@ -6,11 +6,12 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { PausedReadOnlyNote, useIsPaused } from '../../../src/features/p1/PausedReadOnlyNote'; // P9A Q10
 import { qk } from '../../../src/lib/queryKeys';
 import { settingsApi, GstRegistrationType, GST_REGISTRATION_TYPES } from '../../../src/api/settings.api';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppInput } from '../../../src/components/AppInput';
-import { AppButton } from '../../../src/components/AppButton';
+import { Button, useToast } from '../../../src/components/ui'; // M19: kit button (haptic) + success toast
 import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 
 /** = `COMPOSITION_RATES` on the server (§1.5). */
@@ -22,8 +23,11 @@ export default function BusinessSettingsScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
-  const canEdit = can('SETTINGS', 'FULL');
+  // P9A (Owner Q10): a paused business may read these settings, never change them.
+  const paused = useIsPaused();
+  const canEdit = can('SETTINGS', 'FULL') && !paused;
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const query = useQuery({ queryKey: qk.businessSettings(), queryFn: settingsApi.business.get });
 
@@ -88,7 +92,7 @@ export default function BusinessSettingsScreen() {
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.businessSettings() });
-      Alert.alert(t('settings.business.savedTitle'), t('settings.business.savedBody'));
+      toast.show({ message: `${t('settings.business.savedTitle')} — ${t('settings.business.savedBody')}`, tone: 'success' });
     },
     onError: (err) => Alert.alert(t('settings.business.couldNotSave'), apiErrorMessage(err)),
   });
@@ -102,13 +106,14 @@ export default function BusinessSettingsScreen() {
     save.mutate();
   };
 
-  if (query.isPending) return <Screen c={c} title={t('settings.business.title')}><Loading c={c} /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('settings.business.title')}><Loading c={c} skeleton={4} /></Screen>;
   if (query.isError) {
     return <Screen c={c} title={t('settings.business.title')}><ErrorBlock c={c} message={apiErrorMessage(query.error, t('settings.business.couldNotLoad'))} onRetry={() => query.refetch()} /></Screen>;
   }
 
   return (
-    <Screen c={c} title={t('settings.business.title')}>
+    <Screen c={c} title={t('settings.business.title')} rise>
+      <PausedReadOnlyNote />
       <Card c={c}>
         <SectionLabel c={c}>{t('settings.business.section')}</SectionLabel>
         <AppInput label={t('settings.business.name')} value={businessName} onChangeText={setBusinessName} disabled={!canEdit} error={errors.businessName} />
@@ -143,7 +148,7 @@ export default function BusinessSettingsScreen() {
       <Card c={c}>
         <SectionLabel c={c}>{t('settings.business.gstSection')}</SectionLabel>
         <View style={styles.switchRow}>
-          <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '600' }}>{t('settings.business.gstRegistered')}</Text>
+          <Text style={{ color: c.textPrimary, fontSize: 14, fontWeight: '600', flexShrink: 1 }}>{t('settings.business.gstRegistered')}</Text>
           <Switch value={isGstRegistered} onValueChange={setIsGstRegistered} color={c.primary} disabled={!canEdit} />
         </View>
         {isGstRegistered && (
@@ -170,7 +175,7 @@ export default function BusinessSettingsScreen() {
       </Card>
 
       {canEdit && (
-        <AppButton label={t('settings.business.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} style={{ marginTop: 8 }} />
+        <Button fullWidth label={t('settings.business.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} style={{ marginTop: 8 }} />
       )}
     </Screen>
   );

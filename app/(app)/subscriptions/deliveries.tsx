@@ -21,6 +21,7 @@ import {
 } from '../../../src/features/subscriptions/logic';
 import { DeliveryRow } from '../../../src/features/subscriptions/components/DeliveryRow';
 import { DeliveryCounts } from '../../../src/features/subscriptions/components/DeliveryCounts';
+import { Rise } from '../../../src/theme/motion'; // M22
 import { LoadingList } from '../../../src/features/subscriptions/components/LoadingList';
 
 /**
@@ -146,7 +147,7 @@ export default function DeliveriesScreen() {
     </View>
   );
 
-  const empty = sheet.isPending ? <Loading c={c} />
+  const empty = sheet.isPending ? <Loading c={c} skeleton={5} />
     : sheet.isError ? (
       <ErrorBlock c={c} message={apiErrorMessage(sheet.error, t('p2.subscriptions.deliveries.loadFailed'))} onRetry={() => void sheet.refetch()} />
     ) : <EmptyBlock c={c} icon="truck-outline" title={t('p2.subscriptions.deliveries.empty')} />;
@@ -163,7 +164,11 @@ export default function DeliveriesScreen() {
         keyboardShouldPersistTaps="handled"
         refreshing={sheet.isRefetching}
         onRefresh={() => void sheet.refetch()}
-        renderItem={({ item }) => (
+        initialNumToRender={10}
+        windowSize={9}
+        renderItem={({ item, index }) => (
+          // M22 — the first screenful rises in (keyed per day, so a new day's sheet rises too).
+          <Rise key={`${day}-${item.row.subscriptionId}`} index={index < 8 ? Math.min(index, 6) : 0}>
           <DeliveryRow
             c={c}
             v={item}
@@ -173,6 +178,7 @@ export default function DeliveriesScreen() {
             onDeliveredAnyway={() => mark(item, 'DELIVERED')}
             onSaveQty={(edited) => mark(item, item.state === 'EXTRA' ? 'EXTRA' : 'DELIVERED', qtyChanges(item.lines, edited))}
           />
+          </Rise>
         )}
       />
       {sheet.data ? (

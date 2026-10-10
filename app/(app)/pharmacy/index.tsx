@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, useColorScheme, View } from 'react-native';
-import { TextInput } from 'react-native-paper';
+import { SearchField } from '../../../src/components/ui'; // M20 — DS search pill
+import { Rise } from '../../../src/theme/motion'; // M20 — first screenful of rows rises in
 import { router, type Href } from 'expo-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { radii, themeColors } from '../../../src/constants/colors';
+import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { useDebouncedValue } from '../../../src/features/billing/useDebouncedValue';
@@ -68,7 +69,7 @@ export default function PharmacyHomeScreen() {
 
   if (!canView) {
     return (
-      <Screen c={c} title={t('p2.pharmacy.title')} subtitle={t('p2.pharmacy.subtitle')}>
+      <Screen c={c} rise title={t('p2.pharmacy.title')} subtitle={t('p2.pharmacy.subtitle')}>
         {links}
       </Screen>
     );
@@ -78,14 +79,10 @@ export default function PharmacyHomeScreen() {
     <View style={styles.header}>
       <BucketTiles c={c} buckets={buckets.data?.buckets ?? []} onPress={() => router.push('/pharmacy/near-expiry' as Href)} testID="hub-buckets" />
       {links}
-      <TextInput
-        mode="outlined"
+      <SearchField
         placeholder={t('p2.pharmacy.hub.search')}
         value={q}
         onChangeText={(s) => setQ(s.slice(0, 60))}
-        left={<TextInput.Icon icon="magnify" />}
-        outlineStyle={{ borderRadius: radii.field }}
-        style={{ backgroundColor: 'transparent' }}
         testID="hub-search"
       />
       <ChipRow c={c} value={filter} options={FILTERS.map((k) => ({ key: k, label: t(`p2.pharmacy.hub.filter.${k}`) }))} onChange={setFilter} />
@@ -102,17 +99,19 @@ export default function PharmacyHomeScreen() {
         keyExtractor={(b) => b.id}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={header}
-        renderItem={({ item }) => (
-          <View style={wide ? { flex: 1, minWidth: 0 } : undefined}>
+        renderItem={({ item, index }) => (
+          <Rise index={index < 8 ? Math.min(index, 5) + 1 : 0} duration={index < 8 ? undefined : 1} style={wide ? { flex: 1, minWidth: 0 } : undefined}>
             <BatchRowItem c={c} row={item} onPress={() => router.push(batchPath(item) as Href)} testID={`batch-${item.id}`} />
-          </View>
+          </Rise>
         )}
+        initialNumToRender={10}
+        windowSize={9}
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         contentContainerStyle={styles.list}
         onRefresh={() => { void list.refetch(); void buckets.refetch(); }}
         refreshing={list.isRefetching && !list.isFetchingNextPage}
         ListEmptyComponent={
-          list.isPending ? <Loading c={c} />
+          list.isPending ? <Loading c={c} skeleton={3} />
             : list.isError ? <ErrorBlock c={c} message={apiErrorMessage(list.error, t('p2.pharmacy.hub.loadFailed'))} onRetry={() => list.refetch()} />
               : <EmptyBlock c={c} icon="pill" title={t('p2.pharmacy.hub.empty')} body={t('p2.pharmacy.hub.emptyBody')} />
         }

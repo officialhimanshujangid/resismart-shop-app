@@ -118,7 +118,7 @@ export default function SubscriptionDetailScreen() {
   ]);
 
   const title = sub?.code ?? t('p2.subscriptions.detail.title');
-  if (detail.isPending) return <Screen c={c} title={title}><Loading c={c} /></Screen>;
+  if (detail.isPending) return <Screen c={c} title={title}><Loading c={c} skeleton={5} /></Screen>;
   if (detail.isError || !detail.data || !sub) {
     return (
       <Screen c={c} title={title}>
@@ -187,6 +187,7 @@ export default function SubscriptionDetailScreen() {
   return (
     <Screen
       c={c}
+      rise
       title={title}
       subtitle={sub.customerName}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}

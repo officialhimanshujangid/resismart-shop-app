@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
+import { PressableScale } from '../../../src/theme/motion'; // M22
 import { Text } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -38,23 +39,23 @@ export default function PlansScreen() {
   const list = plans.data ?? [];
 
   return (
-    <Screen c={c} title={t('p2.subscriptions.plans.title')}>
+    <Screen c={c} rise title={t('p2.subscriptions.plans.title')}>
       {canManage ? (
         <ActionRow>
           <PillButton c={c} icon="plus" label={t('p2.subscriptions.plans.add')} onPress={() => openSheet(null)} testID="plan-add" />
         </ActionRow>
       ) : null}
-      {plans.isPending ? <Loading c={c} />
+      {plans.isPending ? <Loading c={c} skeleton={4} />
         : plans.isError ? <ErrorBlock c={c} message={apiErrorMessage(plans.error, t('p2.common.loadFailed'))} onRetry={() => void plans.refetch()} />
           : list.length === 0 ? <EmptyBlock c={c} icon="clipboard-list-outline" title={t('p2.subscriptions.plans.empty')} body={t('p2.subscriptions.plans.emptyBody')} />
             : list.map((p) => (
-              <Pressable
+              <PressableScale
                 key={p._id}
                 onPress={canManage ? () => openSheet(p) : undefined}
                 disabled={!canManage}
                 accessibilityRole={canManage ? 'button' : undefined}
                 testID={`plan-${p._id}`}
-                style={[styles.row, { backgroundColor: c.surface, borderColor: c.divider, opacity: p.isActive ? 1 : 0.6 }]}
+                style={[styles.row, { backgroundColor: c.surface, borderColor: c.divider }]}
               >
                 <View style={styles.top}>
                   <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{p.name}</Text>
@@ -69,7 +70,7 @@ export default function PlansScreen() {
                     ? t('p2.subscriptions.detail.fixedFee', { amount: formatPaise(p.billing.monthlyFeePaise ?? 0) })
                     : (p.lines ?? []).map((l) => `${l.itemName} ${formatPaise(l.ratePaise)}/${l.unit}`).join(' · ')}
                 </Text>
-              </Pressable>
+              </PressableScale>
             ))}
       <PlanSheet visible={open} plan={editing} onDismiss={() => setOpen(false)} submitting={save.isPending} error={error}
         onSubmit={(body) => save.mutate(body)} />

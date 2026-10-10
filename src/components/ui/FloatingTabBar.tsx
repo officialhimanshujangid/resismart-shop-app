@@ -53,7 +53,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: TabBarProps) 
           const hasBadge = badge !== undefined && badge !== null && badge !== '';
           const a11y = hasBadge ? t('kit.tabWithCount', { label, badge: String(badge) }) : label;
           const accent = route.name === 'billing' && !focused;
-          const iconColor = focused ? ds.onPrimary : accent ? ds.primary : ds.faint;
+          const iconColor = focused ? ds.onPrimary : accent ? ds.primary : ds.iconMuted;
 
           const onPress = () => {
             const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });

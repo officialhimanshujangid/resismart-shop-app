@@ -113,7 +113,7 @@ export function VisitsCard({ c, visits }: { c: ColorScheme; visits: PartnerBooki
               {`${v.code} · ${t(STATUS_LABEL_KEYS[v.status] ?? v.status)}`}
             </Text>
           </View>
-          <MaterialCommunityIcons name="chevron-right" size={22} color={c.textDisabled} />
+          <MaterialCommunityIcons name="chevron-right" size={22} color={c.iconMuted} />
         </Pressable>
       ))}
     </View>

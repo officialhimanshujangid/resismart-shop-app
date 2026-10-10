@@ -138,7 +138,7 @@ export function BundleCard({ product }: { product: Product }) {
     <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]} testID="bundle-card">
       <View style={styles.head}>
         <MaterialCommunityIcons name="package-variant" size={20} color={c.primary} />
-        <Text style={[styles.title, { color: c.textPrimary }]}>{isBundle ? t('commerce.bundles.titleBundle') : t('commerce.bundles.title')}</Text>
+        <Text style={[styles.title, { color: c.textPrimary }, { flexShrink: 1 }]}>{isBundle ? t('commerce.bundles.titleBundle') : t('commerce.bundles.title')}</Text>
       </View>
       <Text style={{ color: c.textSecondary, fontSize: 12.5, lineHeight: 18 }}>{t('commerce.bundles.intro')}</Text>
       {!isBundle && product.trackStock && product.stockQty > 0 && editing ? (

@@ -1,4 +1,8 @@
 import React, { useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import Animated from 'react-native-reanimated';
+import { useToast } from '../../../src/components/ui'; // M22
+import { useShake } from '../../../src/components/ui/Feedback'; // M22
 import { StyleSheet, useColorScheme, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -62,11 +66,16 @@ export default function NewSubscriptionScreen() {
     onSuccess: (sub) => {
       keyRef.current = null;
       void qc.invalidateQueries({ queryKey: subKeys.all() });
+      // M22 — say it worked and buzz once, then open the new subscription.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      toast.show({ tone: 'success', message: t('p2.subscriptions.new.created') });
       if (sub?._id) router.replace(`/subscriptions/${sub._id}` as Href);
       else router.back();
     },
-    onError: (e) => setProblem(apiErrorMessage(e, t('p2.common.saveFailed'))),
+    onError: (e) => { setProblem(apiErrorMessage(e, t('p2.common.saveFailed'))); shake(); },
   });
+  const toast = useToast();
+  const { style: shakeStyle, shake } = useShake();
 
   const pickPlan = (id: string) => {
     if (!id) { set({ planId: null }); return; }
@@ -79,7 +88,7 @@ export default function NewSubscriptionScreen() {
   const save = () => { setProblem(null); create.mutate(); };
 
   return (
-    <Screen c={c} title={t('p2.subscriptions.new.title')}>
+    <Screen c={c} rise title={t('p2.subscriptions.new.title')}>
       {!canManage ? <Banner c={c} body={t('p2.common.viewOnly')} /> : null}
       <SectionLabel c={c}>{t('p2.common.customer')}</SectionLabel>
       <PartyPicker c={c} value={party} onChange={setParty} testID="new-party" />
@@ -137,7 +146,7 @@ export default function NewSubscriptionScreen() {
 
       <AppInput label={t('p2.common.notes')} value={draft.notes} onChangeText={(v) => set({ notes: v })} multiline />
 
-      {problem ? <Banner c={c} tone="error" body={problem} testID="new-problem" /> : null}
+      {problem ? <Animated.View style={shakeStyle}><Banner c={c} tone="error" body={problem} testID="new-problem" /></Animated.View> : null}
       <View style={styles.foot}>
         <PillButton c={c} icon="content-save" label={create.isPending ? t('common.saving') : t('p2.subscriptions.new.save')}
           onPress={save} disabled={!canManage || create.isPending} testID="new-save" />

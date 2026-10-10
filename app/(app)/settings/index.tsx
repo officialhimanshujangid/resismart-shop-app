@@ -41,6 +41,8 @@ export default function SettingsHubScreen() {
    *   (X2F: there is no LOCKED state — every partner plan has every module.)
    */
   const invoicingState = moduleState('INVOICING');
+  // P9A (Owner Q10): a paused business has no modules, but may still READ its invoice settings.
+  const paused = entitlements.business?.status === 'SUSPENDED';
 
   /**
    * The row's own detail carries the state — THREE states, because the server
@@ -69,7 +71,7 @@ export default function SettingsHubScreen() {
             detail={t('settings.hub.businessDetailsSub')}
             onPress={() => router.push('/settings/business')}
           />
-          {invoicingState !== 'OFF' ? (
+          {invoicingState !== 'OFF' || paused ? (
             <GroupRow
               icon="receipt-text-outline"
               tint="teal"

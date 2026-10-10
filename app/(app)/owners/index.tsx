@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View, useColorScheme } from 'react-native';
+import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
+import { PressableScale, Rise } from '../../../src/theme/motion'; // M19 motion
 import { Text } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -101,14 +102,15 @@ export default function OwnersScreen() {
     <Screen c={c} title={t('owners.title')} subtitle={businessName}>
       <View style={styles.column}>
         {team.isPending ? (
-          <Loading c={c} />
+          <Loading c={c} skeleton={4} />
         ) : team.isError ? (
           <ErrorBlock c={c} message={apiErrorMessage(team.error, t('owners.loadFailed'))} onRetry={() => void team.refetch()} />
         ) : (
           <>
-            <Text style={[styles.intro, { color: c.textSecondary }]}>{t('owners.intro')}</Text>
+            <Rise index={0}><Text style={[styles.intro, { color: c.textSecondary }]}>{t('owners.intro')}</Text></Rise>
 
             <SectionLabel c={c}>{t('owners.ownersSection', { count: admins.length })}</SectionLabel>
+            <Rise index={1}>
             <Card c={c}>
               {admins.map((a, i) => {
                 const isSelf = isOwnStaffRow({ userId: { phone: a.phone, email: a.email } }, user);
@@ -130,13 +132,16 @@ export default function OwnersScreen() {
                 <Text style={[styles.hint, { color: c.textSecondary }]}>{t('owners.lastOwnerHint')}</Text>
               ) : null}
             </Card>
+            </Rise>
 
+            <Rise index={2}>
             <OwnerActionsCard
               c={c}
               transferPending={hasPendingTransfer(invites)}
               onInvite={() => setFormKind('CO_ADMIN')}
               onTransfer={() => setFormKind('TRANSFER')}
             />
+            </Rise>
 
             <SectionLabel c={c}>{t('owners.pendingSection')}</SectionLabel>
             {split.pending.length === 0 ? (
@@ -166,11 +171,11 @@ export default function OwnersScreen() {
                 <SectionLabel c={c}>{t('owners.closedSection')}</SectionLabel>
                 {closedShown.map((inv) => <InviteRow key={inv.id} c={c} invite={inv} />)}
                 {split.closed.length > CLOSED_PREVIEW ? (
-                  <Pressable onPress={() => setShowAllClosed((v) => !v)} style={styles.more} accessibilityRole="button">
+                  <PressableScale onPress={() => setShowAllClosed((v) => !v)} style={styles.more} accessibilityRole="button">
                     <Text style={{ color: c.primary, fontWeight: '600', fontSize: 13 }}>
                       {showAllClosed ? t('owners.showFewer') : t('owners.showAll', { count: split.closed.length })}
                     </Text>
-                  </Pressable>
+                  </PressableScale>
                 ) : null}
               </>
             ) : null}
@@ -202,5 +207,5 @@ const styles = StyleSheet.create({
   intro: { fontSize: 13, lineHeight: 19 },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 52 },
   hint: { fontSize: 12, lineHeight: 17 },
-  more: { alignSelf: 'center', paddingVertical: 8 },
+  more: { alignSelf: 'center', paddingVertical: 8, minHeight: 44, justifyContent: 'center' },
 });

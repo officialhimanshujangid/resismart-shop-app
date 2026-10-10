@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +8,9 @@ import { ColorScheme } from '../../../constants/colors';
 import { apiErrorMessage } from '../../../api/axios';
 import { usePartnerEntitlements } from '../../../hooks';
 import { EmptyBlock, ErrorBlock, Loading } from '../../more/ui';
+// M20 — DS v1 motion: first screenful rises in; skeletons, not spinners.
+import { Rise } from '../../../theme/motion';
+import { Skeleton } from '../../../components/ui/States';
 import { StockMovement, StockMovementFilters as Filters, useStockMovements } from '../stockMovements';
 import { StockMovementFilters } from './StockMovementFilters';
 import { StockMovementRow } from './StockMovementRow';
@@ -67,7 +70,7 @@ export function StockMovementList({
   );
 
   let empty: React.ReactElement | null = null;
-  if (query.isPending) empty = <Loading c={c} />;
+  if (query.isPending) empty = <Loading c={c} skeleton={4} />;
   else if (query.isError) {
     empty = (
       <ErrorBlock c={c} message={apiErrorMessage(query.error, t('stockHistory.loadFailed'))} onRetry={() => void query.refetch()} />
@@ -88,24 +91,30 @@ export function StockMovementList({
     <FlatList
       data={rows}
       keyExtractor={(m, i) => m.id || `${m.createdAt}-${i}`}
-      renderItem={({ item }) => (
-        <StockMovementRow
-          item={item}
-          c={c}
-          showProduct={scope === 'shop'}
-          onOpenSource={openerFor(item)}
-          onOpenProduct={
-            scope === 'shop' && item.productId
-              ? () => router.push({ pathname: '/catalog/[id]', params: { id: item.productId } })
-              : undefined
-          }
-        />
-      )}
+      renderItem={({ item, index }) => {
+        const row = (
+          <StockMovementRow
+            item={item}
+            c={c}
+            showProduct={scope === 'shop'}
+            onOpenSource={openerFor(item)}
+            onOpenProduct={
+              scope === 'shop' && item.productId
+                ? () => router.push({ pathname: '/catalog/[id]', params: { id: item.productId } })
+                : undefined
+            }
+          />
+        );
+        // The first screenful rises in on a stagger; later pages never animate row by row.
+        return index < 8 ? <Rise index={Math.min(index, 5) + 1} distance={10}>{row}</Rise> : row;
+      }}
+      initialNumToRender={10}
+      windowSize={9}
       ListHeaderComponent={listHeader}
       ListEmptyComponent={empty}
       ListFooterComponent={
         query.isFetchingNextPage ? (
-          <ActivityIndicator color={c.primary} style={styles.footer} />
+          <View style={styles.footer}><Skeleton height={64} rounded={18} /></View>
         ) : query.isFetchNextPageError ? (
           <Text
             style={[styles.footerText, { color: c.primary }]}
@@ -115,7 +124,7 @@ export function StockMovementList({
             {t('stockHistory.loadMoreFailed')}
           </Text>
         ) : !query.hasNextPage && rows.length > 0 ? (
-          <Text style={[styles.footerText, { color: c.textDisabled }]}>{t('stockHistory.end')}</Text>
+          <Text style={[styles.footerText, { color: c.textSecondary }]}>{t('stockHistory.end')}</Text>
         ) : null
       }
       onEndReached={() => {

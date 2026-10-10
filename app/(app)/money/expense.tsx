@@ -77,11 +77,12 @@ export default function ExpenseQuickAddScreen() {
   return (
     <Screen
       c={c}
+      rise
       title={t('money.addExpense')}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3000} action={{ label: t('money.expense.viewAll'), onPress: () => router.replace('/money/expenses') }}>{toast}</Snackbar>}
     >
       <SectionLabel c={c}>{t('money.expense.category')}</SectionLabel>
-      {categories.isPending ? <Loading c={c} /> : (
+      {categories.isPending ? <Loading c={c} skeleton={4} /> : (
         <View style={styles.cats}>
           {cats.map((cat) => {
             const on = f.categoryId === cat._id;

@@ -8,11 +8,17 @@ import { useTranslation } from 'react-i18next';
 import { themeColors } from '../../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../../src/hooks';
 import { qk } from '../../../../src/lib/queryKeys';
-import { apiErrorMessage } from '../../../../src/api/axios';
+import { apiErrorCode, apiErrorMessage } from '../../../../src/api/axios';
+// >>> M20 — PHARMACY parity with the web receive screen: a batch number + expiry per
+// medicine line (sent only when typed), and the "expired batch really received" confirm.
+import { useCategoryModules } from '../../../../src/features/p2/useCategoryModules';
+import { parseExpiryMonth } from '../../../../src/features/pharmacy/logic';
+import { TextField } from '../../../../src/components/ui';
+// <<< M20
 import { newIdempotencyKey } from '../../../../src/lib/idempotency';
 import { settingsApi } from '../../../../src/api/settings.api';
 import { BarcodeScannerView, ProductScanOutcome } from '../../../../src/features/scanner';
-import { purchasesApi } from '../../../../src/features/purchases/api';
+import { purchasesApi, type ReceivePoBody } from '../../../../src/features/purchases/api';
 import {
   buildReceiveBody, initialReceiveDraft, maxReceivable, ReceiveDraftLine, tickLineByItem,
 } from '../../../../src/features/purchases/logic';
@@ -48,6 +54,9 @@ export default function ReceiveAgainstPoScreen() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
+  // M20 — per PO line: what was typed in the batch boxes (PHARMACY only).
+  const pharmacyOn = useCategoryModules().has('PHARMACY');
+  const [batches, setBatches] = useState<Record<number, { batchNo: string; expiry: string }>>({});
 
   useEffect(() => {
     if (receipts.data) setDraft(initialReceiveDraft(receipts.data.lines));
@@ -55,7 +64,7 @@ export default function ReceiveAgainstPoScreen() {
 
   /** One key per "Save" intent; a changed form is a new intent. */
   const intentKey = useRef<string | null>(null);
-  useEffect(() => { intentKey.current = null; }, [draft]);
+  useEffect(() => { intentKey.current = null; }, [draft, batches]);
 
   const lines = receipts.data?.lines ?? [];
   const check = useMemo(() => buildReceiveBody(lines, draft, overPct), [lines, draft, overPct]);
@@ -66,10 +75,34 @@ export default function ReceiveAgainstPoScreen() {
     void queryClient.invalidateQueries({ queryKey: qk.catalog.all() });
   };
 
+  /** M20: the lines with their batch (only typed ones, only for a pharmacy), or the first half-filled line. */
+  const withBatches = (): { lines: ReceivePoBody['lines']; problem?: string } => {
+    if (!pharmacyOn) return { lines: check.body };
+    const out: ReceivePoBody['lines'] = [];
+    for (const row of check.body) {
+      const b = batches[row.poLineIndex];
+      const no = b?.batchNo.trim() ?? '';
+      const exp = b?.expiry.trim() ?? '';
+      if (!no && !exp) { out.push(row); continue; }
+      const month = parseExpiryMonth(exp);
+      if (!no || !month) {
+        const item = lines.find((l) => l.poLineIndex === row.poLineIndex)?.itemName ?? '';
+        return { lines: [], problem: t('purchases.receive.batchIncomplete', { item }) };
+      }
+      out.push({ ...row, batch: { batchNo: no.toUpperCase(), expiryDate: month } });
+    }
+    return { lines: out };
+  };
+
   const receive = useMutation({
-    mutationFn: () => {
+    mutationFn: (confirmExpiredBatch: boolean = false) => {
       if (!intentKey.current) intentKey.current = newIdempotencyKey('grn');
-      return purchasesApi.receive(String(poId), { lines: check.body, issue: true }, intentKey.current);
+      const { lines: body } = withBatches();
+      return purchasesApi.receive(
+        String(poId),
+        { lines: body, issue: true, ...(pharmacyOn && confirmExpiredBatch ? { confirmExpiredBatch: true } : {}) },
+        intentKey.current,
+      );
     },
     onSuccess: (res) => {
       invalidate();
@@ -82,8 +115,23 @@ export default function ReceiveAgainstPoScreen() {
         ],
       );
     },
-    onError: (e) => setToast(apiErrorMessage(e, t('purchases.receive.failed'))),
+    onError: (e, confirmed) => {
+      // M20 — an expired batch that really arrived: asked for, never assumed (web parity).
+      if (pharmacyOn && !confirmed && apiErrorCode(e) === 'BATCH_EXPIRED_ON_RECEIPT') {
+        Alert.alert(t('purchases.receive.expiredTitle'), apiErrorMessage(e), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('purchases.receive.expiredConfirm'), style: 'destructive', onPress: () => { intentKey.current = null; receive.mutate(true); } },
+        ]);
+        return;
+      }
+      setToast(apiErrorMessage(e, t('purchases.receive.failed')));
+    },
   });
+  const save = () => {
+    const { problem } = withBatches();
+    if (problem) { setToast(problem); return; }
+    receive.mutate(false);
+  };
 
   const closeShort = useMutation({
     mutationFn: (reason: string) => purchasesApi.closeShort(String(poId), reason),
@@ -103,10 +151,10 @@ export default function ReceiveAgainstPoScreen() {
   };
 
   const title = t('purchases.receive.title');
-  if (receipts.isPending) return <Screen c={c} title={title}><Loading c={c} /></Screen>;
+  if (receipts.isPending) return <Screen c={c} rise title={title}><Loading c={c} skeleton={3} /></Screen>;
   if (receipts.isError || !receipts.data) {
     return (
-      <Screen c={c} title={title}>
+      <Screen c={c} rise title={title}>
         <ErrorBlock c={c} message={apiErrorMessage(receipts.error, t('purchases.receive.loadFailed'))} onRetry={() => receipts.refetch()} />
       </Screen>
     );
@@ -137,22 +185,45 @@ export default function ReceiveAgainstPoScreen() {
 
   const lineList = (
     <View style={{ gap: 10 }}>
+      {pharmacyOn && open && canManage ? <Banner c={c} body={t('purchases.receive.batchHint')} /> : null}
       {lines.map((l) => (
-        <ReceiveLineRow
-          key={l.poLineIndex}
-          c={c}
-          line={l}
-          value={draft[l.poLineIndex] ?? { qty: 0 }}
-          max={maxReceivable(l.pending, overPct)}
-          over={overSet.has(l.poLineIndex)}
-          onChange={(next) => setDraft((d) => ({ ...d, [l.poLineIndex]: next }))}
-        />
+        <View key={l.poLineIndex} style={styles.lineBlock}>
+          <ReceiveLineRow
+            c={c}
+            line={l}
+            value={draft[l.poLineIndex] ?? { qty: 0 }}
+            max={maxReceivable(l.pending, overPct)}
+            over={overSet.has(l.poLineIndex)}
+            onChange={(next) => setDraft((d) => ({ ...d, [l.poLineIndex]: next }))}
+          />
+          {/* M20 — PHARMACY: batch + expiry for this line (both, or neither). */}
+          {pharmacyOn && open && canManage && l.itemId && (draft[l.poLineIndex]?.qty ?? 0) > 0 ? (
+            <View style={styles.batchRow} testID={`receive-batch-${l.poLineIndex}`}>
+              <TextField
+                label={t('p2.pharmacy.split.batchNo')}
+                value={batches[l.poLineIndex]?.batchNo ?? ''}
+                onChangeText={(v) => setBatches((b) => ({ ...b, [l.poLineIndex]: { batchNo: v.slice(0, 30), expiry: b[l.poLineIndex]?.expiry ?? '' } }))}
+                autoCapitalize="characters"
+                containerStyle={styles.batchField}
+              />
+              <TextField
+                label={t('p2.pharmacy.split.expiry')}
+                value={batches[l.poLineIndex]?.expiry ?? ''}
+                onChangeText={(v) => setBatches((b) => ({ ...b, [l.poLineIndex]: { batchNo: b[l.poLineIndex]?.batchNo ?? '', expiry: v.slice(0, 10) } }))}
+                placeholder="2027-03"
+                keyboardType="numbers-and-punctuation"
+                containerStyle={styles.batchField}
+              />
+            </View>
+          ) : null}
+        </View>
       ))}
     </View>
   );
 
   return (
     <Screen
+      rise
       c={c}
       title={title}
       subtitle={po.number ? `${po.number} · ${po.partyName}` : po.partyName}
@@ -165,7 +236,7 @@ export default function ReceiveAgainstPoScreen() {
                 icon="check"
                 label={receive.isPending ? t('p1.saving') : t('purchases.receive.save', { count: check.body.length })}
                 disabled={!anyToReceive || check.over.length > 0 || receive.isPending}
-                onPress={() => receive.mutate()}
+                onPress={save}
                 testID="receive-save"
               />
             </View>
@@ -180,7 +251,7 @@ export default function ReceiveAgainstPoScreen() {
       <Portal>
         <Modal visible={scannerOpen} onDismiss={() => setScannerOpen(false)} contentContainerStyle={[styles.scanner, { backgroundColor: c.background }]}>
           <View style={styles.scanHeader}>
-            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600' }}>{t('purchases.receive.scanTitle')}</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600', flexShrink: 1 }}>{t('purchases.receive.scanTitle')}</Text>
             <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel={t('common.done')} />
           </View>
           {/* >>> SCANNER — stock in: a carton's full ITF-14 is accepted too. */}
@@ -208,5 +279,8 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth, alignItems: 'flex-end',
   },
   scanner: { flex: 1, margin: 0 },
+  lineBlock: { gap: 8 },
+  batchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 4 },
+  batchField: { flexGrow: 1, flexBasis: 140, minWidth: 0 },
   scanHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 16, paddingTop: 8 },
 });

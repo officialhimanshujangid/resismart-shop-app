@@ -18,11 +18,12 @@ import { qk } from '../../../src/lib/queryKeys';
 import { Kpi, findKpi, findSeries, formatKpiValue } from '../../../src/api/analytics.api';
 import {
   AreaChart, Button, Card, Detail, EmptyState, ErrorState, GlassCard, HeroHeader, ListRow, Money,
-  SectionTitle, Skeleton, SkeletonList, StatusBadge, Storefront,
+  ProgressRing, SectionTitle, Skeleton, SkeletonList, StatusBadge, StatusDot, Storefront,
 } from '../../../src/components/ui';
+import { relativeTime } from '../../../src/features/orders/components/OrderCard';
 import { radius, typeScale, type StatusTone, type TintName } from '../../../src/theme/tokens';
 import { useAppTheme } from '../../../src/theme/useAppTheme';
-import { Rise, useCountUp } from '../../../src/theme/motion';
+import { PressableScale, Rise, useCountUp } from '../../../src/theme/motion';
 import { HelpButton } from '../../../src/features/help/HelpButton';
 import { P2TodayShortcuts } from '../../../src/features/p2/P2Shortcuts';
 // >>> SHORTCUTS — the grid replaces the P1 pill row (`features/p1/TodayShortcuts`): its three
@@ -237,7 +238,18 @@ export default function TodayScreen() {
     if (business?.status === 'SUSPENDED') {
       return {
         title: t('today.suspendedTitle'),
-        body: t('today.suspendedBody'),
+        // P8A (Owner 2026-10-10): with the reason the owner console recorded — same words as the web banner.
+        body: business.statusReason?.trim()
+          ? t('today.suspendedBodyReason', { reason: business.statusReason.trim() })
+          : t('today.suspendedBody'),
+        tone: 'warning',
+      };
+    }
+    // P8A: not approved yet — say why (the reviewer's note), not only "residents cannot find you".
+    if (business?.status === 'REJECTED' && business.statusReason?.trim()) {
+      return {
+        title: t('today.rejectedTitle'),
+        body: t('today.rejectedBodyReason', { reason: business.statusReason.trim() }),
         tone: 'warning',
       };
     }
@@ -403,6 +415,15 @@ export default function TodayScreen() {
       ? `${k.direction === 'UP' ? '▲' : k.direction === 'DOWN' ? '▼' : ''} ${Math.abs(k.deltaPercent).toFixed(1)}%`.trim()
       : undefined;
   const saleDelta = kpiDelta(saleKpi);
+  /** UX-P: today ÷ yesterday's whole day, 0..1 for the ring; null when there is nothing honest to compare. */
+  const saleVsYesterday = saleKpi.value !== null && typeof saleKpi.previous === 'number' && saleKpi.previous > 0
+    ? Math.min(1, saleKpi.value / saleKpi.previous)
+    : null;
+  /** UX-P: the longest-waiting PLACED order on the loaded page — "Oldest 6 min ago". */
+  const oldestPending = pendingOrders.reduce<string | null>(
+    (min, o) => (o.createdAt && (!min || o.createdAt < min) ? o.createdAt : min),
+    null,
+  );
   /**
    * The delta badge's tone: good news green, bad news amber, flat `info` —
    * never red. Not `neutral`: that kit pair is 4.28:1 in light (< 4.5).
@@ -472,22 +493,47 @@ export default function TodayScreen() {
             <Rise index={1}>
               <GlassCard testID="today-sales-card">
                 {showSale ? (
-                  <View style={styles.saleHead}>
-                    <Text style={[typeScale.caption, { color: ds.muted }]}>{t('today.kpiSale')}</Text>
-                    {boardLoading ? (
-                      <Skeleton width={170} height={36} rounded={radius.sm} style={styles.moneySkeleton} />
-                    ) : (
-                      <CountUpKpi kpi={saleKpi}>
-                        {(text) => <Money size="hero" testID="today-sale-amount">{text}</Money>}
-                      </CountUpKpi>
-                    )}
-                    {saleDelta ? (
-                      <StatusBadge
-                        tone={deltaTone(saleKpi)}
-                        label={t('today.vsDayBefore', { delta: saleDelta })}
-                        testID="today-sale-delta"
-                      />
+                  // UX-P (A ShopToday / C9): the ring beside the figure — today's sale
+                  // against ALL of yesterday's (`today_sale.previous` is yesterday's full
+                  // day, server-side). Only drawn when yesterday sold something; the
+                  // ring draws in, the figure counts up (reduce-motion: both at once).
+                  <View style={styles.saleRow}>
+                    {!boardLoading && saleVsYesterday !== null ? (
+                      <ProgressRing
+                        testID="today-sale-ring"
+                        progress={saleVsYesterday}
+                        size={84}
+                        stroke={9}
+                        label={t('today.ringVsYesterday')}
+                      >
+                        <Text style={[typeScale.number, { color: ds.ink }]} numberOfLines={1} adjustsFontSizeToFit>
+                          {`${Math.round(((saleKpi.value ?? 0) / (saleKpi.previous || 1)) * 100)}%`}
+                        </Text>
+                        <Text style={[typeScale.micro, { color: ds.muted }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{t('today.ofYesterdayShort')}</Text>
+                      </ProgressRing>
                     ) : null}
+                    <View style={styles.saleHead}>
+                      <Text style={[typeScale.caption, { color: ds.muted }]}>{t('today.kpiSale')}</Text>
+                      {boardLoading ? (
+                        <Skeleton width={170} height={36} rounded={radius.sm} style={styles.moneySkeleton} />
+                      ) : (
+                        <CountUpKpi kpi={saleKpi}>
+                          {(text) => <Money size="hero" testID="today-sale-amount">{text}</Money>}
+                        </CountUpKpi>
+                      )}
+                      {saleDelta ? (
+                        <StatusBadge
+                          tone={deltaTone(saleKpi)}
+                          label={t('today.vsDayBefore', { delta: saleDelta })}
+                          testID="today-sale-delta"
+                        />
+                      ) : null}
+                      {!boardLoading && saleVsYesterday !== null ? (
+                        <Text style={[typeScale.caption, { color: ds.muted }]} testID="today-sale-yesterday">
+                          {t('today.yesterdayTotal', { amount: formatPaise(saleKpi.previous ?? 0) })}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                 ) : null}
                 {/* The 14-day sales trend: the line draws in, the area fades
@@ -634,10 +680,37 @@ export default function TodayScreen() {
           {/* "Happening now": the orders waiting on a decision, as DS list rows. */}
           {ready && !blocked && showOrders && pendingOrders.length > 0 && (
             <Rise index={4} style={styles.section} testID="today-pending-orders">
-              <SectionTitle>
-                {t('today.pendingOrdersTitle', { count: ordersQuery.data?.total ?? pendingOrders.length })}
-              </SectionTitle>
-              <Detail>{t('today.pendingOrdersBody')}</Detail>
+              {/* UX-P (A ShopToday "New orders waiting" / C9 "Incoming"): the
+                  section head is one tappable card — the count on a green tile
+                  with a live pulse, how long the oldest has waited, and a
+                  chevron to the Orders board (the same route the old
+                  "Go to Orders" button opened). */}
+              <PressableScale
+                onPress={() => router.push('/(app)/(tabs)/orders')}
+                haptic
+                accessibilityRole="button"
+                accessibilityHint={t('today.goToOrders')}
+                testID="today-pending-card"
+                style={[styles.waitCard, { backgroundColor: status.brand.bg }]}
+              >
+                <View style={[styles.waitTile, { backgroundColor: ds.primaryFill }]}>
+                  <Text style={[typeScale.section, { color: ds.onPrimary }]}>
+                    {String(ordersQuery.data?.total ?? pendingOrders.length)}
+                  </Text>
+                  <View style={styles.waitPulse}><StatusDot pulse color={ds.onPrimary} size={7} /></View>
+                </View>
+                <View style={styles.flex}>
+                  <SectionTitle>
+                    {t('today.pendingOrdersTitle', { count: ordersQuery.data?.total ?? pendingOrders.length })}
+                  </SectionTitle>
+                  <Detail color={status.brand.fg}>
+                    {oldestPending
+                      ? t('today.oldestWaiting', { when: relativeTime(oldestPending, t) })
+                      : t('today.pendingOrdersBody')}
+                  </Detail>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={status.brand.fg} />
+              </PressableScale>
               {pendingOrders.slice(0, 3).map((o) => (
                 <ListRow
                   key={o.id}
@@ -656,13 +729,6 @@ export default function TodayScreen() {
                   amount={formatPaise(o.amounts.totalPaise)}
                 />
               ))}
-              <Button
-                variant="soft"
-                size="sm"
-                icon="arrow-right"
-                label={t('today.goToOrders')}
-                onPress={() => router.push('/(app)/(tabs)/orders')}
-              />
             </Rise>
           )}
 
@@ -885,7 +951,12 @@ const styles = StyleSheet.create({
   // The glass sales card rides over the hero's lower edge (template −64).
   bodyOverlap: { marginTop: -64, paddingTop: 0 },
   flex: { flex: 1 },
-  saleHead: { gap: 4 },
+  saleHead: { flex: 1, minWidth: 0, gap: 4 },
+  // UX-P: ring + figure side by side; the figure column shrinks, the ring never does.
+  saleRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  waitCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.tile, padding: 14 },
+  waitTile: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  waitPulse: { position: 'absolute', top: 5, right: 5 },
   moneySkeleton: { marginVertical: 2 },
   trend: { gap: 6 },
   cells: { flexDirection: 'row', gap: 6 },

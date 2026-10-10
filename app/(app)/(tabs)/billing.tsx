@@ -100,6 +100,8 @@ export default function BillingScreen() {
     queryFn: ({ pageParam }) => documentsApi.list({ ...filters, page: pageParam }),
     initialPageParam: 1,
     getNextPageParam: (last) => {
+      // E-VISUAL-APPS: an empty answer (no body) ends the list instead of crashing the tab.
+      if (!last) return undefined;
       const page = last.page || 1;
       const limit = last.limit || PAGE;
       return page * limit < (last.total ?? 0) ? page + 1 : undefined;
@@ -112,7 +114,7 @@ export default function BillingScreen() {
   // keep the first copy (the FlatList keys by `_id`).
   const rows = useMemo(() => {
     const seen = new Set<string>();
-    return (query.data?.pages ?? []).flatMap((p) => p.data ?? []).filter((r) => (seen.has(r._id) ? false : (seen.add(r._id), true)));
+    return (query.data?.pages ?? []).flatMap((p) => p?.data ?? []).filter((r) => (seen.has(r._id) ? false : (seen.add(r._id), true)));
   }, [query.data]);
   const total = query.data?.pages?.[0]?.total;
   const canManage = can('INVOICING_MANAGE', 'FULL');

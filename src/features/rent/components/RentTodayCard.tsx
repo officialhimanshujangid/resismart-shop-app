@@ -9,7 +9,7 @@ import type { ColorScheme } from '../../../constants/colors';
 import { formatI18nDate } from '../../../i18n';
 import { formatPaise } from '../../../lib/money';
 import { Card } from '../../../components/ui';
-import { radius, typeScale } from '../../../theme/tokens';
+import { radius, tileDepth, typeScale } from '../../../theme/tokens';
 import { useAppTheme } from '../../../theme/useAppTheme';
 import { Rise } from '../../../theme/motion';
 import { rentDueCard } from '../logic';
@@ -27,7 +27,7 @@ import type { PartnerRentList } from '../types';
  */
 export function RentTodayCard({ list }: { c: ColorScheme; list: PartnerRentList | undefined }) {
   const { t } = useTranslation();
-  const { ds, tints } = useAppTheme();
+  const { ds, tints, isDark } = useAppTheme();
   const card = rentDueCard(list);
   if (!card) return null;
 
@@ -45,7 +45,7 @@ export function RentTodayCard({ list }: { c: ColorScheme; list: PartnerRentList 
     // Rise inside: no lease / nothing due draws nothing, and an outside wrapper would leave a gap.
     <Rise index={2}><Card onPress={open} accessibilityLabel={title} testID="rent-today-card">
       <View style={styles.head}>
-        <View style={styles.iconTile}>
+        <View style={[styles.iconTile, tileDepth(tn, isDark, 'soft')]}>
           <LinearGradient colors={[tn.from, tn.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, styles.iconFill]} />
           <MaterialCommunityIcons name="storefront-outline" size={22} color={tn.icon} />
         </View>

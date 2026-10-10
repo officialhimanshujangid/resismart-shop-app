@@ -29,11 +29,16 @@ export interface ReviewListPage {
 /** Longest reply the server takes (`REVIEW_REPLY_TOO_LONG` past it). */
 export const REPLY_MAX_LENGTH = 2000;
 
+/** The web panel's filter strip (`partner/reviews/shared.ts` REVIEW_FILTERS), same keys. */
+export const REVIEW_FILTERS = ['all', 'PUBLISHED', 'HELD', 'REMOVED'] as const;
+export type ReviewFilter = typeof REVIEW_FILTERS[number];
+
 export const reviewsApi = {
   /** The signed-in business's own reviews — the server reads the business off the session. */
-  list: (page: number, limit: number) =>
+  /** M19 parity with web: `status` narrows the list (All = published + held, the server default). */
+  list: (page: number, limit: number, status?: ReviewFilter) =>
     apiClient
-      .get<ReviewListPage>('/reviews/mine', { params: { page, limit } })
+      .get<ReviewListPage>('/reviews/mine', { params: { page, limit, ...(status && status !== 'all' ? { status } : {}) } })
       .then((r) => r.data),
 
   reply: (reviewId: string, text: string) =>

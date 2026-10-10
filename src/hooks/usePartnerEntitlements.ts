@@ -238,6 +238,8 @@ function normalise(raw: PartnerEntitlementsPayload | undefined): PartnerEntitlem
     // The ROLE's limits (P1). An absent or unreadable key is "no limit", which
     // is the server's reading too — the server enforces them either way.
     limits: normaliseRoleLimits(raw.limits),
+    // P9A Q6: only the one value that narrows anything; anything else reads as "all jobs".
+    ...(raw.jobScope === 'ASSIGNED' ? { jobScope: 'ASSIGNED' as const } : {}),
     // P2: only the four names this build knows; absent stays absent (an old
     // server), so nothing here changes for a business that never opted in.
     ...(Array.isArray(raw.categoryModules)

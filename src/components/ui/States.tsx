@@ -8,6 +8,7 @@ import { radius, typeScale } from '../../theme/tokens';
 import { useAppTheme } from '../../theme/useAppTheme';
 import { useAmbientLoop } from '../../theme/motion';
 import { Button } from './Button';
+import { EmptyArt, type EmptyArtKind } from '../illustrations/EmptyArt';
 
 /**
  * Empty state: art (an illustration) or an icon in a soft circle, a title, an
@@ -18,6 +19,7 @@ export function EmptyState({
   body,
   icon = 'inbox-outline',
   art,
+  illustration,
   actionLabel,
   actionIcon,
   onAction,
@@ -29,6 +31,8 @@ export function EmptyState({
   icon?: string;
   /** An illustration; replaces the icon circle. */
   art?: React.ReactNode;
+  /** UX-P: one of the kit's illustrated empty states (replaces the icon circle). */
+  illustration?: EmptyArtKind;
   actionLabel?: string;
   actionIcon?: string;
   onAction?: () => void;
@@ -38,11 +42,11 @@ export function EmptyState({
   const { ds } = useAppTheme();
   return (
     <View testID={testID} style={[styles.block, style]}>
-      {art ?? (
+      {art ?? (illustration ? <EmptyArt kind={illustration} /> : (
         <View style={[styles.iconCircle, { backgroundColor: ds.primarySoft }]}>
           <MaterialCommunityIcons name={icon as never} size={30} color={ds.primary} />
         </View>
-      )}
+      ))}
       <Text style={[typeScale.section, styles.center, { color: ds.ink }]}>{title}</Text>
       {body ? <Text style={[typeScale.detail, styles.center, { color: ds.muted }]}>{body}</Text> : null}
       {actionLabel && onAction ? (
@@ -126,7 +130,26 @@ export function SkeletonList({ rows = 4, testID }: { rows?: number; testID?: str
   );
 }
 
+/** UX-P: a loading grid of product tiles (catalogue grid view). */
+export function SkeletonGrid({ tiles = 4, testID }: { tiles?: number; testID?: string }) {
+  const { t } = useTranslation();
+  const { ds } = useAppTheme();
+  return (
+    <View testID={testID} style={styles.grid} accessible accessibilityLabel={t('common.loading')} accessibilityRole="progressbar">
+      {Array.from({ length: tiles }, (_, i) => (
+        <View key={i} style={[styles.skTile, { backgroundColor: ds.surface, borderColor: ds.line }]}>
+          <Skeleton height={72} rounded={radius.sm} />
+          <Skeleton width="75%" height={13} />
+          <Skeleton width="45%" height={12} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  skTile: { flexBasis: '47%', flexGrow: 1, borderWidth: 1, borderRadius: radius.row, padding: 10, gap: 8 },
   block: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 36, paddingHorizontal: 24 },
   iconCircle: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   center: { textAlign: 'center' },

@@ -1,11 +1,12 @@
 import React from 'react';
 import { View, useColorScheme } from 'react-native';
-import { ActivityIndicator, IconButton } from 'react-native-paper';
+import { IconButton } from 'react-native-paper';
 import { Stack, Redirect, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { HelpButton } from '../../../src/features/help/HelpButton';
+import { SkeletonList } from '../../../src/components/ui';
 
 /**
  * The catalog's own header stack, nested under `(app)/_layout`'s Stack —
@@ -32,8 +33,8 @@ export default function CatalogLayout() {
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
-        <ActivityIndicator color={c.primary} />
+      <View style={{ flex: 1, padding: 18, paddingTop: 64, backgroundColor: c.background }}>
+        <SkeletonList rows={4} />
       </View>
     );
   }

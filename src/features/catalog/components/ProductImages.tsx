@@ -141,7 +141,7 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
   return (
     <View style={styles.root}>
       {value.length === 0 && !canManage ? (
-        <Text style={{ color: c.textDisabled, fontSize: 12.5 }}>{t('catalog.images.noPhotos')}</Text>
+        <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>{t('catalog.images.noPhotos')}</Text>
       ) : null}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripScroll /* >>> WEB-UI */} contentContainerStyle={styles.strip}>
@@ -201,7 +201,7 @@ export function ProductImages({ value, onChange, c, canManage }: ProductImagesPr
       </ScrollView>
 
       {canManage && (
-        <Text style={{ color: c.textDisabled, fontSize: 11 }}>
+        <Text style={{ color: c.textSecondary, fontSize: 11 }}>
           {full
             ? t('catalog.images.atMax', { max: MAX_PRODUCT_IMAGES })
             : t('catalog.images.firstIsMain')}

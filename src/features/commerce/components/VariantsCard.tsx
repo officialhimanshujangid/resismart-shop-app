@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { IconButton, Text, TextInput } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
@@ -20,6 +20,7 @@ import {
   MAX_VARIANT_ATTRIBUTES, MAX_VARIANTS, VARIANT_ATTRIBUTE_NAMES,
   type VariantAttribute, type VariantAttributeName, type VariantInput,
 } from '../types';
+import { SkeletonList } from '../../../components/ui';
 
 /**
  * "Sizes & types" on a product (C6, D-8): the parent is not sold itself; each
@@ -45,7 +46,7 @@ export function VariantsCard({ product }: { product: Product }) {
     <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]} testID="variants-card">
       <View style={styles.head}>
         <MaterialCommunityIcons name="shape-outline" size={20} color={c.primary} />
-        <Text style={[styles.title, { color: c.textPrimary }]}>{t('commerce.variants.title')}</Text>
+        <Text style={[styles.title, { color: c.textPrimary }, { flexShrink: 1 }]}>{t('commerce.variants.title')}</Text>
       </View>
       <Text style={{ color: c.textSecondary, fontSize: 12.5, lineHeight: 18 }}>
         {isParent ? t('commerce.variants.parentNote') : t('commerce.variants.intro')}
@@ -53,7 +54,7 @@ export function VariantsCard({ product }: { product: Product }) {
       {!isParent && product.trackStock && product.stockQty > 0 ? (
         <Banner c={c} tone="warn" body={t('commerce.variants.hasStockWarn', { qty: product.stockQty })} />
       ) : null}
-      {isParent && variants.isPending ? <ActivityIndicator color={c.primary} /> : null}
+      {isParent && variants.isPending ? <SkeletonList rows={2} /> : null}
       {isParent && variants.isError ? <Text style={{ color: c.error }}>{apiErrorMessage(variants.error)}</Text> : null}
       {rows.map((v) => (
         <View key={v._id} style={[styles.row, { borderColor: c.divider }]}>
@@ -106,7 +107,7 @@ function PartOfParent({ parentId }: { parentId: string }) {
       <Text style={{ color: c.textPrimary, flex: 1, fontSize: 13 }} numberOfLines={2}>
         {t('commerce.variants.partOf', { name: parent.data?.name ?? '…' })}
       </Text>
-      <MaterialCommunityIcons name="chevron-right" size={20} color={c.textDisabled} />
+      <MaterialCommunityIcons name="chevron-right" size={20} color={c.iconMuted} />
     </Pressable>
   );
 }

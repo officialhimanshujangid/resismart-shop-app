@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Switch, View, useColorScheme } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { StyleSheet, Switch, View, useColorScheme } from 'react-native';
+import { Text } from 'react-native-paper';
+import Animated from 'react-native-reanimated';
+// M19 redesign: kit buttons (haptic primary), press-scale checkbox, error shake, rise, skeleton.
+import { Button, useShake } from '../../../components/ui';
+import { PressableScale, Rise, tapHaptic } from '../../../theme/motion';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -43,6 +47,9 @@ export function SocietyInviteFlow({ token }: { token: string }) {
   const [accepted, setAccepted] = useState<SocietyInviteAcceptResult | null>(null);
   const [tried, setTried] = useState(false);
 
+  const { style: shakeStyle, shake } = useShake();
+  React.useEffect(() => { if (error) shake(); }, [error, shake]);
+
   const onRefusal = (e: unknown, fallback: string) => {
     const msg = apiErrorMessage(e, fallback);
     if (DEAD_INVITE_CODES.has(apiErrorCode(e) ?? '')) setDead(msg);
@@ -65,7 +72,7 @@ export function SocietyInviteFlow({ token }: { token: string }) {
     onError: (e) => onRefusal(e, t('society.invite.acceptFailed')),
   });
 
-  if (preview.isPending) return <Loading c={c} />;
+  if (preview.isPending) return <Loading c={c} skeleton={2} />;
   if (preview.isError) {
     const gone = DEAD_INVITE_CODES.has(apiErrorCode(preview.error) ?? '');
     return (
@@ -76,7 +83,7 @@ export function SocietyInviteFlow({ token }: { token: string }) {
           {apiErrorMessage(preview.error, t('society.invite.loadFailed'))}
         </Text>
         {!gone ? (
-          <Button mode="outlined" onPress={() => void preview.refetch()} style={styles.btn}>{t('common.tryAgain')}</Button>
+          <Button variant="outline" label={t('common.tryAgain')} onPress={() => void preview.refetch()} style={styles.selfCenter} />
         ) : null}
       </Card>
     );
@@ -98,6 +105,7 @@ export function SocietyInviteFlow({ token }: { token: string }) {
 
   return (
     <View style={styles.column}>
+      <Rise index={0}>
       <Card c={c}>
         <View style={styles.pills}>
           <Pill c={c} tone="brand" label={t('society.invite.pill')} />
@@ -115,7 +123,9 @@ export function SocietyInviteFlow({ token }: { token: string }) {
           {t('society.invite.expires', { date: formatI18nDate(inv.expiresAt, t) })}
         </Text>
       </Card>
+      </Rise>
 
+      <Rise index={1}>
       {dead ? (
         <Card c={c}>
           <Text style={[styles.body, { color: c.textPrimary }]} testID="invite-dead">{dead}</Text>
@@ -179,8 +189,8 @@ export function SocietyInviteFlow({ token }: { token: string }) {
 
               {/* A plain row rather than Checkbox.Item: the label wraps at 320dp
                   instead of being truncated, and the whole row is the target. */}
-              <Pressable
-                onPress={() => setTerms((v) => !v)}
+              <PressableScale
+                onPress={() => { tapHaptic(); setTerms((v) => !v); }}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: terms }}
                 style={styles.checkItem}
@@ -191,38 +201,40 @@ export function SocietyInviteFlow({ token }: { token: string }) {
                   color={terms ? c.primary : c.textSecondary}
                 />
                 <Text style={[styles.checkLabel, { color: c.textPrimary }]}>{t('society.invite.terms')}</Text>
-              </Pressable>
+              </PressableScale>
               {termsError ? <Text style={[styles.error, { color: c.error }]}>{termsError}</Text> : null}
             </>
           ) : null}
 
-          {error ? <Text style={[styles.error, { color: c.error }]} accessibilityLiveRegion="polite">{error}</Text> : null}
+          {error ? (
+            <Animated.Text style={[styles.error, { color: c.error }, shakeStyle]} accessibilityLiveRegion="polite">{error}</Animated.Text>
+          ) : null}
 
           <View style={styles.buttons}>
             {sent ? (
               <>
-                <Button mode="contained" onPress={submit} loading={accept.isPending} disabled={accept.isPending} style={styles.btn}>
-                  {t('society.invite.accept')}
-                </Button>
-                <Button mode="text" onPress={() => sendCode.mutate()} loading={sendCode.isPending} disabled={sendCode.isPending || accept.isPending}>
-                  {t('society.invite.resendCode')}
-                </Button>
+                <Button label={t('society.invite.accept')} onPress={submit} loading={accept.isPending} disabled={accept.isPending} />
+                <Button
+                  variant="ghost"
+                  label={t('society.invite.resendCode')}
+                  onPress={() => sendCode.mutate()}
+                  loading={sendCode.isPending}
+                  disabled={sendCode.isPending || accept.isPending}
+                />
               </>
             ) : (
               <Button
-                mode="contained"
                 icon="message-lock-outline"
+                label={t('society.invite.sendCode')}
                 onPress={() => sendCode.mutate()}
                 loading={sendCode.isPending}
                 disabled={sendCode.isPending}
-                style={styles.btn}
-              >
-                {t('society.invite.sendCode')}
-              </Button>
+              />
             )}
           </View>
         </Card>
       )}
+      </Rise>
     </View>
   );
 }
@@ -243,5 +255,5 @@ const styles = StyleSheet.create({
   checkItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, minHeight: 44 },
   checkLabel: { flex: 1, fontSize: 13.5, lineHeight: 19 },
   buttons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 4 },
-  btn: { borderRadius: 12 },
+  selfCenter: { alignSelf: 'center' },
 });

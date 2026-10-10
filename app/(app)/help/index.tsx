@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, useColorScheme } from 'react-native';
-import { Searchbar, Text } from 'react-native-paper';
+import { StyleSheet, useColorScheme } from 'react-native';
+import { Text } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -13,7 +13,9 @@ import { useLanguage } from '../../../src/i18n/useLanguage';
 import { useDebouncedValue } from '../../../src/features/billing/useDebouncedValue';
 import { ArticleCard } from '../../../src/features/help/ArticleCard';
 import { WhatsAppSupport } from '../../../src/features/help/WhatsAppSupport';
-import { Card, EmptyBlock, ErrorBlock, Loading, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
+import { Card, EmptyBlock, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
+// M19 redesign: kit search pill + grouped topic list (was a Paper Searchbar and a card per row inside a card).
+import { GroupRow, ListGroup, SearchField } from '../../../src/components/ui';
 
 /** Below this the server has nothing useful to rank, and an empty `q` is a 400. */
 const MIN_QUERY = 2;
@@ -65,21 +67,19 @@ export default function HelpScreen() {
   });
 
   return (
-    <Screen c={c} title={t('help.title')} help={false}>
-      <Searchbar
+    <Screen c={c} title={t('help.title')} help={false} rise>
+      <SearchField
         placeholder={t('help.searchPlaceholder')}
+        accessibilityLabel={t('help.searchPlaceholder')}
         value={text}
         onChangeText={setText}
-        style={[styles.search, { backgroundColor: c.surface }]}
-        inputStyle={styles.searchInput}
-        autoCorrect={false}
       />
 
       {searching ? (
         <>
           <SectionLabel c={c}>{t('help.resultsSection')}</SectionLabel>
           {search.isPending ? (
-            <Loading c={c} label={t('help.searching')} />
+            <Loading c={c} label={t('help.searching')} skeleton={3} />
           ) : search.isError ? (
             <ErrorBlock c={c} message={apiErrorMessage(search.error, t('help.couldNotLoad'))} onRetry={() => void search.refetch()} />
           ) : search.data.length === 0 ? (
@@ -96,7 +96,7 @@ export default function HelpScreen() {
             <>
               <SectionLabel c={c}>{t('help.thisScreenSection')}</SectionLabel>
               {route.isPending ? (
-                <Loading c={c} />
+                <Loading c={c} skeleton={2} />
               ) : route.isError ? (
                 <ErrorBlock c={c} message={apiErrorMessage(route.error, t('help.couldNotLoad'))} onRetry={() => void route.refetch()} />
               ) : route.data.articles.length === 0 ? (
@@ -113,7 +113,7 @@ export default function HelpScreen() {
 
           <SectionLabel c={c}>{t('help.topicsSection')}</SectionLabel>
           {modules.isPending ? (
-            <Loading c={c} />
+            <Loading c={c} skeleton={5} />
           ) : modules.isError ? (
             <ErrorBlock c={c} message={apiErrorMessage(modules.error, t('help.couldNotLoad'))} onRetry={() => void modules.refetch()} />
           ) : modules.data.length === 0 ? (
@@ -121,20 +121,18 @@ export default function HelpScreen() {
               <EmptyBlock c={c} icon="book-open-page-variant-outline" title={t('help.noTopicsTitle')} body={t('help.noTopicsBody')} />
             </Card>
           ) : (
-            <Card c={c} style={styles.listCard}>
-              {modules.data.map((m, i) => (
-                <View key={m.module}>
-                  <Row
-                    c={c}
-                    icon="book-open-variant"
-                    title={m.title}
-                    subtitle={m.summary}
-                    onPress={() => router.push(`/help/${encodeURIComponent(m.module)}`)}
-                  />
-                  {i < modules.data.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
-                </View>
+            <ListGroup>
+              {modules.data.map((m) => (
+                <GroupRow
+                  key={m.module}
+                  icon="book-open-variant"
+                  tint="sky"
+                  title={m.title}
+                  detail={m.summary}
+                  onPress={() => router.push(`/help/${encodeURIComponent(m.module)}`)}
+                />
               ))}
-            </Card>
+            </ListGroup>
           )}
 
           <Text style={[styles.footnote, { color: c.textSecondary }]}>{t('help.footnote')}</Text>
@@ -147,9 +145,5 @@ export default function HelpScreen() {
 }
 
 const styles = StyleSheet.create({
-  search: { borderRadius: 14 },
-  searchInput: { fontSize: 16 },
-  listCard: { padding: 0, overflow: 'hidden' },
-  divider: { height: StyleSheet.hairlineWidth, marginLeft: 62 },
   footnote: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8, paddingHorizontal: 12 },
 });

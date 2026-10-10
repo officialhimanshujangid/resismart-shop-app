@@ -1,4 +1,6 @@
 import React, { useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import Animated from 'react-native-reanimated';
 import { StyleSheet, useColorScheme, View } from 'react-native';
 import { Button, Text, TextInput } from 'react-native-paper';
 import { router, type Href } from 'expo-router';
@@ -10,6 +12,7 @@ import { apiErrorMessage } from '../../../../src/api/axios';
 import { newIdempotencyKey } from '../../../../src/lib/idempotency';
 import { DateField } from '../../../../src/components/DateField';
 import { TimeField } from '../../../../src/components/TimeField';
+import { SuccessCheck, useShake } from '../../../../src/components/ui/Feedback'; // M22
 import { Card, Screen, SectionLabel } from '../../../../src/features/more/ui';
 import { ActionRow, Banner, PillButton, Stepper } from '../../../../src/features/p1/ui';
 import { ChoiceChips, PartyPicker, PickedParty } from '../../../../src/features/p2/ui';
@@ -66,13 +69,19 @@ export default function SeriesNewScreen() {
       return appointmentsApi.createSeries(out.body, key.current.key);
     },
     onMutate: () => setProblem(null),
-    onSuccess: (res) => { qc.invalidateQueries({ queryKey: apptKeys.all }); setDone(res); },
-    onError: (e) => setProblem(apiErrorMessage(e, t('p2.common.saveFailed'))),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: apptKeys.all });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined); // M22
+      setDone(res);
+    },
+    onError: (e) => { setProblem(apiErrorMessage(e, t('p2.common.saveFailed'))); shake(); },
   });
+  const { style: shakeStyle, shake } = useShake();
 
   if (done) {
     return (
-      <Screen c={c} title={t('p2.appointments.series.new')}>
+      <Screen c={c} rise title={t('p2.appointments.series.new')}>
+        <View style={{ alignItems: 'center', paddingTop: 8 }}><SuccessCheck testID="series-check" /></View>
         <Banner c={c} tone="info" title={done.series.code} body={t('p2.appointments.series.created', { count: done.created.length })} testID="series-created" />
         {done.skipped.length ? (
           <Card c={c}>
@@ -93,7 +102,7 @@ export default function SeriesNewScreen() {
   }
 
   return (
-    <Screen c={c} title={t('p2.appointments.series.new')}>
+    <Screen c={c} rise title={t('p2.appointments.series.new')}>
       <SectionLabel c={c}>{t('p2.common.customer')}</SectionLabel>
       <PartyPicker c={c} value={party} onChange={setParty} testID="series-party" />
       <ServiceFields
@@ -160,7 +169,7 @@ export default function SeriesNewScreen() {
         </View>
       )}
 
-      {problem ? <Banner c={c} tone="error" body={problem} testID="series-error" /> : null}
+      {problem ? <Animated.View style={shakeStyle}><Banner c={c} tone="error" body={problem} testID="series-error" /></Animated.View> : null}
       <Button mode="contained" onPress={() => save.mutate()} loading={save.isPending} disabled={save.isPending} style={{ borderRadius: radii.pill }} contentStyle={{ minHeight: 52 }} testID="series-save">
         {save.isPending ? t('common.saving') : t('p2.appointments.series.save')}
       </Button>

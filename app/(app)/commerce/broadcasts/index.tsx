@@ -10,6 +10,7 @@ import { newIdempotencyKey } from '../../../../src/lib/idempotency';
 import { whenText } from '../../../../src/features/commerce/format';
 import { Card, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../../src/features/more/ui';
 import { ActionRow, PillButton } from '../../../../src/features/p1/ui';
+import { Rise } from '../../../../src/theme/motion'; // M23
 import { ProgressBar } from '../../../../src/components/charts';
 import { useCommerceAccess } from '../../../../src/features/commerce/access';
 import { useBroadcasts, useCancelBroadcast, useSendBroadcast } from '../../../../src/features/commerce/hooks';
@@ -29,7 +30,7 @@ const TONE: Record<BroadcastStatus, 'neutral' | 'good' | 'warn' | 'bad' | 'info'
  * A rolling 7-day allowance (the meter), drafts, scheduled sends, history.
  */
 export default function BroadcastsScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const access = useCommerceAccess();
   const on = access.has('BROADCAST');
@@ -43,7 +44,7 @@ export default function BroadcastsScreen() {
   const [notice, setNotice] = useState<string | null>(null);
 
   if (!access.broadcasts.canSend) {
-    return <Screen title={t('commerce.broadcasts.title')} c={c}><NoAccess c={c} /></Screen>;
+    return <Screen rise title={t('commerce.broadcasts.title')} c={c}><NoAccess c={c} /></Screen>;
   }
 
   const weekly = list.data?.weekly;
@@ -142,13 +143,15 @@ export default function BroadcastsScreen() {
           </ActionRow>
         ) : null}
 
-        {list.isPending ? <Loading c={c} /> : null}
+        {list.isPending ? <Loading c={c} skeleton={4} /> : null}
         {list.isError ? <ErrorBlock c={c} message={apiErrorMessage(list.error)} onRetry={() => void list.refetch()} /> : null}
         {list.isSuccess && rows.length === 0 ? (
           <EmptyBlock c={c} icon="bullhorn-outline" title={t('commerce.broadcasts.emptyTitle')} body={t('commerce.broadcasts.emptyBody')} />
         ) : null}
-        {rows.map((b) => (
-          <Card key={b.id} c={c}>
+        {rows.map((b, i) => (
+          // M23 — the first screenful rises in on a stagger.
+          <Rise key={b.id} index={Math.min(i, 6)}>
+          <Card c={c}>
             <View style={styles.head} testID={`broadcast-${b.id}`}>
               <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 15, flex: 1, minWidth: 0 }} numberOfLines={2}>{b.title}</Text>
               <Tag c={c} label={t(`commerce.broadcasts.status.${b.status}`)} tone={TONE[b.status]} />
@@ -159,7 +162,12 @@ export default function BroadcastsScreen() {
               {b.status === 'SENT' ? t('commerce.broadcasts.sentTo', { count: b.audienceCount ?? 0, when: whenText(b.sentAt, t) }) : null}
               {b.status === 'DRAFT' ? t('commerce.broadcasts.draftNote') : null}
             </Text>
-            {b.status === 'FAILED' && b.failureNote ? <Text style={{ color: c.error, fontSize: 12 }}>{b.failureNote}</Text> : null}
+            {/* M23 — the coded reason in the reader's language; the server's English only for old rows. */}
+            {b.status === 'FAILED' && (b.failureNote || b.failureCode) ? (
+              <Text style={{ color: c.error, fontSize: 12 }}>
+                {b.failureCode && i18n.exists(`commerce.broadcasts.failure.${b.failureCode}`) ? t(`commerce.broadcasts.failure.${b.failureCode}`) : b.failureNote}
+              </Text>
+            ) : null}
             {on && (b.status === 'DRAFT' || b.status === 'SCHEDULED') ? (
               <ActionRow>
                 {b.status === 'DRAFT' ? (
@@ -177,6 +185,7 @@ export default function BroadcastsScreen() {
               </ActionRow>
             ) : null}
           </Card>
+          </Rise>
         ))}
       </View>
     </Screen>

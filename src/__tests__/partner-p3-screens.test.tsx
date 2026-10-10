@@ -204,8 +204,13 @@ describe('Who can find you', () => {
     await waitFor(() => expect(screen.getByTestId('reach-option-PUBLIC')).toBeTruthy());
     expect(screen.queryByText(en.society.reach.needsKyc)).toBeNull();
     await fireEvent.press(screen.getByTestId('reach-option-PUBLIC'));
+    // P8A: the same "unsaved" hint as the web until Save is pressed; nothing is sent before.
+    expect(screen.getByTestId('reach-unsaved')).toBeTruthy();
+    expect(callsTo('PUT', '/partners/me/reach')).toHaveLength(0);
     await fireEvent.press(screen.getByRole('button', { name: en.common.save }));
     await waitFor(() => expect(screen.getByText(en.society.reach.saved)).toBeTruthy());
+    expect(screen.getByTestId('reach-saved', { includeHiddenElements: true })).toBeTruthy(); // decorative (hidden from a11y)
+    expect(screen.queryByTestId('reach-unsaved')).toBeNull();
     expect(callsTo('PUT', '/partners/me/reach')[0].body).toEqual({ reach: 'PUBLIC' });
   });
 
@@ -249,6 +254,16 @@ describe('Who can find you', () => {
     await waitFor(() => expect(screen.getByText(hi.society.reach.ownerOnly)).toBeTruthy());
     expect(screen.getByText(hi.society.reach.option.SOCIETY_ONLY.title)).toBeTruthy();
     expect(screen.queryByRole('button', { name: hi.common.save })).toBeNull();
+  });
+
+  it('P8A: staff get "has a flat" without the owner\'s flat label — no "needs your flat" sentence, no flat shown', async () => {
+    mockAuth.profile.role = 'PARTNER_STAFF';
+    setRoutes({ 'GET /partners/me/reach': myReach({ homeFlatLabel: undefined, hasHomeFlat: true }) });
+    await paper(<ReachScreen />);
+    await waitFor(() => expect(screen.getByText(en.society.reach.badgeTitleNoFlat)).toBeTruthy());
+    expect(screen.queryByText(en.errors.LIVES_HERE_NEEDS_FLAT)).toBeNull();
+    expect(screen.queryByText(/B-204/)).toBeNull();
+    expect(screen.getByTestId('lives-here-switch').props.disabled).toBe(true);
   });
 
   it('an independent business is told there is nothing to choose', async () => {

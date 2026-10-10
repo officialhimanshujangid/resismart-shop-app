@@ -45,8 +45,13 @@ export interface DsColors {
   ink: string;
   /** Secondary text. */
   muted: string;
-  /** Tertiary text, inactive tab icons, placeholders. */
+  /** Tertiary text, placeholders. */
   faint: string;
+  /**
+   * UX-ICON (2026-10-10): inactive tab icons, chevrons, clear/close glyphs —
+   * the stronger muted ink (light 4.69:1 on white, was `faint` 3.74:1).
+   */
+  iconMuted: string;
   /** Borders, dividers. */
   line: string;
   /** Segmented-control track. */
@@ -78,6 +83,7 @@ export const dsLight: DsColors = {
   // 5.36 white, 4.97 surfaceAlt, 4.78 neutral badge, 4.68 primarySoft.
   muted: '#4F7262',
   faint: '#74897E',
+  iconMuted: '#5E7A6C',
   line: '#DCEBE2',
   track: '#E2EFE7',
   inkButton: '#1E4636',
@@ -103,6 +109,7 @@ export const dsDark: DsColors = {
   ink: '#EEF2FF',
   muted: '#A9B6DA',
   faint: '#7482A6',
+  iconMuted: '#8592B8',
   line: '#232C42',
   track: '#1C2539',
   inkButton: '#3FB27B',
@@ -137,36 +144,64 @@ export type TintName =
 export interface Tint {
   from: string;
   to: string;
+  /** The glyph colour: the DEEP ink in light, the light tint in dark. */
   icon: string;
 }
 
+/**
+ * UX-ICON (2026-10-10, Owner: "icons thode fade se hain"): the light glyph is
+ * now each tint's deep 700 ink. The old mid tones sat at 2.7–4.2:1 on the
+ * tile's darker stop (green 2.67, amber 2.93, coral 3.17); every ink below is
+ * ≥ 4.3:1 there and ≥ 5.4:1 on the lighter stop.
+ */
 const TINTS_LIGHT: Record<TintName, Tint> = {
-  green: { from: '#E9F7EF', to: '#C8EAD6', icon: '#2E9C68' },
-  blue: { from: '#EDF2FF', to: '#D2DEFD', icon: '#3B5BDB' },
-  teal: { from: '#E7F8F4', to: '#C4EBE2', icon: '#1C8676' },
-  amber: { from: '#FFF5E6', to: '#FCDDB3', icon: '#BF6F14' },
-  violet: { from: '#F2EFFF', to: '#DAD2FB', icon: '#6650D4' },
-  sky: { from: '#E8F4FE', to: '#C8E3F9', icon: '#2678BC' },
-  rose: { from: '#FFF0F6', to: '#F8D0E1', icon: '#B23F76' },
-  coral: { from: '#FFF0EC', to: '#F9CFC5', icon: '#C2553D' },
-  sos: { from: '#FFECEF', to: '#FAC6CF', icon: '#D0364D' },
+  green: { from: '#E9F7EF', to: '#C8EAD6', icon: '#1B6E47' },
+  blue: { from: '#EDF2FF', to: '#D2DEFD', icon: '#2C46B0' },
+  teal: { from: '#E7F8F4', to: '#C4EBE2', icon: '#11695C' },
+  amber: { from: '#FFF5E6', to: '#FCDDB3', icon: '#97540B' },
+  violet: { from: '#F2EFFF', to: '#DAD2FB', icon: '#5038B8' },
+  sky: { from: '#E8F4FE', to: '#C8E3F9', icon: '#1A5E98' },
+  rose: { from: '#FFF0F6', to: '#F8D0E1', icon: '#922F60' },
+  coral: { from: '#FFF0EC', to: '#F9CFC5', icon: '#9C3F2B' },
+  sos: { from: '#FFECEF', to: '#FAC6CF', icon: '#B02A40' },
 };
 
 /**
  * Dark: "same hues as 12–26% alpha gradients, icon in a lighter tint".
- * Pre-blended over the dark surface so they stay 6-digit hex.
+ * Pre-blended over the dark surface so they stay 6-digit hex. UX-ICON: both
+ * stops nudged 5–7 % toward the glyph so tiles don't sink into the dark card;
+ * they get a hairline (`tileDepth`) instead of a coloured shadow.
  */
 const TINTS_DARK: Record<TintName, Tint> = {
-  green: { from: '#15272F', to: '#1A3D35', icon: '#6FD3A0' },
-  blue: { from: '#17213F', to: '#1E2D5C', icon: '#8EA6F5' },
-  teal: { from: '#132831', to: '#163B3D', icon: '#5FD0BE' },
-  amber: { from: '#251F24', to: '#3A2C1E', icon: '#F2B567' },
-  violet: { from: '#1D1D3D', to: '#2A2658', icon: '#B3A4F7' },
-  sky: { from: '#14243A', to: '#173452', icon: '#7FC0F0' },
-  rose: { from: '#241B30', to: '#3A2238', icon: '#F08DBB' },
-  coral: { from: '#261C26', to: '#3D2526', icon: '#F29A86' },
-  sos: { from: '#271A27', to: '#40202A', icon: '#F27A8C' },
+  green: { from: '#1A3035', to: '#20483C', icon: '#6FD3A0' },
+  blue: { from: '#1D2848', to: '#263567', icon: '#8EA6F5' },
+  teal: { from: '#173038', to: '#1B4546', icon: '#5FD0BE' },
+  amber: { from: '#2F2727', to: '#473623', icon: '#F2B567' },
+  violet: { from: '#252446', to: '#342F63', icon: '#B3A4F7' },
+  sky: { from: '#192C43', to: '#1E3E5D', icon: '#7FC0F0' },
+  rose: { from: '#2E2137', to: '#472941', icon: '#F08DBB' },
+  coral: { from: '#30222B', to: '#4A2D2D', icon: '#F29A86' },
+  sos: { from: '#311F2C', to: '#4C2631', icon: '#F27A8C' },
 };
+
+const rgba = (hex: string, a: number) => {
+  const h = hex.replace('#', '');
+  return `rgba(${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}, ${a})`;
+};
+
+/**
+ * UX-ICON — the one depth recipe for every tinted icon tile.
+ * LIGHT: a white top highlight + a soft shadow tinted with the tile's own ink
+ * (`tile` y 4 / blur 22 / 0.16 for service tiles; `soft` y 3 / blur 16 / 0.12
+ * for row tiles). DARK: no coloured shadow — a 1 px hairline in the tint.
+ */
+export function tileDepth(tint: Tint, isDark: boolean, size: 'tile' | 'soft' = 'tile') {
+  if (isDark) {
+    return { borderWidth: 1, borderColor: rgba(tint.icon, 0.22), boxShadow: 'inset 0px 1px 0px rgba(255, 255, 255, 0.06)' };
+  }
+  const [y, blur, a] = size === 'tile' ? [4, 22, 0.16] : [3, 16, 0.12];
+  return { boxShadow: `inset 0px 1px 0px rgba(255, 255, 255, 0.9), 0px ${y}px ${blur}px ${rgba(tint.icon, a)}` };
+}
 
 /* ── Status pairs (DS §1): text on soft ground. ── */
 

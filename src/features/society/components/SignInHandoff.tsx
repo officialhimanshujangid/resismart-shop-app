@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
-import { Button, Text } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Text } from 'react-native-paper';
+// M19 redesign: animated success check + kit buttons.
+import { Button, SuccessCheck } from '../../../components/ui';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
@@ -81,16 +82,14 @@ export function SignInHandoff({ result }: { result: SocietyInviteAcceptResult })
   return (
     <Card c={c} style={styles.card}>
       <View style={styles.center}>
-        <MaterialCommunityIcons name="check-decagram" size={40} color={c.success} />
+        <SuccessCheck size={64} />
         <Text style={[styles.title, { color: c.textPrimary }]}>{t('society.invite.doneTitle', { business: result.partnerName })}</Text>
       </View>
 
       {isAuthenticated ? (
         <>
           <Text style={[styles.body, { color: c.textSecondary }]}>{t('society.invite.doneSignedIn')}</Text>
-          <Button mode="contained" onPress={() => void openBusiness()} style={styles.btn}>
-            {t('owners.accept.openBusiness')}
-          </Button>
+          <Button label={t('owners.accept.openBusiness')} onPress={() => void openBusiness()} />
         </>
       ) : (
         <>
@@ -108,12 +107,8 @@ export function SignInHandoff({ result }: { result: SocietyInviteAcceptResult })
           />
           {error ? <Text style={[styles.error, { color: c.error }]} accessibilityLiveRegion="polite">{error}</Text> : null}
           <View style={styles.buttons}>
-            <Button mode="contained" icon="message-lock-outline" onPress={() => void sendSignInCode()} loading={sending} disabled={sending} style={styles.btn}>
-              {t('society.invite.sendSignInCode')}
-            </Button>
-            <Button mode="text" onPress={() => router.replace('/(auth)/login')}>
-              {t('society.invite.otherWay')}
-            </Button>
+            <Button icon="message-lock-outline" label={t('society.invite.sendSignInCode')} onPress={() => void sendSignInCode()} loading={sending} disabled={sending} />
+            <Button variant="ghost" label={t('society.invite.otherWay')} onPress={() => router.replace('/(auth)/login')} />
           </View>
         </>
       )}
@@ -129,5 +124,4 @@ const styles = StyleSheet.create({
   body: { fontSize: 13, lineHeight: 19 },
   error: { fontSize: 12.5, lineHeight: 18 },
   buttons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  btn: { borderRadius: 12, alignSelf: 'flex-start' },
 });

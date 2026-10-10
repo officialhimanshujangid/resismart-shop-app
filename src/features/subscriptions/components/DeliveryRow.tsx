@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { PressableScale } from '../../../theme/motion'; // M22 — press + haptic on the delivery tap
+import { SuccessCheck } from '../../../components/ui/Feedback'; // M22 — the tick springs in
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -44,14 +46,15 @@ export function DeliveryRow({
   };
 
   return (
-    <View style={[styles.card, { backgroundColor: c.surface, borderColor: nd ? c.error : c.divider, opacity: off ? 0.72 : 1 }]}>
-      <Pressable
+    <View style={[styles.card, { backgroundColor: c.surface, borderColor: nd ? c.error : c.divider }]}>
+      <PressableScale
+        haptic={v.state === 'DUE'}
         onPress={tap}
         accessibilityRole="button"
         accessibilityLabel={`${heading}, ${stateLabel}`}
         accessibilityHint={v.state === 'DUE' ? t('p2.subscriptions.deliveries.tapHint') : undefined}
         testID={`delivery-row-${id}`}
-        style={({ pressed }) => [styles.main, pressed && { backgroundColor: c.surfaceVariant }]}
+        style={styles.main}
       >
         <View style={styles.text}>
           <Text style={[styles.flat, { color: off ? c.textSecondary : c.textPrimary }]} numberOfLines={1}>{heading}</Text>
@@ -70,10 +73,10 @@ export function DeliveryRow({
         <View style={styles.pillBox}>
           <Pill c={c} label={stateLabel} tone={stateTone(v.state)} testID={`delivery-state-${id}`} />
           {v.state === 'DELIVERED' || v.state === 'EXTRA' ? (
-            <MaterialCommunityIcons name="check-circle" size={26} color={c.success} />
+            <SuccessCheck size={26} />
           ) : null}
         </View>
-      </Pressable>
+      </PressableScale>
 
       <View style={styles.actions}>
         {off ? (

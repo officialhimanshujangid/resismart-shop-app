@@ -26,10 +26,10 @@ export default function RxEntryScreen() {
   const query = useQuery({ queryKey: pharmacyKeys.rxEntry(id), queryFn: () => pharmacyApi.rxEntry(id), enabled: !!id });
   const e = query.data;
 
-  if (query.isPending) return <Screen c={c} title={t('p2.pharmacy.entry.titlePlain')}><Loading c={c} /></Screen>;
+  if (query.isPending) return <Screen c={c} rise title={t('p2.pharmacy.entry.titlePlain')}><Loading c={c} skeleton={3} /></Screen>;
   if (query.isError || !e) {
     return (
-      <Screen c={c} title={t('p2.pharmacy.entry.titlePlain')}>
+      <Screen c={c} rise title={t('p2.pharmacy.entry.titlePlain')}>
         <ErrorBlock c={c} message={apiErrorMessage(query.error, t('p2.pharmacy.entry.loadFailed'))} onRetry={() => query.refetch()} />
       </Screen>
     );
@@ -38,7 +38,7 @@ export default function RxEntryScreen() {
   const cancelled = e.status === 'CANCELLED';
 
   return (
-    <Screen c={c} title={t('p2.pharmacy.entry.title', { number: e.number })} subtitle={day(e.saleDate)}>
+    <Screen c={c} rise title={t('p2.pharmacy.entry.title', { number: e.number })} subtitle={day(e.saleDate)}>
       {cancelled ? (
         <View testID="rx-cancelled">
           <Banner

@@ -24,7 +24,7 @@ export function HubDoor({
         <Text style={[styles.title, { color: c.textPrimary }]} numberOfLines={1}>{title}</Text>
         <Text style={{ color: c.textSecondary, fontSize: 12 }} numberOfLines={2}>{body}</Text>
       </View>
-      <MaterialCommunityIcons name="chevron-right" size={24} color={c.textDisabled} />
+      <MaterialCommunityIcons name="chevron-right" size={24} color={c.iconMuted} />
     </Pressable>
   );
 }

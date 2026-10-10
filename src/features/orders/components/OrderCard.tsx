@@ -1,13 +1,16 @@
-import React, { useRef } from 'react';
-import { View, StyleSheet, Pressable, useColorScheme } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, useColorScheme } from 'react-native';
+import { PressableScale } from '../../../theme/motion'; // M23
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Swipeable } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
 
 import { PartnerOrder } from '../types';
 import { KnownOrderVerb, filterKnownVerbs, verbNeedsReason } from '../api';
-import { ORDER_VERB_LABEL_KEYS } from '../backend-mirror';
+import { ORDER_STATUS_LABEL_KEYS, ORDER_VERB_LABEL_KEYS } from '../backend-mirror';
+import { SwipeAction, type SwipeActionItem } from '../../../components/ui/SwipeAction';
+import { Stamp } from '../../../components/ui/Feedback';
+import { useMotionOK } from '../../../theme/motion';
 import { OrderStatusChip } from './OrderStatusChip';
 import { themeColors, radii } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
@@ -23,7 +26,7 @@ import { slotText } from '../../commerce/format';
  */
 type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
-function relativeTime(iso: string, t: Translate): string {
+export function relativeTime(iso: string, t: Translate): string {
   const then = new Date(iso).getTime();
   const diffMin = Math.max(0, Math.round((Date.now() - then) / 60000));
   if (diffMin < 1) return t('orders.card.justNow');
@@ -51,44 +54,50 @@ interface OrderCardProps {
 export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps) {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
-  const swipeRef = useRef<Swipeable>(null);
   const verbs = filterKnownVerbs(order.allowedVerbs);
 
-  const runAction = (verb: KnownOrderVerb) => {
-    swipeRef.current?.close();
-    onAction(verb);
-  };
+  /**
+   * UX-P (A ShopOrders): the swipe is the kit SwipeAction (UI-thread drag,
+   * haptic at the open point) and every action is still a real button. The
+   * list is `allowedVerbs` exactly as before — nothing re-derived here.
+   */
+  const actions: SwipeActionItem[] = verbs.map((verb) => ({
+    key: verb,
+    label: t(ORDER_VERB_LABEL_KEYS[verb]),
+    icon: VERB_ICON[verb],
+    tone: verbNeedsReason(verb) ? 'danger' : 'primary',
+    disabled: pending,
+    onPress: () => onAction(verb),
+    testID: `order-swipe-${verb}-${order.id}`,
+  }));
 
-  const renderRightActions = () =>
-    verbs.length ? (
-      <View style={styles.actionsRow}>
-        {verbs.map((verb) => {
-          const danger = verbNeedsReason(verb);
-          return (
-            <Pressable
-              key={verb}
-              onPress={() => runAction(verb)}
-              disabled={pending}
-              style={[
-                styles.actionBtn,
-                { backgroundColor: danger ? c.error : c.primary, opacity: pending ? 0.6 : 1 },
-              ]}
-            >
-              <Text style={styles.actionLabel}>{t(ORDER_VERB_LABEL_KEYS[verb])}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    ) : null;
+  /**
+   * UX-P (C2 stamp): when THIS order's status changes while the card is on
+   * screen (an accept, a pack…), the new status thumps down on the card for a
+   * moment. Purely the server's answer drawn bigger — nothing is decided here.
+   */
+  const motionOK = useMotionOK();
+  const lastStatus = useRef(order.status);
+  const [stamp, setStamp] = useState<string | null>(null);
+  useEffect(() => {
+    if (lastStatus.current === order.status) return;
+    lastStatus.current = order.status;
+    if (!motionOK) return;
+    setStamp(order.status);
+    const timer = setTimeout(() => setStamp(null), 1100);
+    return () => clearTimeout(timer);
+  }, [order.status, motionOK]);
 
   return (
-    <Swipeable ref={swipeRef} renderRightActions={renderRightActions} overshootRight={false} enabled={verbs.length > 0}>
-      <Pressable
+    <SwipeAction actions={actions} enabled={verbs.length > 0}>
+      {/* M23 (DS v1) — press feedback (scale, UI thread) on the whole card. */}
+      <PressableScale
         onPress={onPress}
+        accessibilityRole="button"
         style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]}
       >
         <View style={styles.topRow}>
-          <Text style={[styles.code, { color: c.textPrimary }]}>{order.code}</Text>
+          <Text style={[styles.code, { color: c.textPrimary }, { flexShrink: 1 }]}>{order.code}</Text>
           <OrderStatusChip status={order.status} c={c} />
         </View>
 
@@ -127,7 +136,7 @@ export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps)
               size={14}
               color={c.textSecondary}
             />
-            <Text style={[styles.metaText, { color: c.textSecondary }]}>
+            <Text style={[styles.metaText, { color: c.textSecondary }, { flexShrink: 1 }]}>
               {/* `_one`/`_other`, not an English `-s`: Hindi cannot pluralise by
                   suffixing, and CLDR puts BOTH 0 and 1 in its `one` category. */}
               {t('orders.card.meta', {
@@ -141,12 +150,36 @@ export function OrderCard({ order, pending, onPress, onAction }: OrderCardProps)
             <Text style={[styles.amount, { color: c.textPrimary }]}>{formatPaise(order.amounts.totalPaise)}</Text>
           </View>
         </View>
-      </Pressable>
-    </Swipeable>
+        {stamp ? (
+          <View pointerEvents="none" style={styles.stampLayer}>
+            <Stamp label={t(ORDER_STATUS_LABEL_KEYS[order.status])} tone={verbsTone(order.status)} />
+          </View>
+        ) : null}
+      </PressableScale>
+    </SwipeAction>
   );
 }
 
+/** One icon per verb on its swipe button (the label carries the meaning). */
+const VERB_ICON: Partial<Record<KnownOrderVerb, string>> = {
+  accept: 'check-bold',
+  reject: 'close',
+  pack: 'package-variant-closed',
+  dispatch: 'moped-outline',
+  deliver: 'home-import-outline',
+  cancel: 'cancel',
+  markReturned: 'keyboard-return',
+  invoice: 'file-document-outline',
+};
+
+function verbsTone(status: PartnerOrder['status']): 'success' | 'danger' | 'info' {
+  if (status === 'REJECTED' || status === 'CANCELLED' || status === 'RETURNED') return 'danger';
+  if (status === 'OUT_FOR_DELIVERY' || status === 'DELIVERED') return 'info';
+  return 'success';
+}
+
 const styles = StyleSheet.create({
+  stampLayer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   c2Row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
   c2Chip: { fontSize: 11.5, fontWeight: '700', borderWidth: 1, borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 2, maxWidth: '100%' },
   card: {
@@ -162,18 +195,9 @@ const styles = StyleSheet.create({
   customerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   customerText: { fontSize: 13, flex: 1 },
   bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
   metaText: { fontSize: 12 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   spinner: { marginRight: 2 },
   amount: { fontSize: 15, fontWeight: '600' },
-  actionsRow: { flexDirection: 'row', alignItems: 'stretch', marginVertical: 6, marginRight: 14, gap: 6 },
-  actionBtn: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    borderRadius: radii.card,
-    minWidth: 84,
-  },
-  actionLabel: { color: '#fff', fontSize: 11, fontWeight: '600', textAlign: 'center' },
 });

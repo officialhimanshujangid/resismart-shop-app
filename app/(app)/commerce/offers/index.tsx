@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { radii, themeColors, type ColorScheme } from '../../../../src/constants/colors';
 import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../../src/features/more/ui';
 import { PillButton } from '../../../../src/features/p1/ui';
+import { Rise } from '../../../../src/theme/motion'; // M23
 import { CommerceHint, FeatureOff, NoAccess, Tag } from '../../../../src/features/commerce/components/ui';
 import { useCommerceAccess } from '../../../../src/features/commerce/access';
 import { useOffers } from '../../../../src/features/commerce/hooks';
@@ -38,7 +39,7 @@ export default function OffersScreen() {
 
   if (!access.offers.canView) {
     return (
-      <Screen c={c} title={t('commerce.offers.title')}>
+      <Screen rise c={c} title={t('commerce.offers.title')}>
         <NoAccess c={c} />
       </Screen>
     );
@@ -48,7 +49,7 @@ export default function OffersScreen() {
   const rows = query.data?.data ?? [];
 
   let list: React.ReactNode;
-  if (query.isPending) list = <Loading c={c} />;
+  if (query.isPending) list = <Loading c={c} skeleton={4} />;
   else if (query.isError) {
     list = <ErrorBlock c={c} message={apiErrorMessage(query.error, t('commerce.common.loadFailed'))} onRetry={() => void query.refetch()} />;
   } else if (!rows.length) {
@@ -59,17 +60,18 @@ export default function OffersScreen() {
     list = (
       <Card c={c} style={styles.listCard}>
         {rows.map((o, i) => (
-          <View key={o.id}>
+          // M23 — the first screenful rises in on a stagger.
+          <Rise key={o.id} index={Math.min(i, 6)}>
             <OfferRow c={c} offer={o} />
             {i < rows.length - 1 ? <View style={[styles.divider, { backgroundColor: c.divider }]} /> : null}
-          </View>
+          </Rise>
         ))}
       </Card>
     );
   }
 
   return (
-    <Screen c={c} title={t('commerce.offers.title')} scroll={false}>
+    <Screen rise c={c} title={t('commerce.offers.title')} scroll={false}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"

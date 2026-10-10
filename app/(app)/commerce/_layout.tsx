@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, useColorScheme } from 'react-native';
-import { ActivityIndicator } from 'react-native-paper';
 import { Stack } from 'expo-router';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { SkeletonList } from '../../../src/components/ui';
 
 /**
  * `commerce/` — the online-shop upgrade's shop screens (CONTRACT-commerce §14,
@@ -22,8 +22,8 @@ export default function CommerceLayout() {
   const { ready } = usePartnerEntitlements();
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
-        <ActivityIndicator color={c.primary} />
+      <View style={{ flex: 1, padding: 18, paddingTop: 64, backgroundColor: c.background }}>
+        <SkeletonList rows={4} />
       </View>
     );
   }

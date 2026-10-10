@@ -22,6 +22,7 @@ import { isBillOfSupply } from '../../../src/features/billing/types';
 import { useIsGstRegistered } from '../../../src/features/billing/useGstRegistration';
 import { ErrorBlock } from '../../../src/features/more/ui';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { OnlyMyJobsNote } from '../../../src/features/p1/OnlyMyJobsNote'; // P9A Q6
 import { useCategoryModules } from '../../../src/features/p2/useCategoryModules';
 // `as Href` on the push below: the destination is built with a query string, so
 // it is not one of the literal routes the generated union describes — the same
@@ -373,6 +374,7 @@ export default function BookingsScreen() {
           bar and the More menu read — a module is called one thing in this app. */}
       <Hero isDark={isDark} action={<HelpButton c={c} variant="hero" />} rounded={false} eyebrow={t('bookings.list.eyebrow')} title={t('modules.BOOKINGS.label')} />
       <View style={styles.controls}>
+        <OnlyMyJobsNote />
         <Searchbar
           placeholder={t('bookings.list.searchPlaceholder')}
           value={code}

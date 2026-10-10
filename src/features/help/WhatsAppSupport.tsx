@@ -29,7 +29,8 @@ export function WhatsAppSupport({ c, topic }: { c: ColorScheme; topic?: string |
       <Button
         mode="contained"
         icon="whatsapp"
-        buttonColor="#128C7E"
+        // M19 colour: WhatsApp's own dark teal — white on it is 7.6:1 (#128C7E was 4.1:1, under AA).
+        buttonColor="#075E54"
         textColor="#FFFFFF"
         contentStyle={styles.btnContent}
         labelStyle={styles.btnLabel}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -12,6 +12,7 @@ import { Sheet } from '../../p2/ui';
 import { addDays, dayTimeLabel, istToday } from '../../p2/dates';
 import { jobKeys } from '../api';
 import { PICKABLE_BOOKING_STATUSES, pickableBookings } from '../logic';
+import { SkeletonList } from '../../../components/ui';
 
 /**
  * "New quote" → pick the booking the quote is for: open bookings (accepted,
@@ -33,7 +34,7 @@ export function BookingPickerSheet({
   return (
     <Sheet visible={visible} onDismiss={onDismiss} title={t('p2.jobs.pick.title')} testID="job-pick-sheet">
       <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('p2.jobs.pick.hint')}</Text>
-      {q.isPending ? <ActivityIndicator color={c.primary} /> : null}
+      {q.isPending ? <SkeletonList rows={2} /> : null}
       {q.isError ? <Text style={{ color: c.error }}>{apiErrorMessage(q.error, t('p2.common.loadFailed'))}</Text> : null}
       {!q.isPending && !q.isError && rows.length === 0 ? (
         <Text style={{ color: c.textSecondary }}>{t('p2.jobs.pick.empty')}</Text>

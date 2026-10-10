@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 
@@ -8,6 +8,9 @@ import { formatPaise } from '../../../lib/money';
 import { Pill } from '../../p2/ui';
 import { batchStatusTone, daysLabel, expiryLabel, fmtQty } from '../logic';
 import type { BatchRow } from '../types';
+// M20 — DS v1: card edge + soft shadow, press scale (none under reduce-motion).
+import { PressableScale } from '../../../theme/motion';
+import { useAppTheme } from '../../../theme/useAppTheme';
 
 /**
  * One batch as a list row: medicine name, batch no · expiry · qty, the status
@@ -27,9 +30,10 @@ export function BatchRowItem({
 }) {
   const { t } = useTranslation();
   const tone = batchStatusTone(row.status);
+  const { shadow } = useAppTheme();
   const dayColor = row.status === 'EXPIRED' ? c.error : row.status === 'NEAR_EXPIRY' ? c.warning : c.textSecondary;
   const body = (
-    <View style={[styles.row, { backgroundColor: c.surface, borderColor: c.divider }]} testID={testID}>
+    <View style={[styles.row, { backgroundColor: c.surface, borderColor: c.border }, shadow('card')]} testID={testID}>
       <View style={styles.top}>
         <View style={styles.text}>
           {!hideProduct ? (
@@ -52,18 +56,18 @@ export function BatchRowItem({
   );
   if (!onPress) return body;
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${row.productName} ${t('p2.pharmacy.row.batch', { batchNo: row.batchNo })}`}
     >
       {body}
-    </Pressable>
+    </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, padding: 12, gap: 8, minHeight: 64 },
+  row: { borderRadius: radii.card, borderWidth: 1, padding: 14, gap: 8, minHeight: 64 },
   top: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   text: { flex: 1, minWidth: 0, gap: 2 },
   name: { fontSize: 15, fontWeight: '600' },

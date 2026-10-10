@@ -35,14 +35,14 @@ export default function ArchiveBusinessScreen() {
   };
 
   return (
-    <Screen c={c} title={t('archive.screenTitle')}>
+    <Screen c={c} title={t('archive.screenTitle')} rise>
       <View style={styles.column}>
         {!owner ? (
           <Card c={c}>
             <Text style={{ color: c.textPrimary, fontSize: 13.5, lineHeight: 19 }}>{t('errors.PARTNER_OWNER_ONLY')}</Text>
           </Card>
         ) : me.isPending ? (
-          <Loading c={c} />
+          <Loading c={c} skeleton={3} />
         ) : me.isError ? (
           <ErrorBlock c={c} message={apiErrorMessage(me.error)} onRetry={() => void me.refetch()} />
         ) : (

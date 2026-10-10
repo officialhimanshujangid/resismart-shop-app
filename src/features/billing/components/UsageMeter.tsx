@@ -23,7 +23,7 @@ export function UsageMeter({ capacity, c }: { capacity: CapacityView; c: ColorSc
   return (
     <View style={styles.root}>
       <View style={styles.row}>
-        <Text style={[styles.label, { color: c.textSecondary }]}>
+        <Text style={[styles.label, { color: c.textSecondary }, { flexShrink: 1 }]}>
           {/* `noun` is the SERVER's word ("invoices this month") and is English
               today — there is no code for it on the wire. The frame around it is
               translated; the noun follows when the backend catalogue does. */}

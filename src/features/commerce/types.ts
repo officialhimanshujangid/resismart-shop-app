@@ -259,6 +259,8 @@ export interface Broadcast {
   audienceCount?: number;
   suppressedCount?: number;
   failureNote?: string;
+  /** M23 — the reason as a code (SWITCHED_OFF | WEEKLY_LIMIT | NO_AUDIENCE | LINK_GONE | SEND_FAILED); old rows: note only. */
+  failureCode?: string;
   createdByName?: string;
   createdAt?: string;
   updatedAt?: string;

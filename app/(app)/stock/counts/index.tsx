@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { FlatList, StyleSheet, useColorScheme, View } from 'react-native';
 import { Snackbar, Text } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,16 +11,28 @@ import { qk } from '../../../../src/lib/queryKeys';
 import { apiErrorMessage } from '../../../../src/api/axios';
 import { newIdempotencyKey } from '../../../../src/lib/idempotency';
 import { formatI18nDate } from '../../../../src/i18n';
-import { StockCount, stockApi } from '../../../../src/features/stock/api';
+import { StockCount, StockCountStatus, stockApi } from '../../../../src/features/stock/api';
+// M20 — DS v1 kit + motion.
+import { StatusBadge } from '../../../../src/components/ui';
+import { PressableScale, Rise } from '../../../../src/theme/motion';
+import { useAppTheme } from '../../../../src/theme/useAppTheme';
+import { StockBar } from '../../../../src/features/catalog/components/StockBar';
+import type { StatusTone } from '../../../../src/theme/tokens';
+
 import { StartCountDialog } from '../../../../src/features/stock/components/StartCountDialog';
 import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../../src/features/more/ui';
 import { ActionRow, PillButton } from '../../../../src/features/p1/ui';
+/** M20 — count status as DS badge tones (same mapping as the web list). */
+const COUNT_TONE: Record<StockCountStatus, StatusTone> = {
+  COUNTING: 'info', REVIEW: 'warn', POSTING: 'brand', POSTED: 'success', CANCELLED: 'neutral',
+};
 
 /** Stock counts (screen S11): the list, and "Start a count" for whoever may count. */
 export default function StockCountsScreen() {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
+  const { shadow } = useAppTheme();
   const { can } = usePartnerEntitlements();
   const canCount = can('STOCK_COUNT', 'FULL');
   const [startOpen, setStartOpen] = useState(false);
@@ -45,10 +57,13 @@ export default function StockCountsScreen() {
     onError: (e) => { startKey.current = null; setToast(apiErrorMessage(e, t('stock.count.startFailed'))); },
   });
 
-  const renderItem = ({ item }: { item: StockCount }) => (
-    <Pressable
+  // M20 — DS v1 rows: card edge + shadow, press scale, status badge tone, progress bar that fills,
+  // first screenful rising in on a stagger.
+  const renderItem = ({ item, index }: { item: StockCount; index: number }) => (
+    <Rise index={index < 8 ? Math.min(index, 5) + 1 : 0} duration={index < 8 ? undefined : 1}>
+    <PressableScale
       onPress={() => router.push({ pathname: '/stock/counts/[id]', params: { id: item._id } })}
-      style={[styles.row, { backgroundColor: c.surface }]}
+      style={[styles.row, { backgroundColor: c.surface, borderColor: c.border }, shadow('card')]}
       accessibilityRole="button"
       testID={`count-${item._id}`}
     >
@@ -57,11 +72,11 @@ export default function StockCountsScreen() {
         <Text style={[styles.meta, { color: c.textSecondary }]}>
           {t('stock.count.progress', { counted: item.countedLineCount, total: item.lineCount })} · {formatI18nDate(item.startedAt, t)}
         </Text>
+        <StockBar qty={item.countedLineCount ?? 0} max={Math.max(1, item.lineCount ?? 0)} width={140} style={styles.bar} />
       </View>
-      <View style={[styles.status, { backgroundColor: c.surfaceVariant }]}>
-        <Text style={{ color: c.textSecondary, fontSize: 12, fontWeight: '700' }}>{t(`stock.countStatus.${item.status}`)}</Text>
-      </View>
-    </Pressable>
+      <StatusBadge tone={COUNT_TONE[item.status] ?? 'neutral'} live={item.status === 'COUNTING'} label={t(`stock.countStatus.${item.status}`)} />
+    </PressableScale>
+    </Rise>
   );
 
   return (
@@ -79,7 +94,7 @@ export default function StockCountsScreen() {
         </View>
       )}
       {list.isPending ? (
-        <Loading c={c} />
+        <Loading c={c} skeleton={3} />
       ) : list.isError ? (
         <ErrorBlock c={c} message={apiErrorMessage(list.error, t('stock.count.loadFailed'))} onRetry={() => list.refetch()} />
       ) : (
@@ -100,8 +115,8 @@ export default function StockCountsScreen() {
 const styles = StyleSheet.create({
   controls: { paddingHorizontal: 16, paddingTop: 4 },
   list: { padding: 16, paddingBottom: 40, flexGrow: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radii.card, padding: 14, minHeight: 60 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radii.card, borderWidth: 1, padding: 14, minHeight: 60 },
+  bar: { marginTop: 8 },
   title: { fontSize: 15, fontWeight: '600' },
   meta: { fontSize: 12, marginTop: 2 },
-  status: { borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0 },
 });

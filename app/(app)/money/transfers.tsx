@@ -87,7 +87,7 @@ export default function TransfersScreen() {
   const history = (
     <View style={{ gap: 8 }}>
       <SectionLabel c={c}>{t('money.transfers')}</SectionLabel>
-      {list.isPending ? <Loading c={c} /> : (list.data?.data ?? []).length === 0 ? (
+      {list.isPending ? <Loading c={c} skeleton={4} /> : (list.data?.data ?? []).length === 0 ? (
         <EmptyBlock c={c} icon="swap-horizontal" title={t('money.transfer.empty')} />
       ) : (list.data?.data ?? []).map((tr) => {
         const off = tr.status === 'CANCELLED';
@@ -116,7 +116,7 @@ export default function TransfersScreen() {
   );
 
   return (
-    <Screen c={c} title={t('money.transfers')} floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3000}>{toast}</Snackbar>}>
+    <Screen c={c} rise title={t('money.transfers')} floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3000}>{toast}</Snackbar>}>
       <TwoPane left={form ?? history} right={form ? history : undefined} />
       <ReasonDialog
         visible={!!cancelTarget}

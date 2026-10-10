@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useColorScheme } from 'react-native';
 import {
-  ActivityIndicator, Button, Checkbox, Divider, SegmentedButtons, Snackbar, Surface, Text, TextInput,
+  ActivityIndicator, Button, Checkbox, Divider, Snackbar, Surface, Text, TextInput,
 } from 'react-native-paper';
 import { FitSegments } from '../../../src/components/FitSegments'; // >>> WEB-UI
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +19,7 @@ import { documentsApi } from '../../../src/features/billing/documents.api';
 import { PartnerDocumentRecord, PartnerPartyRecord } from '../../../src/features/billing/types';
 import { paymentsApi } from '../../../src/features/payments/payments.api';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
+import { Segmented } from '../../../src/components/ui';
 import { toHref } from '../../../src/features/billing/routeHref';
 import { AccountPicker } from '../../../src/features/money/components/AccountPicker';
 import {
@@ -244,15 +245,14 @@ export default function NewPaymentScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <SegmentedButtons
+        {/* M21: the kit's sliding segment (DS v1). `key` is the wire `direction` on
+            `POST /partners/me/payments` and never moves; only the label is translated. */}
+        <Segmented<PaymentDirection>
           value={direction}
-          onValueChange={(v) => setDirection(v as PaymentDirection)}
-          density="small"
-          // `value` is the wire `direction` on `POST /partners/me/payments` and
-          // never moves; only the label is translated.
-          buttons={[
-            { value: 'IN', label: t('payments.new.moneyIn') },
-            { value: 'OUT', label: t('payments.new.moneyOut') },
+          onChange={setDirection}
+          options={[
+            { key: 'IN', label: t('payments.new.moneyIn') },
+            { key: 'OUT', label: t('payments.new.moneyOut') },
           ]}
         />
 
@@ -281,7 +281,7 @@ export default function NewPaymentScreen() {
               />
               {partyResults.map((p) => (
                 <Pressable key={p._id} onPress={() => setParty(p)} style={styles.resultRow}>
-                  <Text style={[styles.resultName, { color: c.textPrimary }]}>{p.name}</Text>
+                  <Text style={[styles.resultName, { color: c.textPrimary }, { flexShrink: 1 }]}>{p.name}</Text>
                   {!!p.phone && <Text style={[styles.resultMeta, { color: c.textSecondary }]}>{p.phone}</Text>}
                 </Pressable>
               ))}
@@ -380,7 +380,7 @@ export default function NewPaymentScreen() {
           elevation={0}
         >
           <View style={styles.totalsRow}>
-            <Text style={{ color: overAllocated ? c.error : c.textSecondary, fontWeight: '600', fontSize: 12 }}>
+            <Text style={{ color: overAllocated ? c.error : c.textSecondary, fontWeight: '600', fontSize: 12, flexShrink: 1 }}>
               {overAllocated ? t('payments.new.overAllocated') : t('payments.new.leftOnAccount')}
             </Text>
             <Text style={{ color: overAllocated ? c.error : c.textPrimary, fontWeight: '600', fontSize: 13 }}>

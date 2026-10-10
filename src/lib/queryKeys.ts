@@ -177,6 +177,8 @@ export const qk = {
   availability: {
     /** The business's own default schedule (`staffId: null`) — this app does not build staff overrides. */
     business: () => ['availability', 'business'] as const,
+    /** P9A (Owner Q7): every schedule — the business's own and each person's own hours. */
+    rows: () => ['availability', 'rows'] as const,
   },
 
   reports: (range: string) => ['reports', range] as const,
@@ -198,7 +200,7 @@ export const qk = {
   staff: () => ['staff'] as const,
   promotion: () => ['promotion'] as const,
   notifications: () => ['notifications'] as const,
-  reviews: (page?: number) => ['reviews', page ?? 1] as const,
+  reviews: (page?: number, filter?: string) => ['reviews', page ?? 1, filter ?? 'all'] as const, // M19: + filter
 
   // Added by the More-tab agent (parties/staff/reports/promotion/settings).
   // Kept as new siblings rather than folding into `staff()`/`promotion()`

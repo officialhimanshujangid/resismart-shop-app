@@ -10,7 +10,7 @@ import { usePartnerEntitlements } from '../../../src/hooks';
 import { partnerApi } from '../../../src/api/partner.api';
 import { PartnerServiceMode } from '../../../src/types/api-contract.generated';
 import { AppInput } from '../../../src/components/AppInput';
-import { AppButton } from '../../../src/components/AppButton';
+import { Button, useToast } from '../../../src/components/ui'; // M19: kit button (haptic) + success toast
 import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 import { alertApiError } from '../../../src/features/owners/alertApiError';
 
@@ -52,6 +52,7 @@ export default function WhereYouWorkScreen() {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { can, refresh } = usePartnerEntitlements();
   const canEdit = can('SETTINGS', 'FULL');
 
@@ -92,7 +93,7 @@ export default function WhereYouWorkScreen() {
       // The visibility report is computed from these fields, so the banner on
       // Today has to be re-asked or it keeps saying they are invisible.
       refresh();
-      Alert.alert(t('settings.whereYouWork.savedTitle'), t('settings.whereYouWork.savedBody'));
+      toast.show({ message: `${t('settings.whereYouWork.savedTitle')} — ${t('settings.whereYouWork.savedBody')}`, tone: 'success' });
     },
     // Same route as the address screen — see `alertApiError`.
     onError: (e) => alertApiError(t('settings.whereYouWork.couldNotSave'), e),
@@ -112,7 +113,7 @@ export default function WhereYouWorkScreen() {
     save.mutate();
   };
 
-  if (query.isLoading) return <Screen c={c} title={t('settings.whereYouWork.title')}><Loading c={c} /></Screen>;
+  if (query.isLoading) return <Screen c={c} title={t('settings.whereYouWork.title')}><Loading c={c} skeleton={3} /></Screen>;
   if (query.isError) {
     return (
       <Screen c={c} title={t('settings.whereYouWork.title')}>
@@ -122,7 +123,7 @@ export default function WhereYouWorkScreen() {
   }
 
   return (
-    <Screen c={c} title={t('settings.whereYouWork.title')} subtitle={canEdit ? undefined : t('settings.whereYouWork.viewOnly')}>
+    <Screen c={c} title={t('settings.whereYouWork.title')} subtitle={canEdit ? undefined : t('settings.whereYouWork.viewOnly')} rise>
       <Card c={c}>
         <SectionLabel c={c}>{t('settings.whereYouWork.howYouServe')}</SectionLabel>
         <Text style={{ color: c.textSecondary, marginBottom: 12 }}>
@@ -158,6 +159,7 @@ export default function WhereYouWorkScreen() {
             value={radius}
             onChangeText={setRadius}
             keyboardType="numeric"
+            disabled={!canEdit}
           />
           <Text style={{ color: c.textSecondary, marginTop: 8 }}>
             {t('settings.whereYouWork.distanceNote')}
@@ -167,7 +169,7 @@ export default function WhereYouWorkScreen() {
 
       {canEdit && (
         <View style={{ marginTop: 4 }}>
-          <AppButton label={t('settings.whereYouWork.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} />
+          <Button fullWidth label={t('settings.whereYouWork.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} />
         </View>
       )}
     </Screen>

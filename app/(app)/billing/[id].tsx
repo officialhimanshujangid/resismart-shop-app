@@ -577,7 +577,7 @@ export default function DocumentDetailScreen() {
             the per-line caption below carries the other one.
           */}
           <View style={styles.itemsHeaderRow}>
-            <Text style={[styles.cardTitle, { color: c.textPrimary }]}>{t('billing.detail.items')}</Text>
+            <Text style={[styles.cardTitle, { color: c.textPrimary }, { flexShrink: 1 }]}>{t('billing.detail.items')}</Text>
             <Text style={[styles.columnCaption, { color: c.textSecondary }]}>{t('billing.detail.taxableValue')}</Text>
           </View>
           {doc.lines.map((line, idx) => {
@@ -942,7 +942,7 @@ export default function DocumentDetailScreen() {
               ))}
             </RadioButton.Group>
             {!!doc.sentVia?.length && (
-              <Text style={{ color: c.textDisabled, fontSize: 11, marginTop: 4 }}>
+              <Text style={{ color: c.textSecondary, fontSize: 11, marginTop: 4 }}>
                 {/* `sentVia` holds the server's own channel names — data on the
                     record, listed back verbatim rather than re-labelled here. */}
                 {t('billing.detail.alreadySentVia', { channels: doc.sentVia.join(', ') })}
@@ -976,7 +976,7 @@ function TotalRow({
 }) {
   return (
     <View style={styles.totalRow}>
-      <Text style={{ color: tone ?? c.textSecondary, fontSize: bold ? 15 : 13, fontWeight: bold ? '600' : '500' }}>
+      <Text style={{ color: tone ?? c.textSecondary, fontSize: bold ? 15 : 13, fontWeight: bold ? '600' : '500', flexShrink: 1 }}>
         {label}
       </Text>
       <Text style={{ color: tone ?? c.textPrimary, fontSize: bold ? 15 : 13, fontWeight: bold ? '600' : '500' }}>

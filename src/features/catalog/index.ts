@@ -14,7 +14,7 @@ export type {
   StockAdjustMode, StockAdjustReasonCode,
 } from './types';
 
-export { ProductCard } from './components/ProductCard';
+export { ProductCard, ProductTile } from './components/ProductCard';
 export { UsageMeterBar } from './components/UsageMeterBar';
 export { StockAdjustModal } from './components/StockAdjustModal';
 export type { StockAdjustTarget } from './components/StockAdjustModal';

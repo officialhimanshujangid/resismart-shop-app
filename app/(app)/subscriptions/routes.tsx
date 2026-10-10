@@ -115,10 +115,11 @@ export default function RoutesScreen() {
   return (
     <Screen
       c={c}
+      rise
       title={t('p2.subscriptions.routes.title')}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}
     >
-      {routes.isPending ? <Loading c={c} />
+      {routes.isPending ? <Loading c={c} skeleton={4} />
         : routes.isError ? <ErrorBlock c={c} message={apiErrorMessage(routes.error, t('p2.common.loadFailed'))} onRetry={() => void routes.refetch()} />
           : (
             <>

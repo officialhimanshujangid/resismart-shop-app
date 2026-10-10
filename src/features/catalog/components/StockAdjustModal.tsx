@@ -153,7 +153,7 @@ export function StockAdjustModal({ target, submitting, onCancel, onSubmit, showC
                       styles.reasonChip,
                       {
                         backgroundColor: active ? c.primary : c.surfaceVariant,
-                        color: active ? '#fff' : c.textSecondary,
+                        color: active ? c.textInverse : c.textSecondary,
                       },
                     ]}
                   >

@@ -8,7 +8,9 @@ import { radii, themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { formatPaise } from '../../../src/lib/money';
-import { ChipRow, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
+import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
+import { Segmented } from '../../../src/components/ui'; // M22 — sliding pill
+import { SessionsBar } from '../../../src/features/appointments/components/SessionsBar'; // M22
 import { ActionRow, PillButton } from '../../../src/features/p1/ui';
 import { ReasonDialog } from '../../../src/features/p1/ReasonDialog';
 import { Pill } from '../../../src/features/p2/ui';
@@ -53,7 +55,7 @@ export default function PackagesScreen() {
 
   const list = tab === 'PACKAGES' ? packages : purchases;
   const renderPackages = (rows: PackageRow[]) => rows.map((p) => (
-    <View key={p.id} style={[styles.card, { backgroundColor: c.surface }]} testID={`package-${p.id}`}>
+    <View key={p.id} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]} testID={`package-${p.id}`}>
       <View style={styles.head}>
         <Text style={{ color: c.textPrimary, fontWeight: '700', fontSize: 15, flex: 1, minWidth: 0 }} numberOfLines={2}>{p.name}</Text>
         {!p.isActive ? <Pill c={c} label={t('p2.appointments.packages.inactive')} /> : null}
@@ -73,16 +75,18 @@ export default function PackagesScreen() {
     </View>
   ));
   const renderSold = (rows: PurchaseRow[]) => rows.map((r) => (
-    <View key={r.id} style={[styles.card, { backgroundColor: c.surface }]} testID={`purchase-${r.id}`}>
+    <View key={r.id} style={[styles.card, { backgroundColor: c.surface, borderColor: c.border }]} testID={`purchase-${r.id}`}>
       <View style={styles.head}>
         <Text style={{ color: c.textPrimary, fontWeight: '700', flex: 1, minWidth: 0 }} numberOfLines={1}>{r.customerName ?? '—'}</Text>
         <Pill c={c} label={t(`p2.appointments.packages.status.${r.status}`)} tone={PURCHASE_TONE[r.status] ?? 'neutral'} />
       </View>
       <Text style={{ color: c.textSecondary, fontSize: 13 }} numberOfLines={1}>{r.name}</Text>
+      <SessionsBar used={r.sessionsUsed} reserved={r.sessionsReserved} total={r.sessionsTotal} style={{ marginVertical: 2 }} />
       <Text style={{ color: c.textSecondary, fontSize: 13 }}>
         {`${t('p2.appointments.packages.left', { remaining: r.remaining, total: r.sessionsTotal })} · ${t('p2.appointments.packages.expires', { day: shortDay(istDayOf(r.expiresAt), t) })}`}
       </Text>
-      {canCancel && r.status === 'ACTIVE' ? (
+      {/* M22 — same rule as the web: a package with a session used or held cannot be cancelled. */}
+      {canCancel && r.status === 'ACTIVE' && r.sessionsUsed + r.sessionsReserved === 0 ? (
         <ActionRow>
           <PillButton c={c} tone="danger" label={t('common.cancel')} onPress={() => setCancelling(r)} testID={`purchase-cancel-${r.id}`} />
         </ActionRow>
@@ -93,21 +97,22 @@ export default function PackagesScreen() {
   return (
     <Screen
       c={c}
+      rise
       title={t('p2.appointments.nav.packages')}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}
     >
-      <ChipRow
-        c={c}
+      <Segmented<Tab>
         value={tab}
         options={[{ key: 'PACKAGES', label: t('p2.appointments.packages.tabPackages') }, { key: 'SOLD', label: t('p2.appointments.packages.tabSold') }]}
         onChange={setTab}
+        testID="packages-tabs"
       />
       {tab === 'PACKAGES' && canPackages ? (
         <ActionRow>
           <PillButton c={c} icon="plus" label={t('p2.appointments.packages.add')} onPress={() => { setEditing(null); setSheetOpen(true); }} testID="package-add" />
         </ActionRow>
       ) : null}
-      {list.isLoading ? <Loading c={c} />
+      {list.isLoading ? <Loading c={c} skeleton={4} />
         : list.isError ? <ErrorBlock c={c} message={apiErrorMessage(list.error, t('p2.common.loadFailed'))} onRetry={() => list.refetch()} />
         : tab === 'PACKAGES'
           ? ((packages.data ?? []).length ? renderPackages(packages.data ?? []) : <EmptyBlock c={c} icon="ticket-outline" title={t('p2.appointments.packages.empty')} />)
@@ -137,6 +142,6 @@ export default function PackagesScreen() {
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radii.card, padding: 14, gap: 6 },
+  card: { borderRadius: radii.card, padding: 14, gap: 6, borderWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

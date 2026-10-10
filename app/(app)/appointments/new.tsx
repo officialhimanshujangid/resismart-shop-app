@@ -1,4 +1,6 @@
 import React, { useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import Animated from 'react-native-reanimated';
 import { StyleSheet, Switch, useColorScheme, View } from 'react-native';
 import { Button, Text, TextInput } from 'react-native-paper';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
@@ -22,6 +24,8 @@ import { SlotPicker } from '../../../src/features/appointments/components/SlotPi
 import { ServiceFields, defaultModeOf } from '../../../src/features/appointments/components/ServiceFields';
 import { CustomerSummaryLine } from '../../../src/features/appointments/components/CustomerSummaryLine';
 import type { ServiceMode } from '../../../src/features/services/types';
+import { useToast } from '../../../src/components/ui'; // M22 — booking success
+import { useShake } from '../../../src/components/ui/Feedback'; // M22 — refusal shake
 
 /**
  * Book now — a walk-in or a phone booking, three taps for a known customer:
@@ -49,6 +53,8 @@ export default function BookNowScreen() {
   const [note, setNote] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const key = useRef<{ sig: string; key: string } | null>(null);
+  const toast = useToast();
+  const { style: shakeStyle, shake } = useShake();
 
   const services = useApptServices();
   const availability = useApptAvailability();
@@ -78,14 +84,17 @@ export default function BookNowScreen() {
       return appointmentsApi.book(out.body, key.current.key);
     },
     onMutate: () => setProblem(null),
-    onSuccess: () => {
+    onSuccess: (made) => {
       qc.invalidateQueries({ queryKey: apptKeys.all });
+      // M22 — say it worked (with the code) and buzz once, then go back to the day.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      toast.show({ tone: 'success', message: t('p2.appointments.new.booked', { code: (made as { code?: string } | undefined)?.code ?? '' }) });
       const back = `/appointments?day=${day}` as Href;
       const r = router as unknown as { dismissTo?: (h: Href) => void };
       if (typeof r.dismissTo === 'function') r.dismissTo(back);
       else router.back();
     },
-    onError: (e) => setProblem(apiErrorMessage(e, t('p2.common.saveFailed'))),
+    onError: (e) => { setProblem(apiErrorMessage(e, t('p2.common.saveFailed'))); shake(); },
   });
 
   const staffOptions = [
@@ -95,7 +104,7 @@ export default function BookNowScreen() {
   const packages = packagesForService(summary.data?.activePackages, serviceId);
 
   return (
-    <Screen c={c} title={t('p2.appointments.bookNow')} subtitle={t('p2.appointments.new.subtitle')}>
+    <Screen c={c} rise title={t('p2.appointments.bookNow')} subtitle={t('p2.appointments.new.subtitle')}>
       <SectionLabel c={c}>{t('p2.common.customer')}</SectionLabel>
       <PartyPicker c={c} value={party} onChange={(p) => { setParty(p); setPackageId(undefined); }} testID="appt-party" />
       {summary.data ? <CustomerSummaryLine c={c} s={summary.data} /> : null}
@@ -181,7 +190,7 @@ export default function BookNowScreen() {
         <Switch value={notify} onValueChange={setNotify} testID="appt-notify" accessibilityLabel={t('p2.appointments.new.notify')} />
       </View>
 
-      {problem ? <Banner c={c} tone="error" body={problem} testID="appt-error" /> : null}
+      {problem ? <Animated.View style={shakeStyle}><Banner c={c} tone="error" body={problem} testID="appt-error" /></Animated.View> : null}
       <Button
         mode="contained"
         onPress={() => save.mutate()}

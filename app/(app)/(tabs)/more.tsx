@@ -5,11 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Href, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { themeColors, radii, palette } from '../../../src/constants/colors';
+import { themeColors, radii } from '../../../src/constants/colors';
+import { Detail, GroupRow, ListGroup, SectionTitle, SkeletonList, Title } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
+import { useAppTheme } from '../../../src/theme/useAppTheme';
 import { usePartnerEntitlements } from '../../../src/hooks'; // X2F: ModuleMenuEntry no longer needed
 import { useAuth } from '../../../src/context/AuthContext';
 import { PartnerModule } from '../../../src/types/api-contract.generated';
-import { Card, Row, SectionLabel } from '../../../src/features/more/ui';
 import { ContextPicker } from '../../../src/components/ContextPicker';
 import { useNotifications } from '../../../src/features/notifications/hooks';
 import { HelpButton } from '../../../src/features/help/HelpButton';
@@ -86,6 +88,7 @@ export default function MoreScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
+  const { status } = useAppTheme();
   const { menu, ready, entitlements, can, hasModule } = usePartnerEntitlements();
   const { user, profile, logout, availableContexts, switchToContext } = useAuth();
 
@@ -247,213 +250,156 @@ export default function MoreScreen() {
     ]);
   };
 
+  // M19 redesign (DS v1): grouped lists (one card per section, hairline rows,
+  // tinted icon tiles) instead of a card per row inside a card; Sora title;
+  // sections rise in one after another; skeleton rows while the menu loads.
+  let section = 0;
+  const nextRise = () => Math.min(section++, 6);
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <View style={[styles.headerBlock, styles.headerRow]}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: c.textPrimary }]}>{t('more.title')}</Text>
-          <Text style={[styles.business, { color: c.textSecondary }]} numberOfLines={1}>
+          <Title>{t('more.title')}</Title>
+          <Detail numberOfLines={1} style={styles.business}>
             {profile?.tenantName || t('more.yourBusiness')}
-          </Text>
+          </Detail>
         </View>
         <HelpButton c={c} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {!ready ? (
-          <Card c={c}><Text style={{ color: c.textSecondary }}>{t('more.loadingMenu')}</Text></Card>
+          <View accessibilityLabel={t('more.loadingMenu')}>
+            <SkeletonList rows={6} />
+          </View>
         ) : (
           <>
             {/* Owner invitations sent to this person — accept one here. */}
+            {/* Not wrapped in Rise: it renders nothing when there is no invitation, and an empty wrapper would leave a gap. */}
             <MyInvitationsCard c={c} />
 
             {moduleRows.length > 0 && (
-              <>
-                <SectionLabel c={c}>{t('more.sellMoreSection')}</SectionLabel>
-                <Card c={c} style={styles.listCard}>
-                  {moduleRows.map((entry, i) => {
-                    // Resolved ONCE per row and closed over. Calling
-                    // `destinationFor` again inside `onPress` is what forced
-                    // the old `as '/promotion/index'` cast — TypeScript cannot
-                    // carry the null-check across two separate calls — and
-                    // that cast is precisely what let a non-route literal
-                    // through the compiler in the first place.
+              <Rise index={nextRise()}>
+                <ListGroup title={t('more.sellMoreSection')}>
+                  {moduleRows.map((entry) => {
+                    // Resolved ONCE per row and closed over (typed-route literal, see `destinationFor`).
                     const dest = destinationFor(entry.module); // X2F: no LOCKED rows
-                    /**
-                     * `entry.label` and `entry.blurb` are NOT read here, and
-                     * that is deliberate rather than an oversight.
-                     *
-                     * They are the English literals in `PARTNER_MODULE_INFO`,
-                     * which stays English because it is also the table that
-                     * maps a module to its plan capability and its permission
-                     * — wiring, not copy. `entry.module` is the enum, so the
-                     * catalogue is keyed off it exactly as
-                     * `settings/modules.tsx` and `settings/plan.tsx` already
-                     * do, and the three screens cannot drift apart in what
-                     * they call a module.
-                     */
+                    // `entry.label` / `entry.blurb` are the English wiring table; the
+                    // catalogue is keyed off `entry.module` like settings/modules.tsx.
                     const blurb = t(`modules.${entry.module}.blurb`);
                     return (
-                      <View key={entry.module}>
-                        <Row
-                          c={c}
-                          icon={entry.icon}
-                          title={t(`modules.${entry.module}.label`)}
-                          subtitle={dest ? blurb : t('more.notBuiltSubtitle', { blurb })}
-                          onPress={dest ? () => router.push(dest) : undefined}
-                        />
-                        {i < moduleRows.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
-                      </View>
+                      <GroupRow
+                        key={entry.module}
+                        icon={entry.icon}
+                        tint="teal"
+                        title={t(`modules.${entry.module}.label`)}
+                        detail={dest ? blurb : t('more.notBuiltSubtitle', { blurb })}
+                        onPress={dest ? () => router.push(dest) : undefined}
+                      />
                     );
                   })}
-                </Card>
-              </>
+                </ListGroup>
+              </Rise>
             )}
 
             {/* P2: the business-type modules this business switched on — nothing otherwise. */}
             {p2Doors.length > 0 && (
-              <>
-                <SectionLabel c={c}>{t('p2.doors.section')}</SectionLabel>
-                <Card c={c} style={styles.listCard}>
-                  {p2Doors.map((door, i) => (
-                    <View key={door.key}>
-                      <Row c={c} icon={door.icon} title={t(door.labelKey)} subtitle={t(door.blurbKey)} onPress={() => router.push(door.href)} />
-                      {i < p2Doors.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
-                    </View>
+              <Rise index={nextRise()}>
+                <ListGroup title={t('p2.doors.section')}>
+                  {p2Doors.map((door) => (
+                    <GroupRow key={door.key} icon={door.icon} tint="violet" title={t(door.labelKey)} detail={t(door.blurbKey)} onPress={() => router.push(door.href)} />
                   ))}
-                </Card>
-              </>
+                </ListGroup>
+              </Rise>
             )}
 
             {growDoors.length > 0 && (
-              <>
-                <SectionLabel c={c}>{t('commerce.doors.section')}</SectionLabel>
-                <Card c={c} style={styles.listCard}>
-                  {growDoors.map((door, i) => (
-                    <View key={door.key}>
-                      <Row c={c} icon={door.icon} title={t(door.labelKey)} subtitle={t(door.blurbKey)} onPress={() => router.push(door.href)} />
-                      {i < growDoors.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
-                    </View>
+              <Rise index={nextRise()}>
+                <ListGroup title={t('commerce.doors.section')}>
+                  {growDoors.map((door) => (
+                    <GroupRow key={door.key} icon={door.icon} tint="amber" title={t(door.labelKey)} detail={t(door.blurbKey)} onPress={() => router.push(door.href)} />
                   ))}
-                </Card>
-              </>
+                </ListGroup>
+              </Rise>
             )}
 
             {businessRows.length > 0 && (
-              <>
-                <SectionLabel c={c}>{t('more.businessSection')}</SectionLabel>
-                <Card c={c} style={styles.listCard}>
-                  {businessRows.map((row, i) => (
-                    <View key={row.key}>
-                      <Row c={c} icon={row.icon} title={row.label} subtitle={row.blurb} onPress={() => router.push(row.href)} />
-                      {i < businessRows.length - 1 && <View style={[styles.divider, { backgroundColor: c.divider }]} />}
-                    </View>
+              <Rise index={nextRise()}>
+                <ListGroup title={t('more.businessSection')}>
+                  {businessRows.map((row) => (
+                    <GroupRow key={row.key} icon={row.icon} title={row.label} detail={row.blurb} onPress={() => router.push(row.href)} />
                   ))}
-                </Card>
-              </>
+                </ListGroup>
+              </Rise>
             )}
 
             {entitlements.awaitingRole && (
-              <Card c={c} style={{ backgroundColor: palette.coral.soft }}>
-                <Text style={{ color: palette.coral[600], fontWeight: '600' }}>
-                  {t('more.awaitingRoleTitle')}
-                </Text>
-                <Text style={{ color: c.textSecondary, fontSize: 12 }}>
-                  {t('more.awaitingRoleBody')}
-                </Text>
-              </Card>
+              <Rise index={nextRise()}>
+                {/* Status pair, not the fixed light coral: correct in light AND dark. */}
+                <View
+                  accessibilityRole="alert"
+                  style={[styles.notice, { backgroundColor: status.warn.bg, borderColor: status.warn.fg }]}
+                >
+                  <Text style={[styles.noticeTitle, { color: status.warn.fg }]}>{t('more.awaitingRoleTitle')}</Text>
+                  <Text style={[styles.noticeBody, { color: c.textPrimary }]}>{t('more.awaitingRoleBody')}</Text>
+                </View>
+              </Rise>
             )}
 
-            <SectionLabel c={c}>{t('more.accountSection')}</SectionLabel>
-            <Card c={c} style={styles.listCard}>
-              <Row c={c} icon="account-circle-outline" title={user?.name || t('more.yourAccount')} subtitle={user?.phone || user?.email} />
-              <View style={[styles.divider, { backgroundColor: c.divider }]} />
-              {/* Not gated on any permission: these are this PERSON's own
-                  messages, and `/notifications` is ungated server-side for
-                  exactly that reason — a permission check there could only stop
-                  somebody reading their own post. */}
-              <Row
-                c={c}
-                icon="bell-outline"
-                title={t('more.alerts')}
-                subtitle={unread > 0 ? t('more.unread', { count: unread }) : t('more.alertsSub')}
-                right={
-                  unread > 0 ? (
-                    <View style={[styles.badge, { backgroundColor: c.secondary }]}>
-                      <Text style={[styles.badgeText, { color: c.textInverse }]}>
-                        {unread > 99 ? '99+' : String(unread)}
-                      </Text>
-                    </View>
-                  ) : undefined
-                }
-                onPress={() => router.push('/notifications')}
-              />
-              {otherContexts.length > 0 && (
-                <>
-                  <View style={[styles.divider, { backgroundColor: c.divider }]} />
-                  <Row
-                    c={c}
+            <Rise index={nextRise()}>
+              <ListGroup title={t('more.accountSection')}>
+                <GroupRow icon="account-circle-outline" tint="blue" title={user?.name || t('more.yourAccount')} detail={user?.phone || user?.email} />
+                {/* Not gated on any permission: these are this PERSON's own messages. */}
+                <GroupRow
+                  icon="bell-outline"
+                  tint="blue"
+                  title={t('more.alerts')}
+                  detail={unread > 0 ? t('more.unread', { count: unread }) : t('more.alertsSub')}
+                  trailing={
+                    unread > 0 ? (
+                      <View style={[styles.badge, { backgroundColor: c.secondary }]}>
+                        <Text style={[styles.badgeText, { color: c.textInverse }]}>
+                          {unread > 99 ? '99+' : String(unread)}
+                        </Text>
+                      </View>
+                    ) : undefined
+                  }
+                  chevron
+                  onPress={() => router.push('/notifications')}
+                />
+                {otherContexts.length > 0 ? (
+                  <GroupRow
                     icon="store-outline"
+                    tint="blue"
                     title={t('more.switchBusiness')}
-                    subtitle={
-                      // Two sentences rather than one with a swapped noun: the
-                      // single-other case names the business, and a name is not
-                      // a count. `tenantName` is the server's own text and is
-                      // interpolated untouched.
+                    // One business is named; several are counted. `tenantName` is the server's own text.
+                    detail={
                       otherContexts.length === 1
                         ? t('more.alsoRunNamed', { name: otherContexts[0].tenantName })
                         : t('more.alsoRunOthers', { count: otherContexts.length })
                     }
                     onPress={() => setSwitcherOpen(true)}
                   />
-                </>
-              )}
-              <View style={[styles.divider, { backgroundColor: c.divider }]} />
-              {/* Help (PLAN-02). Ungated like Alerts: how-to text is not a
-                  permission surface, and the server already filters each
-                  article by this person's role. */}
-              <Row c={c} icon="help-circle-outline" title={t('help.moreRowTitle')} subtitle={t('help.moreRowSub')} onPress={() => router.push('/help')} />
-              <View style={[styles.divider, { backgroundColor: c.divider }]} />
-              {/* Sign-in security — this PERSON's own login, so ungated like
-                  Alerts and Help. "Change password" only for an account that
-                  has one; the devices screen also offers it from the server's
-                  own `hasPassword` for a session stored before this field. */}
-              <Row
-                c={c}
-                icon="cellphone-link"
-                title={t('more.devicesRow')}
-                subtitle={t('more.devicesRowSub')}
-                onPress={() => router.push('/account/devices')}
-              />
-              <View style={[styles.divider, { backgroundColor: c.divider }]} />
-              {user?.hasPassword ? (
-                <>
-                  <Row
-                    c={c}
-                    icon="lock-reset"
-                    title={t('more.changePasswordRow')}
-                    subtitle={t('more.changePasswordRowSub')}
-                    onPress={() => router.push('/account/change-password')}
-                  />
-                  <View style={[styles.divider, { backgroundColor: c.divider }]} />
-                </>
-              ) : null}
-              <Row c={c} icon="logout" title={t('more.signOut')} onPress={handleSignOut} danger />
-              <View style={[styles.divider, { backgroundColor: c.divider }]} />
-              {/* Delete account (Google Play's in-app deletion rule). Ungated like
-                  Alerts and Help: it is this PERSON's account, and a member of
-                  staff with no grant at all must still be able to leave. Last in
-                  the card, below Sign out, so it is never the row a thumb lands
-                  on by habit. */}
-              <Row
-                c={c}
-                icon="account-remove-outline"
-                title={t('more.deleteAccount')}
-                subtitle={t('more.deleteAccountSub')}
-                onPress={() => router.push('/account/delete')}
-                danger
-              />
-            </Card>
+                ) : null}
+                {/* Help (PLAN-02). Ungated: the server filters each article by role. */}
+                <GroupRow icon="help-circle-outline" tint="sky" title={t('help.moreRowTitle')} detail={t('help.moreRowSub')} onPress={() => router.push('/help')} />
+                {/* Sign-in security — this PERSON's own login, so ungated. */}
+                <GroupRow icon="cellphone-link" tint="blue" title={t('more.devicesRow')} detail={t('more.devicesRowSub')} onPress={() => router.push('/account/devices')} />
+                {user?.hasPassword ? (
+                  <GroupRow icon="lock-reset" tint="blue" title={t('more.changePasswordRow')} detail={t('more.changePasswordRowSub')} onPress={() => router.push('/account/change-password')} />
+                ) : null}
+                <GroupRow icon="logout" title={t('more.signOut')} onPress={handleSignOut} danger />
+                {/* Delete account (Google Play's in-app deletion rule) — last, below Sign out. */}
+                <GroupRow
+                  icon="account-remove-outline"
+                  title={t('more.deleteAccount')}
+                  detail={t('more.deleteAccountSub')}
+                  onPress={() => router.push('/account/delete')}
+                  danger
+                />
+              </ListGroup>
+            </Rise>
           </>
         )}
       </ScrollView>
@@ -462,19 +408,15 @@ export default function MoreScreen() {
         <Modal
           visible={switcherOpen}
           onDismiss={() => { if (!switching) setSwitcherOpen(false); }}
-          contentContainerStyle={[styles.switcher, { backgroundColor: c.surface }]}
+          contentContainerStyle={[styles.switcher, { backgroundColor: c.surface, borderColor: c.border }]}
         >
-          <Text style={[styles.switcherTitle, { color: c.textPrimary }]}>{t('more.switchBusiness')}</Text>
-          <Text style={[styles.switcherBody, { color: c.textSecondary }]}>
-            {t('more.switcherBody')}
-          </Text>
+          <SectionTitle>{t('more.switchBusiness')}</SectionTitle>
+          <Detail style={styles.switcherBody}>{t('more.switcherBody')}</Detail>
           {switching ? (
             <ActivityIndicator color={c.primary} style={{ marginVertical: 24 }} />
           ) : (
-            /* `ContextPicker` hands back the whole profile row it was given; only
-               `tenantId` + `role` identify which one was tapped, and
-               `switchToContext` resolves those back to the `contextId` the
-               refresh endpoint actually switches by. */
+            /* `ContextPicker` hands back the whole profile row; `tenantId` + `role`
+               identify the tap and `switchToContext` resolves them to a `contextId`. */
             <ContextPicker
               profiles={otherContexts.map((ctx) => ({
                 tenantType: ctx.tenantType,
@@ -495,15 +437,15 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   headerBlock: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 12 },
-  title: { fontSize: 24, fontWeight: '600' },
-  business: { fontSize: 13, marginTop: 2 },
+  business: { marginTop: 2 },
   scroll: { flex: 1 },
-  scrollContent: { padding: 16, paddingTop: 8, gap: 10 },
-  listCard: { padding: 0, overflow: 'hidden' },
-  divider: { height: StyleSheet.hairlineWidth, marginLeft: 62 },
+  // Bottom room so the last row (Delete account) never sits under the floating tab bar's shadow.
+  scrollContent: { padding: 16, paddingTop: 8, paddingBottom: 32, gap: 18 },
+  notice: { borderRadius: radii.card, borderWidth: 1, padding: 14, gap: 4 },
+  noticeTitle: { fontSize: 14, fontWeight: '700' },
+  noticeBody: { fontSize: 13, lineHeight: 19 },
   badge: { minWidth: 22, height: 22, borderRadius: radii.pill, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontSize: 11, fontWeight: '700' },
-  switcher: { margin: 20, borderRadius: radii.sheet, padding: 20, gap: 12 },
-  switcherTitle: { fontSize: 18, fontWeight: '700' },
-  switcherBody: { fontSize: 12.5, lineHeight: 18 },
+  switcher: { margin: 20, borderRadius: radii.sheet, borderWidth: 1, padding: 20, gap: 12 },
+  switcherBody: { lineHeight: 18 },
 });

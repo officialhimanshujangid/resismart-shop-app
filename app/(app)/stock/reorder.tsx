@@ -17,6 +17,7 @@ import { ReorderSettingsDialog } from '../../../src/features/stock/components/Re
 import { SupplierPickerDialog } from '../../../src/features/purchases/components/SupplierPickerDialog';
 import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 import { ActionRow, Banner, PillButton, useIsWide } from '../../../src/features/p1/ui';
+import { Rise } from '../../../src/theme/motion'; // M20
 
 /**
  * The reorder list → purchase orders (screen S12, and where a low-stock push
@@ -84,6 +85,7 @@ export default function ReorderScreen() {
 
   return (
     <Screen
+      rise
       c={c}
       title={title}
       subtitle={t('stock.reorder.subtitle')}
@@ -94,7 +96,7 @@ export default function ReorderScreen() {
         <Switch value={includeAll} onValueChange={setIncludeAll} accessibilityLabel={t('stock.reorder.includeAll')} />
       </View>
       {list.isPending ? (
-        <Loading c={c} />
+        <Loading c={c} skeleton={3} />
       ) : list.isError ? (
         <ErrorBlock c={c} message={apiErrorMessage(list.error, t('stock.reorder.loadFailed'))} onRetry={() => list.refetch()} />
       ) : rows.length === 0 ? (
@@ -105,8 +107,9 @@ export default function ReorderScreen() {
             <Banner c={c} tone="warn" body={t('errors.REORDER_NEEDS_SUPPLIER', { productName: req.missingSupplier[0] })} testID="reorder-missing" />
           )}
           <View style={[styles.grid, wide && styles.gridWide]}>
-            {rows.map((r) => (
-              <View key={r.productId} style={wide ? styles.cellWide : undefined}>
+            {rows.map((r, i) => (
+              // M20 — the first screenful rises in on a stagger.
+              <Rise key={r.productId} index={i < 8 ? Math.min(i, 5) + 1 : 0} duration={i < 8 ? undefined : 1} style={wide ? styles.cellWide : undefined}>
                 <ReorderRowCard
                   c={c}
                   row={r}
@@ -115,7 +118,7 @@ export default function ReorderScreen() {
                   onPickSupplier={() => setSupplierFor(r.productId)}
                   onSettings={canSettings ? () => setSettingsFor(r) : undefined}
                 />
-              </View>
+              </Rise>
             ))}
           </View>
           {canOrder && (

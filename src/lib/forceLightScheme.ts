@@ -1,6 +1,11 @@
 import { Appearance, Platform } from 'react-native';
 
 /**
+ * RETIRED 2026-10-10 (E-VISUAL-APPS): no longer imported — the shop follows the
+ * phone again after every screen passed the END dark scan. Kept only as the
+ * one-line revert: add `import '@/lib/forceLightScheme';` back to the top of
+ * `app/_layout.tsx` to force light again.
+ *
  * 1R dark-mode safety (2026-10-06): the shop app opens in LIGHT for now.
  *
  * The redesign has restyled only part of the app. A static scan of the screens

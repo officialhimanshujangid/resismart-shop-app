@@ -77,6 +77,8 @@ export interface PartnerBusinessSummary {
   verificationStatus: PartnerVerificationStatus | string;
   onboardingStep: number;
   kind: PartnerKind | string;
+  /** P8A: on SUSPENDED / REJECTED only — the reason the owner console recorded. */
+  statusReason?: string;
 }
 
 /** One thing standing between this business and being found by a resident. */
@@ -252,6 +254,12 @@ export interface PartnerEntitlementsPayload {
    * key is unlimited. Not the plan's `plan.limits`.
    */
   limits?: PartnerRoleLimits;
+  /**
+   * P9A (Owner Q6): `'ASSIGNED'` when this person's role says "Only my assigned
+   * jobs" — the server then lists and opens only the bookings / jobs given to
+   * them. Absent for everybody else (and on an older server).
+   */
+  jobScope?: 'ASSIGNED';
   /**
    * P2 (CONTRACT-partner-P2 §2.2): the business-type modules that are EFFECTIVE
    * for this business — chosen AND their base modules on. `[]` (or absent, on a

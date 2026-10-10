@@ -175,7 +175,7 @@ export default function PartiesListScreen() {
             >
               {formatPaise(Math.abs(item.outstandingPaise))}
             </Text>
-            <Text style={[styles.balanceLabel, { color: c.textDisabled }]}>
+            <Text style={[styles.balanceLabel, { color: c.textSecondary }]}>
               {item.outstandingPaise > 0
                 ? t('parties.list.theyOwe')
                 : item.outstandingPaise < 0 ? t('parties.list.youOwe') : t('parties.list.settled')}
@@ -235,7 +235,7 @@ export default function PartiesListScreen() {
           inputStyle={{ fontSize: 14 }}
         />
         <View style={styles.hiddenToggle}>
-          <Text style={{ color: c.textSecondary, fontSize: 12.5 }}>{t('parties.list.showHidden')}</Text>
+          <Text style={{ color: c.textSecondary, fontSize: 12.5, flexShrink: 1 }}>{t('parties.list.showHidden')}</Text>
           <Switch value={showHidden} onValueChange={setShowHidden} color={c.primary} />
         </View>
       </View>
@@ -248,7 +248,7 @@ export default function PartiesListScreen() {
           }
           ListEmptyComponent={
             query.isPending && rows.length === 0 ? (
-              <Loading c={c} />
+              <Loading c={c} skeleton={4} />
             ) : query.isError && rows.length === 0 ? (
               <ErrorBlock c={c} message={apiErrorMessage(query.error, t('parties.list.loadFailed'))} onRetry={() => query.refetch()} />
             ) : (

@@ -28,7 +28,7 @@ export function StatusBadge({
   return (
     <View testID={testID} style={[styles.badge, { backgroundColor: pair.bg }, style]}>
       {live ? <LiveDot color={pair.fg} /> : null}
-      <Text style={[styles.text, { color: pair.fg }]}>{label}</Text>
+      <Text style={[styles.text, { color: pair.fg }, { flexShrink: 1 }]}>{label}</Text>
     </View>
   );
 }
@@ -47,7 +47,48 @@ export function LiveDot({ color, size = 6 }: { color: string; size?: number }) {
   );
 }
 
+/**
+ * UX-P kit — a status dot with an optional label ("● Open", "● 4 waiting").
+ * `pulse` rings it (live things only: a new order, an open shop); the ring
+ * stops under reduce-motion and the dot stays. `color` overrides the tone for
+ * use on a hero (white / mint over the green). The label carries the meaning —
+ * the colour never does on its own.
+ */
+export function StatusDot({
+  tone = 'brand',
+  label,
+  pulse = false,
+  color,
+  textColor,
+  size = 8,
+  testID,
+  style,
+}: {
+  tone?: StatusTone;
+  label?: string;
+  pulse?: boolean;
+  color?: string;
+  textColor?: string;
+  size?: number;
+  testID?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { status } = useAppTheme();
+  const dot = color ?? status[tone].fg;
+  return (
+    <View testID={testID} style={[styles.dotRow, style]}>
+      {pulse ? (
+        <LiveDot color={dot} size={size} />
+      ) : (
+        <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: dot }} />
+      )}
+      {label ? <Text style={[styles.text, { color: textColor ?? dot, flexShrink: 1 }]}>{label}</Text> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  dotRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',

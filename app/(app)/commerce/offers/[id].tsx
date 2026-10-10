@@ -51,12 +51,12 @@ export default function OfferDetailScreen() {
   }, [more.data, page]);
 
   if (!access.offers.canView) {
-    return <Screen c={c} title={t('commerce.offers.detail.title')}><NoAccess c={c} /></Screen>;
+    return <Screen rise c={c} title={t('commerce.offers.detail.title')}><NoAccess c={c} /></Screen>;
   }
 
   const offer = query.data;
   let body: React.ReactNode;
-  if (query.isPending) body = <Loading c={c} />;
+  if (query.isPending) body = <Loading c={c} skeleton={4} />;
   else if (query.isError || !offer) {
     body = <ErrorBlock c={c} message={apiErrorMessage(query.error, t('commerce.common.loadFailed'))} onRetry={() => void query.refetch()} />;
   } else {
@@ -108,7 +108,7 @@ export default function OfferDetailScreen() {
   }
 
   return (
-    <Screen c={c} title={t('commerce.offers.detail.title')} scroll={false}>
+    <Screen rise c={c} title={t('commerce.offers.detail.title')} scroll={false}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} />}

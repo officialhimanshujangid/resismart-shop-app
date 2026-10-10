@@ -16,6 +16,7 @@ import { DaySummaryCard } from '../../../src/features/money/components/DaySummar
 import { Card, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 import { ActionRow, Banner, PillButton, StatGrid, StatTile, TwoPane } from '../../../src/features/p1/ui';
 import { ReasonDialog } from '../../../src/features/p1/ReasonDialog';
+import { SuccessCheck } from '../../../src/components/ui';
 import { todayYmd } from '../../../src/features/p1/dates';
 
 /**
@@ -38,6 +39,7 @@ export default function DayCloseScreen() {
   const [useNotes, setUseNotes] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [celebrate, setCelebrate] = useState(false);
 
   const summary = useQuery({ queryKey: qk.money.daySummary(day), queryFn: () => moneyApi.daySummary({ date: day }) });
   const s = summary.data;
@@ -47,7 +49,11 @@ export default function DayCloseScreen() {
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: qk.money.all() });
   const close = useMutation({
     mutationFn: () => moneyApi.closeDay({ date: day, countedCashPaise: countedPaise ?? 0, note: note.trim() || undefined }),
-    onSuccess: () => { invalidate(); setToast(t('money.day.closedToast')); },
+    onSuccess: () => {
+      invalidate(); setToast(t('money.day.closedToast'));
+      // M21: the success moment (springs in; nothing moves under reduce-motion).
+      setCelebrate(true); setTimeout(() => setCelebrate(false), 1600);
+    },
     onError: (e) => setToast(apiErrorMessage(e, t('money.day.closeFailed'))),
   });
   const reopen = useMutation({
@@ -68,7 +74,7 @@ export default function DayCloseScreen() {
   const left = (
     <View style={{ gap: 10 }}>
       <DateField label={t('money.day.date')} value={day} onChangeText={setDay} mode="date" maximumDate={new Date()} />
-      {summary.isPending ? <Loading c={c} /> : summary.isError || !s ? (
+      {summary.isPending ? <Loading c={c} skeleton={4} /> : summary.isError || !s ? (
         <ErrorBlock c={c} message={apiErrorMessage(summary.error, t('money.loadFailed'))} onRetry={() => summary.refetch()} />
       ) : <DaySummaryCard c={c} s={s} />}
     </View>
@@ -148,7 +154,8 @@ export default function DayCloseScreen() {
   ) : undefined;
 
   return (
-    <Screen c={c} title={t('money.dayClose')} floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3500}>{toast}</Snackbar>}>
+    <Screen c={c} rise title={t('money.dayClose')} floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3500}>{toast}</Snackbar>}>
+      {celebrate ? <SuccessCheck size={72} testID="day-closed-check" /> : null}
       <TwoPane left={left} right={right} />
       <ReasonDialog
         visible={reopenOpen}

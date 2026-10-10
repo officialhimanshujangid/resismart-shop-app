@@ -116,20 +116,20 @@ export default function OfferEditScreen() {
 
   const title = editing ? t('commerce.offers.edit.titleEdit') : t('commerce.offers.edit.titleNew');
   if (!canManage) {
-    return <Screen c={c} title={title}><NoAccess c={c} /></Screen>;
+    return <Screen rise c={c} title={title}><NoAccess c={c} /></Screen>;
   }
   if (editing && offerQ.isPending) {
-    return <Screen c={c} title={title}><Loading c={c} /></Screen>;
+    return <Screen rise c={c} title={title}><Loading c={c} skeleton={4} /></Screen>;
   }
   if (editing && (offerQ.isError || !offerQ.data)) {
     return (
-      <Screen c={c} title={title}>
+      <Screen rise c={c} title={title}>
         <ErrorBlock c={c} message={apiErrorMessage(offerQ.error, t('commerce.common.loadFailed'))} onRetry={() => void offerQ.refetch()} />
       </Screen>
     );
   }
   if (!editing && !access.has('OFFERS')) {
-    return <Screen c={c} title={title}><FeatureOff c={c} canSwitch={access.settings.section.offers} /></Screen>;
+    return <Screen rise c={c} title={title}><FeatureOff c={c} canSwitch={access.settings.section.offers} /></Screen>;
   }
 
   const offer = offerQ.data;
@@ -214,7 +214,7 @@ export default function OfferEditScreen() {
   const stackSummary = t(form.stackable ? 'commerce.offers.stackYes' : 'commerce.offers.stackNo', { priority: form.priority || '0' });
 
   return (
-    <Screen c={c} title={title} scroll={false}>
+    <Screen rise c={c} title={title} scroll={false}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <CommerceHint c={c} helpKey="offerEdit" />
         {archived ? <Banner c={c} tone="error" body={t('errors.OFFER_ARCHIVED')} testID="offer-archived" /> : null}

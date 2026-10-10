@@ -4,6 +4,7 @@ import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { ColorScheme, radii } from '../../constants/colors';
+import { PressableScale, useCountUp } from '../../theme/motion'; // M20 — press feedback + count-up
 
 /**
  * Small shared pieces for the P1 business screens (purchases, stock, khata,
@@ -102,11 +103,15 @@ export function Stepper({
 export function StatTile({
   c, label, value, tone, testID,
 }: { c: ColorScheme; label: string; value: string; tone?: string; testID?: string }) {
+  // M20 — a plain whole number counts up (DS v1 "count-up"; final at once under
+  // reduce-motion). Money and other formatted values show as given.
+  const whole = /^\d{1,9}$/.test(value) ? Number(value) : null;
+  const counted = useCountUp(whole ?? 0);
   return (
     <View style={[styles.tile, { backgroundColor: c.surface, borderColor: c.divider }]} testID={testID}>
       <Text style={[styles.tileLabel, { color: c.textSecondary }]} numberOfLines={2}>{label}</Text>
       <Text style={[styles.tileValue, { color: tone ?? c.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>
-        {value}
+        {whole === null ? value : String(Math.round(counted))}
       </Text>
     </View>
   );
@@ -139,12 +144,15 @@ export function PillButton({
   c: ColorScheme; label: string; onPress: () => void; icon?: string; disabled?: boolean;
   tone?: 'primary' | 'outline' | 'danger'; testID?: string;
 }) {
+  // M20 — presses scale (0.97) with a light haptic on the filled one; none under reduce-motion.
   const filled = tone === 'primary';
   const color = tone === 'danger' ? c.error : c.primary;
+  const ink = filled ? c.textInverse : color;
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={disabled}
+      haptic={filled}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: !!disabled }}
@@ -155,9 +163,9 @@ export function PillButton({
         disabled && { opacity: 0.45 },
       ]}
     >
-      {icon ? <MaterialCommunityIcons name={icon as never} size={18} color={filled ? c.textInverse : color} /> : null}
-      <Text style={[styles.pillText, { color: filled ? c.textInverse : color }]} numberOfLines={1}>{label}</Text>
-    </Pressable>
+      {icon ? <MaterialCommunityIcons name={icon as never} size={18} color={ink} /> : null}
+      <Text style={[styles.pillText, { color: ink }]} numberOfLines={1}>{label}</Text>
+    </PressableScale>
   );
 }
 

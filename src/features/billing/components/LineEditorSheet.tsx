@@ -264,7 +264,7 @@ function ChipRow({ options, value, onChange, c }: {
                 the brand green is dark enough for white ink in BOTH schemes, and
                 `textInverse` flips to near-black in dark mode, which would be
                 unreadable on it. */}
-            <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12, fontWeight: '600' }}>
+            <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 12, fontWeight: '600' }}>
               {o.label}
             </Text>
           </Pressable>
@@ -279,7 +279,7 @@ function PreviewRow({ label, value, c, bold }: {
 }) {
   return (
     <View style={styles.previewRow}>
-      <Text style={{ color: bold ? c.textPrimary : c.textSecondary, fontSize: 12, fontWeight: bold ? '700' : '400' }}>
+      <Text style={{ color: bold ? c.textPrimary : c.textSecondary, fontSize: 12, fontWeight: bold ? '700' : '400', flexShrink: 1 }}>
         {label}
       </Text>
       <Text style={{ color: c.textPrimary, fontSize: 12, fontWeight: bold ? '700' : '500' }}>

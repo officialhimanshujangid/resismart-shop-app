@@ -114,7 +114,7 @@ export function ContextPicker({ profiles, onSelect }: ContextPickerProps) {
               <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>
                 {profile.tenantName || roleLabel(profile.role)}
               </Text>
-              <Text style={[styles.id, { color: c.textDisabled }]} numberOfLines={1}>
+              <Text style={[styles.id, { color: c.textSecondary }]} numberOfLines={1}>
                 {profile.tenantName
                   ? roleLabel(profile.role)
                   : t('components.context.id', { id: profile.tenantId })}

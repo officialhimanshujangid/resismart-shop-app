@@ -116,7 +116,7 @@ export default function WhatsAppSettingsScreen() {
   const saved = (
     <View style={styles.savedRow} accessibilityLiveRegion="polite">
       <MaterialCommunityIcons name="check-circle" size={16} color={status.success.fg} />
-      <Text style={[typeScale.caption, { color: status.success.fg }]}>{t('settings.whatsapp.saved')}</Text>
+      <Text style={[typeScale.caption, { color: status.success.fg }, { flexShrink: 1 }]}>{t('settings.whatsapp.saved')}</Text>
     </View>
   );
 

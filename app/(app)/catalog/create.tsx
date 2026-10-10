@@ -9,7 +9,9 @@ import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { apiErrorMessage, isUpgradeRequired, apiErrorCode, apiErrorParams } from '../../../src/api/axios'; // MP1-COMPLETE: + code/params
 import { parseRupeesToPaise } from '../../../src/lib/money';
 import { AppInput } from '../../../src/components/AppInput';
-import { AppButton } from '../../../src/components/AppButton';
+// M20 — DS v1 kit button (haptic on the primary) + screen-open motion.
+import { Button } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
 import { PRODUCT_UNITS, ProductUnit } from '../../../src/types/api-contract.generated';
 import { useCreateProduct, useProductCategories, CategoryPicker, ProductImages, UsageMeterBar } from '../../../src/features/catalog';
 import { BarcodeScannerView, ProductScanOutcome } from '../../../src/features/scanner';
@@ -238,9 +240,13 @@ export default function CreateProductScreen() {
 
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.body}>
-      <UsageMeterBar cap={cap} c={c} />
+      <Rise index={0}>
+        <UsageMeterBar cap={cap} c={c} />
+      </Rise>
 
-      <AppInput label={t('catalog.form.name')} value={name} onChangeText={setName} error={errors.name} />
+      <Rise index={1}>
+        <AppInput label={t('catalog.form.name')} value={name} onChangeText={setName} error={errors.name} />
+      </Rise>
 
       <View style={styles.row2}>
         <AppInput label={t('catalog.form.sellPrice')} value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" error={errors.sellPrice} style={styles.half} />
@@ -250,7 +256,7 @@ export default function CreateProductScreen() {
       <View style={styles.row2}>
         <AppInput label={t('catalog.form.taxRate')} value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" error={errors.taxRate} style={styles.half} />
         <View style={[styles.half, styles.switchBox]}>
-          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.priceIncludesTax')}</Text>
+          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600', flexShrink: 1 }}>{t('catalog.form.priceIncludesTax')}</Text>
           <Switch value={taxInclusive} onValueChange={setTaxInclusive} />
         </View>
       </View>
@@ -272,9 +278,12 @@ export default function CreateProductScreen() {
             <Pressable
               key={u}
               onPress={() => setUnit(u)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
               style={[styles.unitChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
             >
-              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{u}</Text>
+              {/* M20: `textInverse`, not white — in dark mode the green fill takes deep-green ink. */}
+              <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{u}</Text>
             </Pressable>
           );
         })}
@@ -329,7 +338,7 @@ export default function CreateProductScreen() {
 
       {!(bundlesOn && isBundle) && (
         <View style={[styles.switchBox, { marginTop: 4 }]}>
-          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.trackStock')}</Text>
+          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600', flexShrink: 1 }}>{t('catalog.form.trackStock')}</Text>
           <Switch value={trackStock} onValueChange={setTrackStock} />
         </View>
       )}
@@ -359,7 +368,7 @@ export default function CreateProductScreen() {
         </HelperText>
       )}
 
-      <AppButton label={t('catalog.form.saveProduct')} onPress={submit} loading={createProduct.isPending} disabled={cap.atLimit} />
+      <Button label={t('catalog.form.saveProduct')} onPress={submit} loading={createProduct.isPending} disabled={cap.atLimit} fullWidth style={styles.save} />
 
       <Portal>
         <Modal
@@ -368,7 +377,7 @@ export default function CreateProductScreen() {
           contentContainerStyle={[styles.scannerModal, { backgroundColor: c.background }]}
         >
           <View style={styles.scannerHeader}>
-            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600' }}>{t('catalog.form.scannerTitle')}</Text>
+            <Text style={{ color: c.textPrimary, fontSize: 16, fontWeight: '600', flexShrink: 1 }}>{t('catalog.form.scannerTitle')}</Text>
             <IconButton icon="close" onPress={() => setScannerOpen(false)} accessibilityLabel={t('catalog.form.scannerDone')} />
           </View>
           {/* >>> SCANNER — a receiving screen: a carton's full ITF-14 is accepted too. */}
@@ -392,6 +401,7 @@ const styles = StyleSheet.create({
   bundleBox: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6, marginVertical: 6, gap: 6 },
   barcodeInput: { flex: 1 },
   scanBtn: { marginTop: 2 },
+  save: { marginTop: 12 },
   scannerModal: { flex: 1, margin: 0 },
   scannerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingTop: 8 },
 });

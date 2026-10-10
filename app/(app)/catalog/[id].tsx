@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View, useColorScheme, Pressable } from 'react-native';
-import { Text, Switch, ActivityIndicator } from 'react-native-paper';
+import { Text, Switch } from 'react-native-paper';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
+import { fontFamily } from '../../../src/theme/tokens';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage, apiErrorCode, apiErrorParams } from '../../../src/api/axios'; // MP1-COMPLETE: + code/params
 import { ErrorBlock } from '../../../src/features/more/ui';
 import { parseRupeesToPaise, paiseToInput, formatPaise } from '../../../src/lib/money';
 import { AppInput } from '../../../src/components/AppInput';
-import { AppButton } from '../../../src/components/AppButton';
+// M20 — DS v1 kit (green, light + dark): buttons, badges, skeletons, motion, stock bar.
+import { Button, Skeleton, StatusBadge } from '../../../src/components/ui';
+import { Rise, useCountUp } from '../../../src/theme/motion';
+import { StockBar } from '../../../src/features/catalog/components/StockBar';
 import { PRODUCT_UNITS, ProductUnit } from '../../../src/types/api-contract.generated';
 import {
   useProduct, useProductCategories, useUpdateProduct, useDeactivateProduct, useAdjustStock,
@@ -62,6 +66,11 @@ export default function ProductDetailScreen() {
   });
 
   const productQuery = useProduct(id);
+  // M20 — a product beyond the plan's catalogue items is VIEW-ONLY (the server refuses
+  // ITEM_VIEW_ONLY on save); the form opens read-only and says why. Taking it off sale stays.
+  const viewOnly = productQuery.data?.viewOnly === true;
+  const editable = canManage && !viewOnly;
+  const shownQty = useCountUp(productQuery.data?.trackStock ? productQuery.data.stockQty : 0);
   const categoriesQuery = useProductCategories();
   const updateProduct = useUpdateProduct(id);
   const deactivateProduct = useDeactivateProduct();
@@ -221,9 +230,13 @@ export default function ProductDetailScreen() {
   }
 
   if (!productQuery.data) {
+    // M20 — content-shaped placeholders, not a lone spinner.
     return (
-      <View style={[styles.center, { backgroundColor: c.background }]}>
-        <ActivityIndicator color={c.primary} />
+      <View style={[styles.skeleton, { backgroundColor: c.background }]} accessibilityLabel={t('common.loading')}>
+        <Skeleton height={96} rounded={22} />
+        <Skeleton height={52} rounded={16} />
+        <Skeleton height={52} rounded={16} />
+        <Skeleton width="60%" height={52} rounded={16} />
       </View>
     );
   }
@@ -233,15 +246,22 @@ export default function ProductDetailScreen() {
   return (
     <ScrollView style={{ backgroundColor: c.background }} contentContainerStyle={styles.body}>
       {!product.isActive && (
-        <View style={[styles.offSaleBanner, { backgroundColor: c.textDisabled + '22' }]}>
-          <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{t('catalog.detail.offSale')}</Text>
+        <Rise index={0} style={[styles.offSaleBanner, { backgroundColor: c.surfaceVariant }]}>
+          <Text style={{ color: c.textPrimary, fontSize: 12.5, fontWeight: '600', flexShrink: 1 }}>{t('catalog.detail.offSale')}</Text>
           {canManage && (
-            <Pressable onPress={reactivate}>
-              <Text style={{ color: c.primary, fontSize: 12.5, fontWeight: '600' }}>{t('catalog.detail.turnBackOn')}</Text>
-            </Pressable>
+            <Button size="sm" variant="ghost" label={t('catalog.detail.turnBackOn')} onPress={reactivate} />
           )}
-        </View>
+        </Rise>
       )}
+
+      {/* >>> M20 — view-only (beyond the plan's catalogue items). */}
+      {viewOnly && (
+        <Rise index={0} style={[styles.viewOnlyBanner, { borderColor: c.warning }]} testID="product-view-only">
+          <StatusBadge tone="warn" label={t('catalog.viewOnly.badge')} style={styles.viewOnlyBadge} />
+          <Text style={{ color: c.textPrimary, fontSize: 12.5, lineHeight: 18 }}>{t('catalog.viewOnly.detail')}</Text>
+        </Rise>
+      )}
+      {/* <<< M20 */}
 
       {!canManage && (
         <View style={[styles.readOnlyBanner, { backgroundColor: c.surfaceVariant }]}>
@@ -251,12 +271,18 @@ export default function ProductDetailScreen() {
         </View>
       )}
 
-      <View style={[styles.stockCard, { backgroundColor: c.surface, borderColor: c.divider }]}>
+      <Rise index={1} style={[styles.stockCard, { backgroundColor: c.surface, borderColor: c.border }]}>
         <View style={styles.stockText}>
           <Text style={[styles.stockLabel, { color: c.textSecondary }]}>{t('catalog.detail.onHand')}</Text>
           <Text style={[styles.stockValue, { color: c.textPrimary }]}>
-            {product.trackStock ? product.stockQty : t('catalog.detail.notTracked')}
+            {/* M20: the count counts up (whole numbers; final at once under reduce-motion). */}
+            {product.trackStock
+              ? (Number.isInteger(product.stockQty) ? String(Math.round(shownQty)) : product.stockQty)
+              : t('catalog.detail.notTracked')}
           </Text>
+          {product.trackStock ? (
+            <StockBar qty={product.stockQty} lowAt={product.lowStockAt} max={product.maxStockQty} width={120} style={styles.stockBar} />
+          ) : null}
           {/* Every stock change is on the ledger (contract §5) — who, when, why. */}
           <Pressable
             onPress={() => router.push({ pathname: '/catalog/history/[id]', params: { id: product._id, name: product.name } })}
@@ -268,39 +294,41 @@ export default function ProductDetailScreen() {
           </Pressable>
         </View>
         {canStock && product.trackStock && (
-          <Pressable
+          <Button
+            size="sm"
+            variant="outline"
+            label={t('catalog.detail.adjustStock')}
             onPress={() => setStockTarget({ productId: product._id, productName: product.name, currentQty: product.stockQty })}
-            style={[styles.adjustBtn, { borderColor: c.primary }]}
-          >
-            <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('catalog.detail.adjustStock')}</Text>
-          </Pressable>
+          />
         )}
-      </View>
+      </Rise>
 
       {/* P2 PHARMACY: medicine details (schedule, batch tracking) and batches. */}
       {pharmacyOn && (
-        <Pressable
+        <Button
+          size="sm"
+          variant="soft"
+          icon="pill"
+          label={t('p2.billing.medicineDetails')}
           onPress={() => router.push(`/pharmacy/product/${product._id}` as Href)}
-          accessibilityRole="button"
-          style={[styles.adjustBtn, { borderColor: c.primary, alignSelf: 'flex-start', marginBottom: 10, minHeight: 44, justifyContent: 'center' }]}
+          style={styles.sideAction}
           testID="product-pharmacy-link"
-        >
-          <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('p2.billing.medicineDetails')}</Text>
-        </Pressable>
+        />
       )}
 
       {/* Commerce: sizes & types (C6), bundle contents (C3), barcode labels (C6). */}
       <VariantsCard product={product} />
       <BundleCard product={product} />
       {product.barcode && !product.isVariantParent ? (
-        <Pressable
+        <Button
+          size="sm"
+          variant="soft"
+          icon="printer-outline"
+          label={t('commerce.labels.print')}
           onPress={() => setLabelsOpen(true)}
-          accessibilityRole="button"
-          style={[styles.adjustBtn, { borderColor: c.primary, alignSelf: 'flex-start', marginBottom: 10, minHeight: 44, justifyContent: 'center' }]}
+          style={styles.sideAction}
           testID="product-print-labels"
-        >
-          <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('commerce.labels.print')}</Text>
-        </Pressable>
+        />
       ) : null}
       <LabelsSheet visible={labelsOpen} onDismiss={() => setLabelsOpen(false)} items={[{ productId: product._id, name: product.name }]} />
 
@@ -315,23 +343,21 @@ export default function ProductDetailScreen() {
         </Text>
       )}
       {canStock && canCosts && product.trackStock && (
-        <Pressable onPress={() => setOpeningOpen(true)} accessibilityRole="button" style={[styles.adjustBtn, { borderColor: c.primary, alignSelf: 'flex-start', marginBottom: 10 }]}>
-          <Text style={{ color: c.primary, fontWeight: '600', fontSize: 12.5 }}>{t('catalog.opening.button')}</Text>
-        </Pressable>
+        <Button size="sm" variant="outline" label={t('catalog.opening.button')} onPress={() => setOpeningOpen(true)} style={styles.sideAction} />
       )}
 
-      <AppInput label={t('catalog.form.name')} value={name} onChangeText={setName} error={errors.name} disabled={!canManage} />
+      <AppInput label={t('catalog.form.name')} value={name} onChangeText={setName} error={errors.name} disabled={!editable} />
 
       <View style={styles.row2}>
-        <AppInput label={t('catalog.form.sellPrice')} value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" error={errors.sellPrice} style={styles.half} disabled={!canManage} />
-        <AppInput label={t('catalog.form.mrp')} value={mrp} onChangeText={setMrp} keyboardType="numeric" error={errors.mrp} style={styles.half} disabled={!canManage} />
+        <AppInput label={t('catalog.form.sellPrice')} value={sellPrice} onChangeText={setSellPrice} keyboardType="numeric" error={errors.sellPrice} style={styles.half} disabled={!editable} />
+        <AppInput label={t('catalog.form.mrp')} value={mrp} onChangeText={setMrp} keyboardType="numeric" error={errors.mrp} style={styles.half} disabled={!editable} />
       </View>
 
       <View style={styles.row2}>
-        <AppInput label={t('catalog.form.taxRate')} value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" error={errors.taxRate} style={styles.half} disabled={!canManage} />
+        <AppInput label={t('catalog.form.taxRate')} value={taxRate} onChangeText={setTaxRate} keyboardType="numeric" error={errors.taxRate} style={styles.half} disabled={!editable} />
         <View style={[styles.half, styles.switchBox]}>
-          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.priceIncludesTax')}</Text>
-          <Switch value={taxInclusive} onValueChange={setTaxInclusive} disabled={!canManage} />
+          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600', flexShrink: 1 }}>{t('catalog.form.priceIncludesTax')}</Text>
+          <Switch value={taxInclusive} onValueChange={setTaxInclusive} disabled={!editable} />
         </View>
       </View>
 
@@ -342,17 +368,20 @@ export default function ProductDetailScreen() {
           above already refuses a viewer visibly (`AppInput disabled`), and the
           unit chips were the one control on this screen that took the tap and
           did nothing with it. The banner at the top says why. */}
-      <View style={[styles.unitRow, !canManage && styles.readOnlyRow]}>
+      <View style={[styles.unitRow, !editable && styles.readOnlyRow]}>
         {PRODUCT_UNITS.map((u) => {
           const active = u === unit;
           return (
             <Pressable
               key={u}
               onPress={() => setUnit(u)}
-              disabled={!canManage}
+              disabled={!editable}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active, disabled: !editable }}
               style={[styles.unitChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
             >
-              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{u}</Text>
+              {/* M20: `textInverse`, not white — in dark mode the green fill takes deep-green ink. */}
+              <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{u}</Text>
             </Pressable>
           );
         })}
@@ -363,14 +392,14 @@ export default function ProductDetailScreen() {
           reference to it — the cheaper of the two failures, and the same trade
           `ProductImages`'s remove path documents. */}
       <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('catalog.form.photos')}</Text>
-      <ProductImages value={images} onChange={setImages} c={c} canManage={canManage} />
+      <ProductImages value={images} onChange={setImages} c={c} canManage={editable} />
 
       <Text style={[styles.sectionLabel, { color: c.textSecondary }]}>{t('catalog.form.category')}</Text>
-      <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={canManage} />
+      <CategoryPicker categories={categoriesQuery.data ?? []} value={categoryId} onChange={setCategoryId} canManage={editable} />
 
-      <AppInput label={t('catalog.form.sku')} value={sku} onChangeText={setSku} autoCapitalize="characters" disabled={!canManage} />
-      <AppInput label={t('catalog.form.barcode')} value={barcode} onChangeText={setBarcode} autoCapitalize="characters" disabled={!canManage} />
-      <AppInput label={t('catalog.form.hsn')} value={hsnCode} onChangeText={setHsnCode} disabled={!canManage} />
+      <AppInput label={t('catalog.form.sku')} value={sku} onChangeText={setSku} autoCapitalize="characters" disabled={!editable} />
+      <AppInput label={t('catalog.form.barcode')} value={barcode} onChangeText={setBarcode} autoCapitalize="characters" disabled={!editable} />
+      <AppInput label={t('catalog.form.hsn')} value={hsnCode} onChangeText={setHsnCode} disabled={!editable} />
 
       {noOwnStock ? (
         <Text style={{ color: c.textSecondary, fontSize: 12.5, marginTop: 4 }} testID="product-no-own-stock">
@@ -378,13 +407,13 @@ export default function ProductDetailScreen() {
         </Text>
       ) : (
         <View style={[styles.switchBox, { marginTop: 4 }]}>
-          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('catalog.form.trackStock')}</Text>
-          <Switch value={trackStock} onValueChange={setTrackStock} disabled={!canManage} />
+          <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600', flexShrink: 1 }}>{t('catalog.form.trackStock')}</Text>
+          <Switch value={trackStock} onValueChange={setTrackStock} disabled={!editable} />
         </View>
       )}
 
       {trackStock && !noOwnStock && (
-        <AppInput label={t('catalog.form.lowStockAt')} value={lowStockAt} onChangeText={setLowStockAt} keyboardType="numeric" error={errors.lowStockAt} disabled={!canManage} />
+        <AppInput label={t('catalog.form.lowStockAt')} value={lowStockAt} onChangeText={setLowStockAt} keyboardType="numeric" error={errors.lowStockAt} disabled={!editable} />
       )}
 
       {/* >>> MP1-COMPLETE — P1 */}
@@ -395,27 +424,29 @@ export default function ProductDetailScreen() {
           value={shopFields}
           onChange={(patch) => setShopFields((f) => ({ ...f, ...patch }))}
           errors={shopErrors}
-          disabled={!canManage}
+          disabled={!editable}
         />
       ) : null}
       {/* <<< MP1-COMPLETE */}
 
       {canManage && (
-        <>
-          <AppButton label={t('catalog.form.saveChanges')} onPress={save} loading={updateProduct.isPending} />
+        <View style={styles.actions}>
+          {editable ? (
+            <Button label={t('catalog.form.saveChanges')} onPress={save} loading={updateProduct.isPending} fullWidth />
+          ) : null}
           {product.isActive && (
-            <AppButton
+            <Button
               label={t('catalog.detail.takeOffSale')}
-              mode="outlined"
+              variant="dangerOutline"
               onPress={confirmDeactivate}
               loading={deactivateProduct.isPending}
-              labelStyle={{ color: c.error }}
+              fullWidth
             />
           )}
-        </>
+        </View>
       )}
 
-      <Text style={[styles.mrpNote, { color: c.textDisabled }]}>
+      <Text style={[styles.mrpNote, { color: c.textSecondary }]}>
         {t('catalog.detail.footnote', { price: formatPaise(product.sellPaise), date: formatI18nDate(product.updatedAt, t) })}
       </Text>
 
@@ -448,17 +479,22 @@ export default function ProductDetailScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  skeleton: { flex: 1, padding: 16, gap: 12 },
+  viewOnlyBanner: { borderWidth: 1, borderRadius: radii.card, padding: 12, gap: 6, marginBottom: 10 },
+  viewOnlyBadge: { alignSelf: 'flex-start' },
+  stockBar: { marginTop: 8 },
+  sideAction: { marginBottom: 10 },
+  actions: { gap: 10, marginTop: 12 },
   body: { padding: 16, gap: 4, paddingBottom: 40 },
-  offSaleBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: radii.sm, padding: 10, marginBottom: 10 },
+  offSaleBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderRadius: radii.card, padding: 10, marginBottom: 10 },
   stockCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-    borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth, padding: 14, marginBottom: 12,
+    borderRadius: radii.card, borderWidth: 1, padding: 16, marginBottom: 12,
   },
   stockText: { flex: 1, minWidth: 0 },
   historyLink: { alignSelf: 'flex-start', marginTop: 6 },
   stockLabel: { fontSize: 12, fontWeight: '600', letterSpacing: 0.2 },
-  stockValue: { fontSize: 22, fontWeight: '600', marginTop: 2 },
-  adjustBtn: { borderWidth: 1.5, borderRadius: radii.card, paddingHorizontal: 14, paddingVertical: 9 },
+  stockValue: { fontSize: 26, fontFamily: fontFamily.sora600, marginTop: 2 },
   row2: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
   switchBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },

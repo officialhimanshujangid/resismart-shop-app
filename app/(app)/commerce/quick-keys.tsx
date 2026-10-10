@@ -59,18 +59,18 @@ export default function QuickKeysScreen() {
   };
 
   if (!canRead) {
-    return <Screen title={t('commerce.quickKeys.title')} c={c}><NoAccess c={c} /></Screen>;
+    return <Screen rise title={t('commerce.quickKeys.title')} c={c}><NoAccess c={c} /></Screen>;
   }
 
   return (
-    <Screen
+    <Screen rise
       title={t('commerce.quickKeys.title')}
       c={c}
       floating={<Snackbar visible={saved} onDismiss={() => setSaved(false)} duration={2000}>{t('commerce.common.saved')}</Snackbar>}
     >
       <View style={styles.wrap}>
         <CommerceHint c={c} helpKey="quickKeys" />
-        {query.isPending ? <Loading c={c} /> : null}
+        {query.isPending ? <Loading c={c} skeleton={4} /> : null}
         {query.isError ? <ErrorBlock c={c} message={apiErrorMessage(query.error)} onRetry={() => void query.refetch()} /> : null}
         {query.isSuccess ? (
           <>

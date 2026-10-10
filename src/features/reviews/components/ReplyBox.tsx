@@ -74,7 +74,7 @@ export function ReplyBox({ review, mayReply, busy, onSubmit, c }: Props) {
               {t('reviews.reply.edit')}
             </Button>
           ) : (
-            <Text style={{ fontSize: 11, color: c.textDisabled, marginTop: 4 }}>
+            <Text style={{ fontSize: 11, color: c.textSecondary, marginTop: 4 /* M19: textDisabled was under 4.5:1 */ }}>
               {t('reviews.reply.windowClosed')}
             </Text>
           )

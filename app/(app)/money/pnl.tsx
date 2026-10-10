@@ -11,7 +11,8 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { formatPaise } from '../../../src/lib/money';
 import { moneyApi } from '../../../src/features/money/api';
 import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
-import { Banner, StatGrid, StatTile, TwoPane } from '../../../src/features/p1/ui';
+import { Banner, StatGrid, TwoPane } from '../../../src/features/p1/ui';
+import { MoneyStatTile } from '../../../src/features/money/components/MoneyStatTile';
 import { isoEndOfDay, isoOfDay, monthStartYmd, todayYmd } from '../../../src/features/p1/dates';
 
 /**
@@ -60,7 +61,7 @@ export default function PnlScreen() {
   const net = r?.netProfitPaise;
 
   return (
-    <Screen c={c} title={t('money.pnl')} subtitle={t('money.pnlSub')}>
+    <Screen c={c} rise title={t('money.pnl')} subtitle={t('money.pnlSub')}>
       <ChipRow
         c={c}
         value={period}
@@ -69,16 +70,16 @@ export default function PnlScreen() {
       />
       {!allowed ? (
         <EmptyBlock c={c} icon="lock-outline" title={t('errors.COSTS_NOT_PERMITTED')} />
-      ) : q.isPending ? <Loading c={c} /> : q.isError || !r ? (
+      ) : q.isPending ? <Loading c={c} skeleton={4} /> : q.isError || !r ? (
         <ErrorBlock c={c} message={apiErrorMessage(q.error, t('money.loadFailed'))} onRetry={() => q.refetch()} />
       ) : (
         <TwoPane
           left={(
             <View style={{ gap: 10 }}>
               <StatGrid>
-                {r.revenuePaise !== undefined && <StatTile c={c} label={t('money.pnlSales')} value={formatPaise(r.revenuePaise)} />}
-                {r.grossProfitPaise !== undefined && <StatTile c={c} label={t('money.pnlGross')} value={formatPaise(r.grossProfitPaise)} />}
-                {net !== undefined && <StatTile c={c} label={t('money.pnlNet')} value={formatPaise(net)} tone={net < 0 ? c.error : c.success} testID="pnl-net" />}
+                {r.revenuePaise !== undefined && <MoneyStatTile c={c} label={t('money.pnlSales')} paise={r.revenuePaise} />}
+                {r.grossProfitPaise !== undefined && <MoneyStatTile c={c} label={t('money.pnlGross')} paise={r.grossProfitPaise} />}
+                {net !== undefined && <MoneyStatTile c={c} label={t('money.pnlNet')} paise={net} tone={net < 0 ? c.error : c.success} testID="pnl-net" />}
               </StatGrid>
               <Card c={c}>
                 {money(t('money.pnlSales'), r.revenuePaise)}

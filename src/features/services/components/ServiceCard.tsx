@@ -32,14 +32,14 @@ export function ServiceCard({ service, onPress }: { service: PartnerServiceRow; 
       )}
 
       <View style={styles.bottomRow}>
-        <Text style={[styles.price, { color: c.textPrimary }]}>
+        <Text style={[styles.price, { color: c.textPrimary }, { flexShrink: 1 }]}>
           {service.priceType === 'QUOTE'
             ? t('services.card.quoted')
             : t(service.priceType === 'FROM' ? 'services.card.from' : 'services.card.price', { price: formatPaise(service.pricePaise) })}
         </Text>
         <View style={styles.metaRow}>
           <MaterialCommunityIcons name="clock-outline" size={13} color={c.textSecondary} />
-          <Text style={[styles.metaText, { color: c.textSecondary }]}>{durationLabel(service.durationMin, t)}</Text>
+          <Text style={[styles.metaText, { color: c.textSecondary }, { flexShrink: 1 }]}>{durationLabel(service.durationMin, t)}</Text>
         </View>
       </View>
 

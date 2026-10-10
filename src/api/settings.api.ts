@@ -33,6 +33,9 @@ export interface PartnerInvoiceSettings {
   accentColor: string;
   logoUrl?: string;
   signatureUrl?: string;
+  /** P8A: the stored logo / signature is an old outside link that no longer prints — ask for a new upload. */
+  logoNeedsUpload?: boolean;
+  signatureNeedsUpload?: boolean;
   terms?: string;
   notes?: string;
   bankDetails: InvoiceBankDetails;

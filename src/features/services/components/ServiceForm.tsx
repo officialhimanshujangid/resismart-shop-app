@@ -439,7 +439,7 @@ export function ServiceForm({
       {showP2 && <ServiceP2Fields c={c} value={p2} onChange={setP2} jobs={jobsOn} disabled={!canManage} />}
 
       <View style={styles.switchBox}>
-        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600' }}>{t('services.form.offered')}</Text>
+        <Text style={{ color: c.textPrimary, fontSize: 13, fontWeight: '600', flexShrink: 1 }}>{t('services.form.offered')}</Text>
         <Switch value={draft.isActive} onValueChange={(v) => set('isActive', v)} disabled={!canManage} />
       </View>
 
@@ -494,7 +494,7 @@ function Chip({ label, active, onPress, disabled, c }: {
         { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider },
       ]}
     >
-      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }

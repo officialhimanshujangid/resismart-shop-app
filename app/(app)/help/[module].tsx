@@ -33,7 +33,7 @@ export default function HelpModuleScreen() {
   });
 
   if (!key || query.isPending) {
-    return <Screen c={c} title={t('help.title')} help={false}><Loading c={c} /></Screen>;
+    return <Screen c={c} title={t('help.title')} help={false}><Loading c={c} skeleton={4} /></Screen>;
   }
   if (query.isError) {
     return (
@@ -46,7 +46,7 @@ export default function HelpModuleScreen() {
 
   const { title, summary, articles } = query.data;
   return (
-    <Screen c={c} title={title || t('help.title')} help={false}>
+    <Screen c={c} title={title || t('help.title')} help={false} rise>
       {summary ? <Text style={[styles.summary, { color: c.textSecondary }]}>{summary}</Text> : null}
       {articles.length === 0 ? (
         <EmptyBlock c={c} icon="book-open-page-variant-outline" title={t('help.noArticlesTitle')} body={t('help.noTopicsBody')} />

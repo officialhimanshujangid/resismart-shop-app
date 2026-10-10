@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, View, StyleSheet, FlatList, useColorScheme, Pressable, RefreshControl } from 'react-native';
-import { Text, Searchbar, Snackbar, ActivityIndicator } from 'react-native-paper';
+import { Alert, View, StyleSheet, useColorScheme, RefreshControl } from 'react-native';
+import { Text, Snackbar, ActivityIndicator } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // `as Href` below: the destination carries a query string, so it is not one of
 // the literal routes the generated union describes — the same escape hatch
@@ -11,7 +11,6 @@ import { useTranslation } from 'react-i18next';
 import { qk } from '../../../src/lib/queryKeys';
 
 import { themeColors, radii } from '../../../src/constants/colors';
-import { Hero } from '../../../src/components/Hero';
 import { HelpButton } from '../../../src/features/help/HelpButton';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage, apiErrorCode, apiErrorParams } from '../../../src/api/axios';
@@ -25,6 +24,11 @@ import {
 import type { KnownOrderVerb, PartnerOrder, ReasonPromptTarget, OrderReturnResult } from '../../../src/features/orders';
 import { formatPaise } from '../../../src/lib/money';
 import { ErrorBlock } from '../../../src/features/more/ui';
+import Animated from 'react-native-reanimated';
+import {
+  EmptyState, LargeTitle, LargeTitleBar, SearchField, SegmentedTabs, SkeletonList, useLargeTitleScroll,
+} from '../../../src/components/ui'; // M23 (DS v1) + UX-P (large title, stage tabs, illustrated empty)
+import { Rise } from '../../../src/theme/motion'; // M23
 // Commerce C2 (fulfilment) — each piece draws nothing unless its feature is on.
 import { PillButton } from '../../../src/features/p1/ui';
 import { useCommerceAccess } from '../../../src/features/commerce/access';
@@ -102,6 +106,8 @@ export default function OrdersScreen() {
   const canManage = can('ORDERS_MANAGE', 'FULL');
 
   const [chip, setChip] = useState<keyof typeof STATUS_FILTER_MAP>('ACTIVE');
+  // UX-P: the big "Orders" title scrolls away under a slim bar.
+  const { scrollY, onScroll } = useLargeTitleScroll();
   const [searchInput, setSearchInput] = useState('');
   const [code, setCode] = useState('');
   const [page, setPage] = useState(1);
@@ -400,52 +406,43 @@ export default function OrdersScreen() {
           list's header now, so on a short phone the orders are not squeezed
           into a strip under it. The header is an ELEMENT, not a component
           function, so the search box keeps its focus while typing. */}
-      <FlatList
+      {/* UX-P (A ShopOrders): slim bar on top; its small title fades in as the big one scrolls away. */}
+      <LargeTitleBar title={t('modules.ORDERS.label')} scrollY={scrollY} back={false} right={<HelpButton c={c} />} />
+      <Animated.FlatList
         data={rows}
         keyExtractor={(o) => o.id}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         ListHeaderComponent={
-          <View>
+          <View style={styles.header}>
       {/* The title is `modules.ORDERS.label`, the same catalogue entry the tab
           bar and the More menu read — a module is called one thing in this app. */}
-      <Hero isDark={isDark} action={<HelpButton c={c} variant="hero" />} rounded={false} eyebrow={t('orders.list.eyebrow')} title={t('modules.ORDERS.label')} />
+      <LargeTitle title={t('modules.ORDERS.label')} eyebrow={t('orders.list.eyebrow')} scrollY={scrollY} style={styles.largeTitle} testID="orders-title" />
 
-      <Searchbar
+      {/* UX-P (A ShopOrders): the stages as sliding tabs. The count badge is drawn on
+          the SELECTED stage only — it is the list's own `total`; the other stages'
+          counts would each need a request this screen does not make. */}
+      <SegmentedTabs
+        testID="orders-stages"
+        value={chip}
+        onChange={setChip}
+        contentPadding={14}
+        options={FILTER_CHIPS.map((f) => ({
+          key: f.key,
+          label: t(f.labelKey),
+          count: f.key === chip && query.data && !code ? query.data.total : undefined,
+        }))}
+      />
+
+      {/* M23 (DS v1) — the kit search pill. */}
+      <SearchField
         placeholder={t('orders.list.searchPlaceholder')}
+        accessibilityLabel={t('orders.list.searchPlaceholder')}
         value={searchInput}
         onChangeText={setSearchInput}
-        style={[styles.search, { backgroundColor: c.surfaceVariant }]}
-        inputStyle={styles.searchInput}
-        elevation={0}
+        style={styles.search}
       />
 
-      <FlatList
-        horizontal
-        data={FILTER_CHIPS}
-        keyExtractor={(f) => f.key}
-        showsHorizontalScrollIndicator={false}
-        // >>> WEB-UI — a horizontal list must not grow to fill the column (a
-        // browser stretched the chips into ~250px-tall pills).
-        style={styles.chipList}
-        // <<< WEB-UI
-        contentContainerStyle={styles.chipRow}
-        renderItem={({ item }) => {
-          const active = item.key === chip;
-          return (
-            <Pressable
-              onPress={() => setChip(item.key)}
-              style={[
-                styles.chip,
-                {
-                  backgroundColor: active ? c.primary : c.surfaceVariant,
-                  borderColor: active ? c.primary : c.divider,
-                },
-              ]}
-            >
-              <Text style={[styles.chipLabel, { color: active ? '#fff' : c.textSecondary }]}>{t(item.labelKey)}</Text>
-            </Pressable>
-          );
-        }}
-      />
 
       {/* Commerce C1 (A-1): say when residents cannot order right now — paused, or closed by the shop's hours. */}
       {fulfilmentSettings.data ? (() => {
@@ -490,14 +487,21 @@ export default function OrdersScreen() {
           </View>
         }
         // <<< WEB-UI
-        renderItem={({ item }) => (
-          <OrderCard
-            order={item}
-            pending={pendingId === item.id}
-            onPress={() => setSelectedId(item.id)}
-            onAction={canManage ? (verb) => handleAction(item, verb) : () => undefined}
-          />
-        )}
+        // M23 — the first screenful rises in on a stagger; later pages arrive at once.
+        renderItem={({ item, index }) => {
+          const card = (
+            <OrderCard
+              order={item}
+              pending={pendingId === item.id}
+              onPress={() => setSelectedId(item.id)}
+              onAction={canManage ? (verb) => handleAction(item, verb) : () => undefined}
+            />
+          );
+          return index < 8 ? <Rise index={Math.min(index, 6)}>{card}</Rise> : card;
+        }}
+        initialNumToRender={8}
+        windowSize={9}
+        removeClippedSubviews
         contentContainerStyle={rows.length === 0 ? styles.emptyGrow : styles.listPad}
         refreshControl={
           <RefreshControl
@@ -523,16 +527,14 @@ export default function OrdersScreen() {
           {loadError ? (
             <ErrorBlock c={c} message={loadError} onRetry={() => void query.refetch()} />
           ) : query.isLoading ? (
-            <ActivityIndicator color={c.primary} />
+            <SkeletonList rows={4} />
           ) : (
-            <View style={styles.emptyBox}>
-              <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('orders.list.emptyTitle')}</Text>
-              <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
-                {chip === 'ACTIVE'
-                  ? t('orders.list.emptyActive')
-                  : t('orders.list.emptyFiltered')}
-              </Text>
-            </View>
+            <EmptyState
+              illustration="orders"
+              title={t('orders.list.emptyTitle')}
+              body={chip === 'ACTIVE' ? t('orders.list.emptyActive') : t('orders.list.emptyFiltered')}
+              testID="orders-empty"
+            />
           )}
           </View>
           // <<< WEB-UI
@@ -631,25 +633,18 @@ export default function OrdersScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  search: { marginHorizontal: 14, marginTop: 12, borderRadius: radii.field },
-  searchInput: { fontSize: 14 },
-  // >>> WEB-UI — the chip strip takes only its own height; chips are not stretched.
-  chipList: { flexGrow: 0, flexShrink: 0 },
-  chipRow: { paddingHorizontal: 14, paddingVertical: 10, gap: 8, alignItems: 'center' },
-  // <<< WEB-UI
-  chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth, marginRight: 8 },
-  chipLabel: { fontSize: 12.5, fontWeight: '600' },
-  readOnlyBanner: { marginHorizontal: 14, marginBottom: 6, borderRadius: radii.sm, paddingVertical: 6, paddingHorizontal: 10 },
+  // UX-P: one rhythm for the header — 12 between every block, 16 before the first card.
+  header: { gap: 12, paddingBottom: 6 },
+  largeTitle: { paddingHorizontal: 16 },
+  search: { marginHorizontal: 14 },
+  readOnlyBanner: { marginHorizontal: 14, borderRadius: radii.sm, paddingVertical: 6, paddingHorizontal: 10 },
   readOnlyText: { fontSize: 11.5, fontWeight: '600' },
   listPad: { paddingBottom: 24 },
   // >>> WEB-UI — the header now sits inside the list; only the empty block is centred.
   emptyGrow: { flexGrow: 1 },
   emptyFill: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
   // <<< WEB-UI
-  emptyBox: { alignItems: 'center', gap: 4, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 15, fontWeight: '600' },
-  emptyBody: { fontSize: 13, textAlign: 'center' },
   footerSpinner: { marginVertical: 16 },
-  c2Bar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14, paddingBottom: 6 },
-  c2Banner: { marginHorizontal: 14, marginBottom: 6, borderRadius: radii.sm, borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12 },
+  c2Bar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 14 },
+  c2Banner: { marginHorizontal: 14, borderRadius: radii.sm, borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12 },
 });

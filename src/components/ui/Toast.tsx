@@ -101,7 +101,7 @@ function ToastView({ toast, onClose }: { toast: ToastInput; onClose: () => void 
           hitSlop={8}
           style={styles.close}
         >
-          <MaterialCommunityIcons name="close" size={18} color={ds.faint} />
+          <MaterialCommunityIcons name="close" size={18} color={ds.iconMuted} />
         </Pressable>
       </Animated.View>
     </View>

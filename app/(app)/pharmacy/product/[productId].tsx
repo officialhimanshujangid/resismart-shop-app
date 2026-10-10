@@ -44,11 +44,11 @@ export default function PharmacyProductScreen() {
   });
 
   if (view.isPending) {
-    return <Screen c={c} title={t('p2.pharmacy.product.title')}><Loading c={c} /></Screen>;
+    return <Screen c={c} rise title={t('p2.pharmacy.product.title')}><Loading c={c} skeleton={3} /></Screen>;
   }
   if (view.isError || !view.data) {
     return (
-      <Screen c={c} title={t('p2.pharmacy.product.title')}>
+      <Screen c={c} rise title={t('p2.pharmacy.product.title')}>
         <ErrorBlock c={c} message={apiErrorMessage(view.error, t('p2.pharmacy.product.loadFailed'))} onRetry={() => view.refetch()} />
       </Screen>
     );
@@ -92,7 +92,7 @@ export default function PharmacyProductScreen() {
   );
 
   return (
-    <Screen c={c} title={t('p2.pharmacy.product.title')} subtitle={product.name}>
+    <Screen c={c} rise title={t('p2.pharmacy.product.title')} subtitle={product.name}>
       <TwoPane
         left={left}
         right={<DrugFieldsCard c={c} product={product} info={info.data ?? null} canEdit={canManage} />}

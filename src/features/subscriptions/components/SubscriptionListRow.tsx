@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { PressableScale } from '../../../theme/motion'; // M22 — press feedback
 import { Text } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 
@@ -14,7 +15,7 @@ export function SubscriptionListRow({ c, row, onPress }: { c: ColorScheme; row: 
   const { t } = useTranslation();
   const ended = row.status === 'ENDED';
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       testID={`sub-row-${row.id}`}
@@ -40,7 +41,7 @@ export function SubscriptionListRow({ c, row, onPress }: { c: ColorScheme; row: 
           ? t(`p2.subscriptions.kind.${row.kind}`)
           : t('p2.subscriptions.list.monthToDate', { count: row.monthToDate.deliveries, amount: formatPaise(row.monthToDate.amountPaise) })}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 

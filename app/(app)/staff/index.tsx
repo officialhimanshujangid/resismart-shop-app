@@ -55,16 +55,40 @@ export default function StaffListScreen() {
     onError: (err) => Alert.alert(t('staff.list.reactivateFailed'), apiErrorMessage(err)),
   });
 
+  // >>> P10S — "Remove and erase personal data": staff cannot delete their own account.
+  const erase = useMutation({
+    mutationFn: (id: string) => staffApi.erasePersonalData(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.staff() });
+      Alert.alert(t('staff.list.eraseDone'));
+    },
+    onError: (err) => Alert.alert(t('staff.list.eraseFailed'), apiErrorMessage(err)),
+  });
+  const confirmErase = (row: PartnerStaffRow, justRemoved = false) => {
+    Alert.alert(
+      t('staff.list.eraseTitle', { name: nameOf(row, t) }),
+      justRemoved ? t('staff.list.eraseAfterRemoveBody') : t('staff.list.eraseBody'),
+      [
+        { text: justRemoved ? t('staff.list.eraseKeep') : t('common.cancel'), style: 'cancel' },
+        { text: t('staff.list.eraseConfirm'), style: 'destructive', onPress: () => erase.mutate(row._id) },
+      ],
+    );
+  };
+  // <<< P10S
+
   const remove = useMutation({
-    mutationFn: (id: string) => staffApi.remove(id),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: qk.staff() }),
+    mutationFn: (row: PartnerStaffRow) => staffApi.remove(row._id),
+    onSuccess: (_d, row) => {
+      void queryClient.invalidateQueries({ queryKey: qk.staff() });
+      confirmErase(row, true); // P10S — offer the erase straight after
+    },
     onError: (err) => Alert.alert(t('staff.list.removeFailed'), apiErrorMessage(err)),
   });
 
   const confirmRemove = (row: PartnerStaffRow) => {
     Alert.alert(t('staff.list.removeTitle'), t('staff.list.removeBody', { name: nameOf(row, t) }), [
       { text: t('common.cancel'), style: 'cancel' },
-      { text: t('staff.list.removeConfirm'), style: 'destructive', onPress: () => remove.mutate(row._id) },
+      { text: t('staff.list.removeConfirm'), style: 'destructive', onPress: () => remove.mutate(row) },
     ]);
   };
 
@@ -99,6 +123,9 @@ export default function StaffListScreen() {
         <Text style={[styles.meta, { color: c.textSecondary }]} numberOfLines={2}>
           {row.designation}{contactOf(row) ? t('staff.list.contactSuffix', { contact: contactOf(row) }) : ''}
         </Text>
+        {row.personalDataErasedAt ? (
+          <Text style={[styles.meta, { color: c.textSecondary }]}>{t('staff.list.erasedNote')}</Text>
+        ) : null}
         <View style={styles.badgeRow}>
           <Chip
             compact
@@ -129,13 +156,24 @@ export default function StaffListScreen() {
           )}
         </View>
       )}
-      {canManage && !row.isActive && (
-        <IconButton
-          icon="account-reactivate-outline"
-          size={20}
-          disabled={cap.atLimit}
-          onPress={() => reactivate.mutate(row._id)}
-        />
+      {canManage && !row.isActive && !row.personalDataErasedAt && (
+        <View style={{ flexDirection: 'row' }}>
+          <IconButton
+            icon="account-reactivate-outline"
+            size={20}
+            disabled={cap.atLimit}
+            onPress={() => reactivate.mutate(row._id)}
+          />
+          {/* P10S — erase a leaver's contact details (staff cannot delete themselves). */}
+          <IconButton
+            icon="eraser"
+            size={20}
+            iconColor={c.error}
+            accessibilityLabel={t('staff.list.eraseAction')}
+            disabled={erase.isPending}
+            onPress={() => confirmErase(row)}
+          />
+        </View>
       )}
     </View>
     </Rise>

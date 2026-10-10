@@ -56,7 +56,7 @@ export default function MoneyHomeScreen() {
         <>
           <SectionLabel c={c}>{t('money.accountsSection')}</SectionLabel>
           {accounts.isPending ? (
-            <Loading c={c} />
+            <Loading c={c} skeleton={4} />
           ) : accounts.isError ? (
             <ErrorBlock c={c} message={apiErrorMessage(accounts.error, t('money.loadFailed'))} onRetry={() => accounts.refetch()} />
           ) : (
@@ -85,7 +85,7 @@ export default function MoneyHomeScreen() {
   );
 
   return (
-    <Screen c={c} title={t('money.title')} subtitle={t('money.subtitle')} floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)}>{toast}</Snackbar>}>
+    <Screen c={c} rise title={t('money.title')} subtitle={t('money.subtitle')} floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)}>{toast}</Snackbar>}>
       <TwoPane left={left} right={right} />
       <Portal>
         <Dialog visible={addOpen} onDismiss={() => setAddOpen(false)} style={{ backgroundColor: c.surface }}>
@@ -97,7 +97,8 @@ export default function MoneyHomeScreen() {
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setAddOpen(false)}>{t('common.cancel')}</Button>
-            <Button onPress={() => addAccount.mutate()} disabled={!name.trim() || addAccount.isPending} loading={addAccount.isPending}>{t('common.save')}</Button>
+            {/* M21: a typo in the opening balance used to save silently as ₹0 — now Save waits for a valid amount. */}
+            <Button onPress={() => addAccount.mutate()} disabled={!name.trim() || addAccount.isPending || (opening.trim() !== '' && parseRupeesToPaise(opening) === null)} loading={addAccount.isPending}>{t('common.save')}</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>

@@ -1,0 +1,32 @@
+# Line endings (P8A, 2026-10-10)
+# Keep LF in the repository and in new checkouts so Windows editors stop
+# turning source files into CRLF. "text=auto" keeps git's own binary detection,
+# and check-in behaves exactly as core.autocrlf=true already does, so no
+# existing file needs renormalising and none shows as modified.
+* text=auto eol=lf
+
+# Windows scripts must stay CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets: never convert, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.wav binary
+*.mp3 binary
+*.pdf binary
+*.docx binary
+*.pptx binary
+*.xlsx binary
+*.zip binary
+*.jar binary
+*.keystore binary
+*.jks binary

@@ -1,7 +1,9 @@
 {
   "announcement": {
     "label": "Announcement",
-    "close": "Close announcement"
+    "close": "Close announcement",
+    "more": "Read more",
+    "less": "Show less"
   },
   "common": {
     "startingUp": "Starting up…",
@@ -314,7 +316,7 @@
       "showTaxBreakup": "Tax breakup (CGST/SGST/IGST)",
       "showUpiQr": "UPI QR code",
       "showSignature": "Signature line",
-      "signatureNote": "Prints a ruled line and \"Authorised signatory\" for signing by hand. Uploading a signature image or a logo is not available yet.",
+      "signatureNote": "Prints a line and \"Authorised signatory\"; with a signature uploaded above, your signature prints on it.",
       "deliverySection": "When an order is delivered",
       "autoInvoice": "Auto-raise invoice on delivery",
       "autoReceipt": "Auto-record COD payment on delivery",
@@ -341,7 +343,19 @@
       "p1Section": "Bills of supply & receiving",
       "billOfSupplyForExempt": "Exempt bills as bill of supply",
       "billOfSupplyForExemptNote": "When every item on a bill is exempt or nil-rated, print it as a bill of supply.",
-      "overReceiptPercent": "Extra allowed when receiving goods (0–20 %)"
+      "overReceiptPercent": "Extra allowed when receiving goods (0–20 %)",
+      "brandingSection": "Logo and signature",
+      "logo": "Logo",
+      "signature": "Signature",
+      "upload": "Upload",
+      "uploading": "Uploading…",
+      "removeImage": "Remove {{what}}",
+      "uploadFailedLogo": "Could not upload the logo",
+      "uploadFailedSignature": "Could not upload the signature",
+      "brandingNote": "Printed at the top (logo) and above \"Authorised signatory\" (signature) once you tap Save.",
+      "reuploadLogo": "Please upload your logo again. It was added before uploads were checked, so it does not print on your bills.",
+      "reuploadSignature": "Please upload your signature again. It was added before uploads were checked, so it does not print on your bills.",
+      "reuploadBoth": "Please upload your logo and signature again. They were added before uploads were checked, so they do not print on your bills."
     },
     "verification": {
       "title": "Verification",
@@ -477,7 +491,8 @@
         "CANCELLED": "Cancelled",
         "REFUNDED": "Refunded"
       }
-    }
+    },
+    "pausedReadOnly": "Your business is paused by ResiSmart, so you can look at these settings but not change them."
   },
   "modules": {
     "BOOKINGS": {
@@ -926,7 +941,15 @@
       "duplicateSupplierConfirm": "Save anyway",
       "creditBlockTitle": "Over the credit limit",
       "creditOverride": "Bill anyway",
-      "creditAskOwner": "Ask the owner to bill this, or take a payment first."
+      "creditAskOwner": "Ask the owner to bill this, or take a payment first.",
+      "viewOnlyTag": "View only",
+      "viewOnlyItem": "\"{{name}}\" is view-only because it is beyond the catalogue items your plan covers, so it cannot go on this bill. Archive other items to sell it again.",
+      "scanHeroSub": "Point the camera at a barcode — the item goes on the bill",
+      "cartItems_one": "{{count}} item",
+      "cartItems_other": "{{count}} items",
+      "cartView": "View cart",
+      "cartTitle": "Cart",
+      "cartOpenA11y": "Open the cart, total {{amount}}"
     },
     "detail": {
       "draftLabel": "{{type}}-draft",
@@ -1179,6 +1202,44 @@
         "acNoLast4": "Give the last 4 digits only.",
         "ifsc": "That is not a valid IFSC (e.g. SBIN0001234)."
       }
+    },
+    "merge": {
+      "open": "Merge a duplicate",
+      "title": "Merge customer",
+      "subtitle": "Is {{name}} here twice? Pick the other entry. Its bills, payments, orders, store credit and points move into {{name}}.",
+      "pickHelp": "Only the same person can be merged: the same login (phone and email of one resident), the same phone, or the same email.",
+      "searchLabel": "Find a customer",
+      "searchPlaceholder": "Name or phone",
+      "search": "Search",
+      "suggested": "Looks like the same person",
+      "searchResults": "Search results",
+      "noSuggestions": "No other entry with the same login, phone or email. Search by name if you know one.",
+      "noResults": "No customer found.",
+      "loading": "Checking…",
+      "loadFailed": "Could not load customers. Try again.",
+      "previewFailed": "Could not check these two. Try again.",
+      "mergeFailed": "Could not merge. Nothing was changed. Try again.",
+      "matchLogin": "Same person (two logins)",
+      "matchPhone": "Same phone",
+      "matchEmail": "Same email",
+      "hidden": "Hidden",
+      "removeLabel": "Moves out of",
+      "keepLabel": "Into (kept)",
+      "afterLabel": "After merging",
+      "due": "Khata due",
+      "credit": "Store credit",
+      "points": "Points",
+      "history": "{{bills}} bills · {{payments}} payments · {{orders}} orders/bookings",
+      "warning": "This cannot be undone. {{name}} will be hidden and everything moves into {{keep}}. No money is added or lost; the activity log records what moved.",
+      "back": "Pick another",
+      "confirm": "Merge into this customer",
+      "merged": "{{name}} is merged into this customer.",
+      "mergedShort": "Merged",
+      "mergedBadge": "Merged",
+      "mergedNotice": "This entry was merged into another customer by {{by}}. Its bills, payments and wallet are there now.",
+      "openKept": "Open {{name}}",
+      "rowHint": "Same person here twice? Move one into the other.",
+      "noRight": "Merging customers needs the Customers (full) and Billing (manage) rights. Ask the owner."
     }
   },
   "staff": {
@@ -1205,7 +1266,16 @@
       "loadFailed": "Could not load your staff list.",
       "noLongerHere": "No longer here",
       "emptyTitle": "Nobody invited yet",
-      "emptyBody": "Add the people who work here, and give them a role."
+      "emptyBody": "Add the people who work here, and give them a role.",
+      "eraseAction": "Erase personal data",
+      "eraseTitle": "Erase {{name}}’s personal data?",
+      "eraseBody": "Their phone and email are erased, and their login too if they use ResiSmart for nothing else. Their name stays on old bookings and invoices. They cannot be brought back after this.",
+      "eraseAfterRemoveBody": "They are off the staff list. Staff cannot delete their own account — do you also want to erase their phone, email and (if they use ResiSmart for nothing else) their login? Their name stays on old bookings and invoices.",
+      "eraseConfirm": "Erase",
+      "eraseKeep": "Not now",
+      "eraseDone": "Their personal data has been erased.",
+      "eraseFailed": "Could not erase their personal data",
+      "erasedNote": "Personal data erased"
     },
     "form": {
       "addTitle": "Invite staff",
@@ -1281,6 +1351,16 @@
         "maxDiscountPerBill": "Give the amount in rupees.",
         "mayBackdateDays": "Give whole days from 0 to 365."
       }
+    },
+    "jobScope": {
+      "title": "Which jobs this role sees",
+      "hint": "Choose what a person with this role can see in Bookings and Jobs.",
+      "all": "All jobs",
+      "assigned": "Only their assigned jobs",
+      "allHint": "They see every booking and job of the business.",
+      "assignedHint": "They see only the bookings and jobs given to them. Good for a technician. The customer's details show only on those jobs.",
+      "suffix": " · Only their own jobs",
+      "youOnly": "Your role shows only the jobs given to you. Ask the owner if you need to see others."
     }
   },
   "catalog": {
@@ -1308,7 +1388,9 @@
       "emptyManage": "Add your first product, or scan a barcode to start.",
       "emptyRead": "Nothing has been added to the catalog yet.",
       "scan": "Scan",
-      "addProduct": "Add product"
+      "addProduct": "Add product",
+      "viewGrid": "Grid view",
+      "viewList": "List view"
     },
     "form": {
       "nameRequired": "A product needs a name.",
@@ -1478,6 +1560,11 @@
       "title": "Opening stock — {{name}}",
       "body": "For a product you are just setting up: how many you have and what each cost you. Once stock has moved, use Adjust stock instead.",
       "qty": "Quantity in hand"
+    },
+    "viewOnly": {
+      "badge": "View only",
+      "banner": "Items marked View only are beyond the catalogue items your plan covers. Customers do not see them and they cannot be edited, but you can still take them off sale. To open them again, archive items you no longer sell or pick a bigger plan.",
+      "detail": "This item is beyond the catalogue items your plan covers, so customers do not see it and it cannot be edited. You can still take it off sale. Archive other items or pick a bigger plan to open it again."
     }
   },
   "components": {
@@ -2179,7 +2266,14 @@
       "NO_CATEGORY": "Your business is not filed under any category, so it does not turn up in a search.",
       "NO_AVAILABILITY": "None of your services have working hours behind them, so no slot can be booked.",
       "SOCIETY_ONLY_REACH": "Visible to residents of your society only"
-    }
+    },
+    "suspendedBodyReason": "Reason: {{reason}}. Residents cannot find you and no new bookings or orders come in. You can still read your settings, team and dues. To have it looked at, contact ResiSmart support.",
+    "rejectedTitle": "ResiSmart has not approved this business yet",
+    "rejectedBodyReason": "Reason: {{reason}}. Fix the details in your registration and send it again.",
+    "ringVsYesterday": "Today's sale against all of yesterday's",
+    "ofYesterdayShort": "of yesterday",
+    "yesterdayTotal": "Yesterday: {{amount}}",
+    "oldestWaiting": "Oldest {{when}}"
   },
   "reviews": {
     "title": "Reviews",
@@ -2212,7 +2306,17 @@
       "post": "Post reply"
     },
     "statTotal": "Reviews",
-    "held": "Held by the moderator — residents cannot see this review right now."
+    "held": "Held by the moderator — residents cannot see this review right now.",
+    "filter": {
+      "label": "Which reviews",
+      "all": "All",
+      "PUBLISHED": "Public",
+      "HELD": "Held",
+      "REMOVED": "Removed"
+    },
+    "removed": "Removed by the moderator — residents cannot see it, and it does not count in your rating.",
+    "photoAlt": "Photo {{n}} from this review",
+    "emptyFiltered": "No reviews in this list."
   },
   "availability": {
     "nav": {
@@ -2288,6 +2392,22 @@
       "overlap": "Your opening hours on {{day}} overlap each other.",
       "slotTooLong": "On {{day}} a slot is longer than the time you are open, so there is nothing to book.",
       "breakBackwards": "That break on {{day}} ends before it starts, which blocks nothing while looking like a lunch hour."
+    },
+    "staff": {
+      "whose": "Whose hours",
+      "whoseHint": "A person with their own hours does not take anything from the shop's week — their week replaces it, breaks and all.",
+      "business": "The business",
+      "follows": "{{name}} · follows the shop",
+      "followsTitle": "{{name}} follows the business's hours",
+      "followsBody": "Give them their own week only if it is really different from the shop's.",
+      "giveOwn": "Give them their own hours",
+      "backOnBusiness": "Back on the shop's hours",
+      "dropTitle": "Put {{name}} back on the business's hours?",
+      "dropBody": "Their own hours are removed and they follow the shop again. Bookings already made with them are not touched.",
+      "dropConfirm": "Put them back",
+      "dropped": "They now follow the business's hours",
+      "savedTheirs": "Their hours are saved",
+      "someone": "them"
     }
   },
   "promotion": {
@@ -2470,7 +2590,15 @@
       "finalConfirm": "Delete in 30 days",
       "doneTitle": "Deletion requested",
       "doneBody": "You have been signed out. Your account will be deleted in 30 days. Sign in again before then to cancel.",
-      "doneOn": "You have been signed out. Your account will be deleted on {{date}}. Sign in again before then to cancel."
+      "doneOn": "You have been signed out. Your account will be deleted on {{date}}. Sign in again before then to cancel.",
+      "managedTitle": "Your account is managed by your employer",
+      "managedBody": "You work for {{names}}. Staff accounts are removed by the owner or HR, not by you. Ask them to remove you.",
+      "managedBodyNoName": "You work as staff. Staff accounts are removed by the owner or HR, not by you. Ask them to remove you.",
+      "managedAfter": "When they remove you, they can erase your personal data. Bookings, invoices and accounts records are kept. If you also live in a society, you can delete your own account once you are no longer staff.",
+      "requestRemoval": "Request removal",
+      "removalSent": "The owner or HR has been told that you want your account removed.",
+      "removalAlready": "You already asked today. The owner or HR has been told.",
+      "removalSentToday": "Request sent today. The owner or HR will remove you."
     },
     "devices": {
       "title": "Signed-in devices",
@@ -2999,7 +3127,22 @@
     "CATALOG_ITEMS_LIMIT": "Your plan covers {{limit}} catalogue items (products and services) and you have {{used}}.",
     "CATALOG_ITEMS_LIMIT_BULK": "Your plan covers {{limit}} catalogue items and you have {{used}}, so you can add {{remaining}} more, not {{requested}}. Nothing was added.",
     "ITEM_VIEW_ONLY": "This item is beyond the {{limit}} catalogue items your plan covers, so it is view-only and hidden from customers. Pick a bigger plan or archive other items to change it.",
-    "PARTNER_WHATSAPP_OFF": "ResiSmart has switched WhatsApp messages for businesses off for now. Your customers still get app notifications."
+    "PARTNER_WHATSAPP_OFF": "ResiSmart has switched WhatsApp messages for businesses off for now. Your customers still get app notifications.",
+    "ITEM_VIEW_ONLY_SALE": "\"{{itemName}}\" is beyond the {{limit}} catalogue items your plan covers, so it cannot be billed or quoted for now. Remove it from the bill, or pick a bigger plan or archive other items.",
+    "PARTNER_SUSPENDED": "ResiSmart has paused this business. Reason: {{reason}}. You can still read your settings, team and dues. Please contact ResiSmart support.",
+    "PARTNER_REJECTED": "ResiSmart has not approved this business yet. Reason: {{reason}}. Fix the details in your registration and send it again.",
+    "CATALOG_IMPORT_TOO_MANY_ROWS": "This file has {{count}} rows. One file can hold at most {{max}} rows. Split it into smaller files and import them one by one.",
+    "PARTY_MERGED": "This customer was merged into another customer. Open the kept customer instead.",
+    "PARTY_MERGE_SAME": "Pick two different customers to merge.",
+    "PARTY_MERGE_NOT_SAME_PERSON": "These two do not look like the same person: no shared login, phone or email. Only the same person can be merged.",
+    "PARTY_MERGE_KEEP_HIDDEN": "The customer you keep is hidden. Show it again first, then merge.",
+    "NO_BILL_RAISED": "Raise the bill first, on the Billing screen. Save it against this order or booking and it will show here as invoiced.",
+    "BILL_NOT_SETTLED": "The bill is not settled in full yet, or there is no bill to settle. Record the payment against the bill first.",
+    "ORDER_BILLED_USE_CREDIT_NOTE": "This order has been billed, so record the return on the bill (Record a return). That keeps the stock and the credit note in step.",
+    "MONEY_DATE_IN_FUTURE": "This date is after today. Pick today or an earlier day.",
+    "PARTNER_ROLE_JOB_SCOPE_OWNER_ONLY": "Only the owner can change which jobs a role sees.",
+    "STAFF_STILL_EMPLOYED": "They are still on the staff list. Remove them from staff first, then erase their personal data.",
+    "STAFF_DATA_ERASED": "Their personal data was erased, so they cannot be brought back. Invite them again as new staff."
   },
   "partnerAccess": {
     "movedTitle": "Business changed",
@@ -3300,7 +3443,11 @@
       "savedBody": "Saved as {{number}}. Stock is updated.",
       "openGrn": "Open it",
       "billNow": "Make the supplier bill",
-      "earlierGrns": "Received earlier: {{list}}"
+      "earlierGrns": "Received earlier: {{list}}",
+      "batchHint": "For a medicine, type its batch number and expiry month as printed on the strip. Leave both empty for other items.",
+      "batchIncomplete": "{{item}}: fill both the batch number and the expiry month (like 2027-03), or leave both empty.",
+      "expiredTitle": "Batch already expired",
+      "expiredConfirm": "Yes, I received expired stock"
     },
     "bill": {
       "title": "Bill received goods",
@@ -3372,7 +3519,9 @@
       "adjustmentsNone": "No stock adjustments in this period.",
       "adjustmentsFailed": "Could not load the adjustments.",
       "thisMonth": "This month",
-      "last30": "Last 30 days"
+      "last30": "Last 30 days",
+      "needYou_one": "{{count}} product needs you",
+      "needYou_other": "{{count}} products need you"
     },
     "countStatus": {
       "COUNTING": "Counting",
@@ -3589,7 +3738,12 @@
         "nextDate": "Pick the collection date.",
         "dayOfMonth": "Pick a day from 1 to 28."
       }
-    }
+    },
+    "totalDueEyebrow_one": "Total due · {{count}} customer",
+    "totalDueEyebrow_other": "Total due · {{count}} customers",
+    "ageDays_one": "{{count}} day",
+    "ageDays_other": "{{count}} days",
+    "openLedger": "Open khata"
   },
   "money": {
     "title": "Money",
@@ -3821,7 +3975,8 @@
       "badgeTitle": "Show \"Lives here · {{flat}}\"",
       "badgeTitleNoFlat": "Show \"Lives here\"",
       "badgeBody": "Residents of {{society}} see that you live in the society. Only your flat number is shown.",
-      "badgeSaveFailed": "Could not change the badge."
+      "badgeSaveFailed": "Could not change the badge.",
+      "unsaved": "Not saved yet. Press Save to change who can find you."
     },
     "banner": {
       "approvedTitle": "Society shop of {{society}} — approved",
@@ -4378,7 +4533,8 @@
           "needService": "Pick a service.",
           "needTime": "Pick a time.",
           "needAddress": "A home visit needs an address."
-        }
+        },
+        "booked": "Booked — {{code}}"
       },
       "timeOff": {
         "subtitle": "Coming up, by person",
@@ -4448,7 +4604,8 @@
         "visits": "Visits",
         "noVisits": "No visits yet.",
         "ended_one": "Series ended. {{count}} visit cancelled.",
-        "ended_other": "Series ended. {{count}} visits cancelled."
+        "ended_other": "Series ended. {{count}} visits cancelled.",
+        "nextVisit": "Next visit: {{when}}"
       },
       "packages": {
         "tabPackages": "Packages",
@@ -4500,21 +4657,21 @@
     },
     "jobs": {
       "stage": {
-        "QUOTE_PENDING": "Waiting for quote",
-        "QUOTED": "Quoted",
+        "QUOTE_PENDING": "Needs a quote",
+        "QUOTED": "Waiting for customer",
         "APPROVED": "Approved",
         "DECLINED": "Declined",
-        "IN_WORK": "In work",
-        "COMPLETED": "Completed",
+        "IN_WORK": "In progress",
+        "COMPLETED": "Work done",
         "INVOICED": "Billed",
         "CLOSED": "Closed"
       },
       "filter": {
-        "QUOTE_PENDING": "Waiting for quote",
-        "QUOTED": "Quoted",
+        "QUOTE_PENDING": "Needs a quote",
+        "QUOTED": "Waiting for customer",
         "APPROVED": "Approved",
-        "IN_WORK": "In work",
-        "COMPLETED": "Completed",
+        "IN_WORK": "In progress",
+        "COMPLETED": "Work done",
         "INVOICED": "Billed",
         "CLOSED": "Closed",
         "DECLINED": "Declined"
@@ -4602,7 +4759,8 @@
         "failed": "The quote could not be sent.",
         "searchCatalogue": "Search parts in your catalogue",
         "perUnit": "{{price}} per {{unit}}",
-        "addPart": "Add {{item}}"
+        "addPart": "Add {{item}}",
+        "sent": "Quote {{number}} sent to the customer"
       },
       "lines": {
         "taxSuffix": " · GST {{rate}}%",
@@ -4906,7 +5064,8 @@
           "UNIT": "Every item needs a unit, like L or pc.",
           "QTY": "Type a quantity between 0 and 1000.",
           "RATE": "Type the rate in rupees."
-        }
+        },
+        "created": "Subscription started"
       },
       "billStatus": {
         "CLAIMED": "Being made",
@@ -5265,7 +5424,14 @@
       "unscheduleTitle": "Remove the schedule?",
       "unscheduleBody": "\"{{title}}\" will not go out at {{when}}. It goes back to your drafts: send it or schedule it again when you are ready.",
       "unscheduledToast": "Schedule removed. \"{{title}}\" is a draft again.",
-      "unscheduleFailed": "Could not remove the schedule"
+      "unscheduleFailed": "Could not remove the schedule",
+      "failure": {
+        "SWITCHED_OFF": "Offer messages were switched off before this one was due.",
+        "WEEKLY_LIMIT": "The weekly limit was already used when this was due.",
+        "NO_AUDIENCE": "No customer matched this group when it was due.",
+        "LINK_GONE": "The linked offer or item is no longer available.",
+        "SEND_FAILED": "Sending failed. Please try a new message."
+      }
     },
     "insights": {
       "title": "Shop insights",
@@ -5997,7 +6163,9 @@
     "DELETION_CODE_WAIT": "Please wait a little before asking for another code.",
     "LEAVE_SOLE_ADMIN": "You are the only administrator of this society. Make someone else an admin first, then leave.",
     "LEAVE_SOLE_OWNER": "You are the only owner of this flat. The society office must record another owner (or the sale) first. A tenant living there and the flat's bills stay as they are.",
-    "LEAVE_NOT_A_MEMBER": "You are no longer part of that society or flat."
+    "LEAVE_NOT_A_MEMBER": "You are no longer part of that society or flat.",
+    "ACCOUNT_MANAGED_BY_EMPLOYER": "Your account is managed by your employer, so you cannot delete it yourself. Ask your HR or admin to remove you — tap “Request removal” and we will tell them.",
+    "REMOVAL_NOT_NEEDED": "Your account is not managed by an employer. You can delete it yourself."
   },
   "accountPlaces": {
     "title": "Your places",
@@ -6024,7 +6192,8 @@
     "fullTitle": "Delete my whole account",
     "blockedTitle": "Your account cannot be deleted yet",
     "otherLoginsLabel": "Also delete my other login ({{n}})",
-    "otherLoginsHint": "You also sign in with another phone or email. Tick this to delete it too; otherwise it keeps its access."
+    "otherLoginsHint": "You also sign in with another phone or email. Tick this to delete it too; otherwise it keeps its access.",
+    "staffPlaceNote": "You work here. Only the owner or HR can take you off as staff."
   },
   "otpLookOn": {
     "whatsapp": "Look for the code on WhatsApp.",

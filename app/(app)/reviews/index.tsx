@@ -1,6 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
-import { Button, Snackbar, Text } from 'react-native-paper';
+import { Alert, Image, StyleSheet, View, useColorScheme } from 'react-native';
+import { Text } from 'react-native-paper';
+// M19 redesign: kit buttons + toast, count-up KPIs (Sora), skeleton, rise.
+import { Button, Segmented, useToast } from '../../../src/components/ui';
+import { useCountUp } from '../../../src/theme/motion';
+import { fontFamily } from '../../../src/theme/tokens';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -9,7 +13,7 @@ import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { qk } from '../../../src/lib/queryKeys';
 import { apiErrorCode, apiErrorMessage } from '../../../src/api/axios';
-import { reviewsApi, ReviewListPage } from '../../../src/features/reviews/api';
+import { reviewsApi, ReviewListPage, REVIEW_FILTERS, ReviewFilter } from '../../../src/features/reviews/api';
 import { formatI18nDate } from '../../../src/i18n';
 import { ReplyBox } from '../../../src/features/reviews/components/ReplyBox';
 import { Card, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
@@ -36,12 +40,20 @@ export default function ReviewsScreen() {
   const mayReply = can('BOOKINGS_MANAGE', 'FULL') || can('ORDERS_MANAGE', 'FULL');
 
   const [page, setPage] = useState(1);
+  // M19 parity with web: the same All / Public / Held / Removed strip.
+  const [filter, setFilter] = useState<ReviewFilter>('all');
   const [replyingId, setReplyingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const toast = useToast();
+  const setToast = useCallback(
+    (message: string, tone: 'success' | 'danger' = 'danger') => toast.show({ message, tone }),
+    [toast],
+  );
 
   const query = useQuery({
-    queryKey: qk.reviews(page),
-    queryFn: () => reviewsApi.list(page, PAGE_SIZE),
+    queryKey: qk.reviews(page, filter),
+    queryFn: () => reviewsApi.list(page, PAGE_SIZE, filter),
+    // Switching the strip keeps the old list on screen until the new one lands (no full-screen flash).
+    placeholderData: (prev) => prev,
   });
 
   const reviews = query.data?.data ?? [];
@@ -69,10 +81,10 @@ export default function ReviewsScreen() {
         // newest-first and a refetch would jump a partner working down a long
         // page back to the top of it.
         queryClient.setQueryData<ReviewListPage | undefined>(
-          qk.reviews(page),
+          qk.reviews(page, filter),
           (prev) => (prev ? { ...prev, data: prev.data.map((r) => (r._id === reviewId ? updated : r)) } : prev),
         );
-        setToast(t('reviews.replyPosted'));
+        setToast(t('reviews.replyPosted'), 'success');
       } catch (e: unknown) {
         // A refusal about WHO may reply is said in full, not in a 4-second toast.
         const code = apiErrorCode(e);
@@ -85,10 +97,10 @@ export default function ReviewsScreen() {
         setReplyingId(null);
       }
     },
-    [queryClient, page, t],
+    [queryClient, page, filter, t, setToast],
   );
 
-  if (query.isPending) return <Screen c={c} title={t('reviews.title')}><Loading c={c} label={t('reviews.loading')} /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('reviews.title')}><Loading c={c} label={t('reviews.loading')} skeleton={4} /></Screen>;
   if (query.isError) {
     return (
       <Screen c={c} title={t('reviews.title')}>
@@ -98,12 +110,18 @@ export default function ReviewsScreen() {
   }
 
   return (
-    <Screen c={c} title={t('reviews.title')} subtitle={t('reviews.subtitle')}>
+    <Screen c={c} title={t('reviews.title')} subtitle={t('reviews.subtitle')} rise>
+      <Segmented<ReviewFilter>
+        testID="reviews-filter"
+        options={REVIEW_FILTERS.map((f) => ({ key: f, label: t(`reviews.filter.${f}`) }))}
+        value={filter}
+        onChange={(f) => { setFilter(f); setPage(1); }}
+      />
       {reviews.length > 0 && (
         <Card c={c} style={styles.statsCard}>
-          <StatBlock c={c} label={t('reviews.statPage')} value={pageAverage?.toFixed(1) ?? '—'} icon="star" />
-          <StatBlock c={c} label={t('reviews.statTotal')} value={String(total)} />
-          <StatBlock c={c} label={t('reviews.statAwaiting')} value={String(unanswered)} />
+          <StatBlock c={c} label={t('reviews.statPage')} value={pageAverage} decimals={1} icon="star" />
+          <StatBlock c={c} label={t('reviews.statTotal')} value={total} />
+          <StatBlock c={c} label={t('reviews.statAwaiting')} value={unanswered} />
         </Card>
       )}
 
@@ -111,8 +129,8 @@ export default function ReviewsScreen() {
         <EmptyBlock
           c={c}
           icon="star-outline"
-          title={t('reviews.emptyTitle')}
-          body={t('reviews.emptyBody')}
+          title={filter === 'all' ? t('reviews.emptyTitle') : t('reviews.emptyFiltered')}
+          body={filter === 'all' ? t('reviews.emptyBody') : undefined}
         />
       ) : (
         reviews.map((r) => (
@@ -125,16 +143,18 @@ export default function ReviewsScreen() {
               </Text>
               <View style={styles.ratingRow}>
                 <MaterialCommunityIcons name="star" size={14} color={c.warning} />
-                <Text style={{ fontSize: 13, fontWeight: '600', color: c.textPrimary }}>{r.rating}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: c.textPrimary, flexShrink: 1 }}>{r.rating}</Text>
               </View>
             </View>
-            {r.moderationStatus === 'HELD' && (
+            {r.moderationStatus !== 'PUBLISHED' && (
               <View style={[styles.heldBadge, { backgroundColor: c.surfaceVariant }]}>
-                <MaterialCommunityIcons name="eye-off-outline" size={14} color={c.warning} />
-                <Text style={{ fontSize: 12, color: c.textPrimary, flexShrink: 1 }}>{t('reviews.held')}</Text>
+                <MaterialCommunityIcons name={r.moderationStatus === 'REMOVED' ? 'delete-outline' : 'eye-off-outline'} size={14} color={c.warning} />
+                <Text style={{ fontSize: 12, color: c.textPrimary, flexShrink: 1 }}>
+                  {r.moderationStatus === 'REMOVED' ? t('reviews.removed') : t('reviews.held')}
+                </Text>
               </View>
             )}
-            <Text style={{ fontSize: 11, color: c.textDisabled, marginTop: 2 }}>
+            <Text style={{ fontSize: 11, color: c.textSecondary, marginTop: 2 }}>
               {formatI18nDate(r.createdAt, t)}
               {r.bookingId ? t('reviews.afterBooking') : r.orderId ? t('reviews.afterOrder') : ''}
             </Text>
@@ -142,39 +162,53 @@ export default function ReviewsScreen() {
               <Text style={{ fontSize: 13, color: c.textSecondary, marginTop: 6, lineHeight: 18 }}>{r.text}</Text>
             )}
 
-            <ReplyBox review={r} mayReply={mayReply} busy={replyingId === r._id} onSubmit={reply} c={c} />
+            {r.photos && r.photos.length > 0 ? (
+              <View style={styles.photos}>
+                {r.photos.map((src, i) => (
+                  <Image
+                    key={src}
+                    source={{ uri: src }}
+                    accessibilityLabel={t('reviews.photoAlt', { n: i + 1 })}
+                    style={[styles.photo, { borderColor: c.border }]}
+                  />
+                ))}
+              </View>
+            ) : null}
+
+            {/* A removed review cannot be answered on a page it no longer shows on (web rule). */}
+            <ReplyBox review={r} mayReply={mayReply && r.moderationStatus !== 'REMOVED'} busy={replyingId === r._id} onSubmit={reply} c={c} />
           </Card>
         ))
       )}
 
       {totalPages > 1 && (
         <View style={styles.pager}>
-          <Button compact disabled={page === 1} onPress={() => setPage((p) => Math.max(1, p - 1))}>
-            {t('reviews.previous')}
-          </Button>
-          <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('reviews.pageOf', { page, total: totalPages })}</Text>
-          <Button compact disabled={page >= totalPages} onPress={() => setPage((p) => p + 1)}>
-            {t('reviews.next')}
-          </Button>
+          <Button size="sm" variant="outline" icon="chevron-left" label={t('reviews.previous')} disabled={page === 1} onPress={() => setPage((p) => Math.max(1, p - 1))} />
+          <Text style={{ color: c.textSecondary, fontSize: 12, flexShrink: 1, textAlign: 'center' }}>{t('reviews.pageOf', { page, total: totalPages })}</Text>
+          <Button size="sm" variant="outline" label={t('reviews.next')} disabled={page >= totalPages} onPress={() => setPage((p) => p + 1)} />
         </View>
       )}
 
-      <Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>
-        {toast}
-      </Snackbar>
     </Screen>
   );
 }
 
-function StatBlock({ c, label, value, icon }: { c: ReturnType<typeof themeColors>; label: string; value: string; icon?: string }) {
+function StatBlock({
+  c, label, value, icon, decimals = 0,
+}: { c: ReturnType<typeof themeColors>; label: string; value: number | null; icon?: string; decimals?: number }) {
+  // M19 — KPIs count up (DS §5); reduce-motion shows the final number at once.
+  const scale = 10 ** decimals;
+  const shown = useCountUp(Math.round((value ?? 0) * scale)) / scale;
   return (
     <View style={{ flex: 1 }}>
-      <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', color: c.textDisabled }}>
+      <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 0.4, textTransform: 'uppercase', color: c.textSecondary }}>
         {label}
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
         {icon && <MaterialCommunityIcons name={icon as never} size={14} color={c.warning} />}
-        <Text style={{ fontSize: 16, fontWeight: '600', color: c.textPrimary }}>{value}</Text>
+        <Text style={{ fontSize: 18, fontFamily: fontFamily.sora600, color: c.textPrimary }}>
+          {value === null ? '—' : shown.toFixed(decimals)}
+        </Text>
       </View>
     </View>
   );
@@ -186,5 +220,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   heldBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginTop: 6 },
-  pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 4 },
+  photos: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  photo: { width: 64, height: 64, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth },
+  pager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 },
 });

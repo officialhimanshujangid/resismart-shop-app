@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, useColorScheme, View } from 'react-native';
+import { FlatList, StyleSheet, useColorScheme, View } from 'react-native';
 import { router } from 'expo-router';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -10,9 +10,12 @@ import { qk } from '../../../src/lib/queryKeys';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { documentsApi } from '../../../src/features/billing/documents.api';
 import type { PartnerDocumentType } from '../../../src/features/billing/types';
-import { ChipRow, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
+import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 import { ActionRow, PillButton, useIsWide } from '../../../src/features/p1/ui';
 import { PurchaseDocRow } from '../../../src/features/purchases/components/PurchaseDocRow';
+// M20 — row stagger + a skeleton row while the next page loads.
+import { Rise } from '../../../src/theme/motion';
+import { Segmented, Skeleton } from '../../../src/components/ui';
 
 /**
  * Purchases home (screen S3): purchase orders, goods received, supplier bills
@@ -47,8 +50,9 @@ export default function PurchasesHomeScreen() {
 
   return (
     <Screen c={c} title={t('purchases.title')} subtitle={t('purchases.subtitle')} scroll={false}>
-      <View style={styles.controls}>
-        <ChipRow c={c} value={tab} options={tabs} onChange={setTab} />
+      <Rise index={0} style={styles.controls}>
+        {/* M20 — the DS sliding segment (one pill slides; labels may wrap in Hindi). */}
+        <Segmented<Tab> value={tab} options={tabs} onChange={setTab} testID="purchases-tabs" />
         {canManage && (
           <ActionRow>
             {tab === 'PO' && (
@@ -75,10 +79,10 @@ export default function PurchasesHomeScreen() {
             )}
           </ActionRow>
         )}
-      </View>
+      </Rise>
 
       {query.isPending ? (
-        <Loading c={c} />
+        <Loading c={c} skeleton={3} />
       ) : query.isError && rows.length === 0 ? (
         <ErrorBlock c={c} message={apiErrorMessage(query.error, t('purchases.loadFailed'))} onRetry={() => query.refetch()} />
       ) : (
@@ -88,18 +92,21 @@ export default function PurchasesHomeScreen() {
           numColumns={wide ? 2 : 1}
           columnWrapperStyle={wide ? { gap: 10 } : undefined}
           keyExtractor={(d) => d._id}
-          renderItem={({ item }) => (
-            <View style={wide ? { flex: 1 } : undefined}>
+          renderItem={({ item, index }) => (
+            // M20 — the first screenful rises in on a stagger; later rows appear as they are.
+            <Rise index={index < 8 ? Math.min(index, 5) + 1 : 0} duration={index < 8 ? undefined : 1} style={wide ? { flex: 1 } : undefined}>
               <PurchaseDocRow c={c} doc={item} onPress={() => router.push({ pathname: '/billing/[id]', params: { id: item._id } })} />
-            </View>
+            </Rise>
           )}
+          initialNumToRender={10}
+          windowSize={9}
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           onRefresh={() => void query.refetch()}
           refreshing={query.isRefetching && !query.isFetchingNextPage}
           onEndReachedThreshold={0.4}
           onEndReached={() => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }}
-          ListFooterComponent={query.isFetchingNextPage ? <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} /> : null}
+          ListFooterComponent={query.isFetchingNextPage ? <View style={{ marginVertical: 12 }}><Skeleton height={64} rounded={18} /></View> : null}
           ListEmptyComponent={<EmptyBlock c={c} icon="truck-outline" title={t(`purchases.empty.${tab}`)} body={t('purchases.emptyBody')} />}
         />
       )}

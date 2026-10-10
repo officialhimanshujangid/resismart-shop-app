@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { PressableScale } from '../../../theme/motion'; // M22 — press feedback
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +18,7 @@ export function JobRowItem({ c, row, onPress }: { c: ColorScheme; row: JobRow; o
   const gate = gateIcon(row.gateStatus);
   const gateColor = gate.tone === 'good' ? c.success : gate.tone === 'bad' ? c.error : gate.tone === 'warn' ? c.warning : c.textDisabled;
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${row.code} ${row.serviceName}`}
@@ -47,7 +48,7 @@ export function JobRowItem({ c, row, onPress }: { c: ColorScheme; row: JobRow; o
       <View style={styles.gate} accessibilityLabel={t(`p2.jobs.gateShort.${row.gateStatus in GATE_SHORT ? row.gateStatus : 'NONE'}`)}>
         <MaterialCommunityIcons name={gate.icon as never} size={22} color={gateColor} />
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 

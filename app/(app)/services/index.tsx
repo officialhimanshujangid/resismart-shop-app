@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, View, StyleSheet, FlatList, useColorScheme, Pressable } from 'react-native';
-import { Text, Searchbar, ActivityIndicator, Snackbar } from 'react-native-paper';
+import { Text, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,8 @@ import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
 import { Hero, GlassStat } from '../../../src/components/Hero';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { ErrorBlock } from '../../../src/features/more/ui';
+import { Segmented, SearchField, SkeletonList } from '../../../src/components/ui'; // M23 (DS v1)
+import { Rise } from '../../../src/theme/motion'; // M23
 import {
   useServices, useWithdrawService, ServiceCard, ServiceUsageMeterBar,
 } from '../../../src/features/services';
@@ -137,46 +139,45 @@ export default function ServicesListScreen() {
         <ServiceUsageMeterBar cap={cap} c={c} />
       </View>
 
-      <Searchbar
+      {/* M23 (DS v1) — kit search pill + sliding segment pill. */}
+      <SearchField
         placeholder={t('services.list.searchPlaceholder')}
+        accessibilityLabel={t('services.list.searchPlaceholder')}
         value={searchInput}
         onChangeText={setSearchInput}
-        style={[styles.search, { backgroundColor: c.surfaceVariant }]}
-        elevation={0}
+        style={styles.search}
       />
 
       <View style={styles.tabRow}>
         {/* `key`, not `t` — the callback parameter here was called `t` and this
             file holds a translator now; that is the shadow that has already
             broken one screen in this app. */}
-        {(['on', 'off'] as Tab[]).map((key) => {
-          const active = key === tab;
-          return (
-            <Pressable
-              key={key}
-              onPress={() => setTab(key)}
-              style={[styles.tabChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
-            >
-              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>
-                {key === 'on' ? t('services.list.tabOn') : t('services.list.tabOff')}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <Segmented<Tab>
+          style={styles.segment}
+          value={tab}
+          onChange={setTab}
+          options={[{ key: 'on', label: t('services.list.tabOn') }, { key: 'off', label: t('services.list.tabOff') }]}
+        />
       </View>
           </View>
         }
         // <<< WEB-UI
-        renderItem={({ item }) => (
-          <ServiceCardRow
-            service={item}
-            canManage={canManage}
-            withdrawing={withdrawService.isPending && withdrawService.variables === item._id}
-            onPress={() => router.push({ pathname: '/services/[id]', params: { id: item._id } })}
-            onWithdraw={() => confirmWithdraw(item)}
-            c={c}
-          />
-        )}
+        // M23 — the first screenful rises in; windowed list.
+        renderItem={({ item, index }) => {
+          const row = (
+            <ServiceCardRow
+              service={item}
+              canManage={canManage}
+              withdrawing={withdrawService.isPending && withdrawService.variables === item._id}
+              onPress={() => router.push({ pathname: '/services/[id]', params: { id: item._id } })}
+              onWithdraw={() => confirmWithdraw(item)}
+              c={c}
+            />
+          );
+          return index < 8 ? <Rise index={Math.min(index, 6)}>{row}</Rise> : row;
+        }}
+        initialNumToRender={10}
+        windowSize={9}
         contentContainerStyle={shown.length === 0 ? styles.emptyGrow : styles.listPad}
         ListEmptyComponent={
           // >>> WEB-UI — centred in the space under the header.
@@ -184,7 +185,7 @@ export default function ServicesListScreen() {
           {loadError ? (
             <ErrorBlock c={c} message={loadError} onRetry={() => void servicesQuery.refetch()} />
           ) : servicesQuery.isLoading ? (
-            <ActivityIndicator color={c.primary} />
+            <SkeletonList rows={4} />
           ) : (
             <View style={styles.emptyBox}>
               <MaterialCommunityIcons name="wrench-outline" size={30} color={c.textDisabled} />
@@ -227,10 +228,10 @@ export default function ServicesListScreen() {
         <Pressable
           onPress={goCreate}
           disabled={cap.atLimit}
-          style={[styles.fab, { backgroundColor: cap.atLimit ? c.textDisabled : c.primary }]}
+          style={[styles.fab, { backgroundColor: cap.atLimit ? c.textDisabled : c.primaryFill }]}
         >
-          <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-          <Text style={styles.fabText}>{t('services.list.addService')}</Text>
+          <MaterialCommunityIcons name="plus" size={20} color={c.textInverse} />
+          <Text style={[styles.fabText, { color: c.textInverse }, { flexShrink: 1 }]}>{t('services.list.addService')}</Text>
         </Pressable>
       )}
 
@@ -271,7 +272,8 @@ function ServiceCardRow({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   headerBox: { paddingHorizontal: 14, paddingTop: 10 },
-  search: { marginHorizontal: 14, marginTop: 10, borderRadius: radii.field },
+  search: { marginHorizontal: 14, marginTop: 10 },
+  segment: { flex: 1 },
   tabRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 10 },
   tabChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth },
   listPad: { paddingBottom: 90 },
@@ -290,5 +292,5 @@ const styles = StyleSheet.create({
     position: 'absolute', right: 16, bottom: 16, flexDirection: 'row', alignItems: 'center', gap: 6,
     borderRadius: radii.pill, paddingHorizontal: 18, paddingVertical: 13, elevation: 3,
   },
-  fabText: { color: '#fff', fontWeight: '600', fontSize: 13.5 },
+  fabText: { fontWeight: '600', fontSize: 13.5 },
 });

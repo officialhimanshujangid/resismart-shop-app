@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, ScrollView, Modal, useColorScheme, Pressable } from 'react-native';
-import { Text, ActivityIndicator, Divider, TextInput, Button, IconButton, HelperText } from 'react-native-paper';
+import { Text, Divider, TextInput, Button, IconButton, HelperText } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +16,7 @@ import { themeColors, radii } from '../../../constants/colors';
 import { useCommerceAccess } from '../../commerce/access';
 import { useCommerceSettings } from '../../commerce/hooks';
 import { SwitchRow } from '../../commerce/components/ui';
+import { SkeletonList } from '../../../components/ui';
 
 interface RecordReturnModalProps {
   /** The order to return items for. Rendered only while non-null. */
@@ -130,7 +131,7 @@ export function RecordReturnModal({ order, onClose, onSuccess }: RecordReturnMod
 
         {loadingEligibility ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color={c.primary} />
+            <SkeletonList rows={3} />
           </View>
         ) : noInvoice ? (
           <View style={styles.loadingBox}>

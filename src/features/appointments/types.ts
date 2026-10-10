@@ -114,6 +114,8 @@ export interface SeriesRow {
   endedAt?: string;
   endedReason?: string;
   createdAt: string;
+  /** List rows only (M22): the next open visit. */
+  nextVisitAt?: string;
 }
 
 export interface SkippedDate { date: string; reason: string }

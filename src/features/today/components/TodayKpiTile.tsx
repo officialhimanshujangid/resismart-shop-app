@@ -58,7 +58,7 @@ export function TodayKpiTile({
             {kpi.direction === 'UP' ? '▲' : kpi.direction === 'DOWN' ? '▼' : ''} {Math.abs(kpi.deltaPercent).toFixed(1)}%
           </Text>
         ) : kpi.reason ? (
-          <Text style={[styles.delta, { color: c.textDisabled }]} numberOfLines={2}>
+          <Text style={[styles.delta, { color: c.textSecondary }]} numberOfLines={2}>
             {kpi.reason}
           </Text>
         ) : (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,7 +11,8 @@ import Animated, {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useAppTheme } from '../../theme/useAppTheme';
-import { useMotionOK } from '../../theme/motion';
+import { successHaptic, useMotionOK } from '../../theme/motion';
+import { fontFamily, type StatusTone } from '../../theme/tokens';
 
 /**
  * State-change feedback (DS v1 §5, audit rule 14: "success/error feedback
@@ -43,15 +44,17 @@ export function useShake() {
  * A tick in a soft green circle that springs in. Decorative — the screen's own
  * words say what happened.
  */
-export function SuccessCheck({ size = 56, testID }: { size?: number; testID?: string }) {
+export function SuccessCheck({ size = 56, testID, haptic = false }: { size?: number; testID?: string; /** UX-P: buzz once when it appears. */ haptic?: boolean }) {
   const { ds, status } = useAppTheme();
   const ok = useMotionOK();
   const s = useSharedValue(ok ? 0.6 : 1);
   const o = useSharedValue(ok ? 0 : 1);
   React.useEffect(() => {
+    if (haptic) successHaptic();
     if (!ok) return;
     o.value = withTiming(1, { duration: 200 });
     s.value = withSpring(1, { damping: 12, stiffness: 240 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ok, o, s]);
   const style = useAnimatedStyle(() => ({ opacity: o.value, transform: [{ scale: s.value }] }));
   return (
@@ -68,7 +71,40 @@ export function SuccessCheck({ size = 56, testID }: { size?: number; testID?: st
   );
 }
 
+/**
+ * UX-P kit — the C2 "stamp": a tilted, bordered word that thumps down onto a
+ * card when its state changes ("ACCEPTED", "READY"). Scale 1.8 → 1 with a
+ * small overshoot, UI thread; reduce-motion: it simply appears. Decorative —
+ * the card's own status chip says the same thing to a screen reader.
+ */
+export function Stamp({ label, tone = 'success', testID }: { label: string; tone?: StatusTone; testID?: string }) {
+  const { status, ds } = useAppTheme();
+  const ok = useMotionOK();
+  const s = useSharedValue(ok ? 1.8 : 1);
+  const o = useSharedValue(ok ? 0 : 1);
+  React.useEffect(() => {
+    if (!ok) return;
+    o.value = withTiming(1, { duration: 160 });
+    s.value = withSequence(withTiming(0.92, { duration: 260, easing: Easing.out(Easing.cubic) }), withSpring(1, { damping: 10, stiffness: 260 }));
+  }, [ok, o, s]);
+  const style = useAnimatedStyle(() => ({ opacity: o.value, transform: [{ rotate: '-12deg' }, { scale: s.value }] }));
+  const ink = status[tone].fg;
+  return (
+    <Animated.View
+      testID={testID}
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.stamp, { borderColor: ink, backgroundColor: ds.surface }, style]}
+    >
+      <Text style={[styles.stampText, { color: ink }]} numberOfLines={1}>{label}</Text>
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
+  stamp: { borderWidth: 3, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 4, alignSelf: 'center' },
+  stampText: { fontFamily: fontFamily.sora700, fontSize: 16, letterSpacing: 1.5, textTransform: 'uppercase' },
   outer: { alignItems: 'center', justifyContent: 'center', alignSelf: 'center' },
   inner: { alignItems: 'center', justifyContent: 'center' },
 });

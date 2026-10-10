@@ -20,6 +20,7 @@ import { Rise, useMotionOK } from '../../../src/theme/motion';
 import { ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 import {
   useConfirmAccountDeletion, useRequestAccountDeletion, useMyPlaces, useLeavePlace, // M01 audit: + places
+  useRequestStaffRemoval, // P10S
 } from '../../../src/features/account/hooks';
 
 /**
@@ -65,6 +66,20 @@ export default function DeleteAccountScreen() {
   const otherLogins = places.data?.otherLogins ?? 0;
   const [alsoOtherLogins, setAlsoOtherLogins] = useState(false);
   const [placeNote, setPlaceNote] = useState<{ text: string; error: boolean } | null>(null);
+  // >>> P10S — staff: the business owner / HR removes the account; "Request removal".
+  const removal = useRequestStaffRemoval();
+  const employers = places.data?.employers ?? [];
+  const removalAsked = places.data?.removalRequestedToday === true;
+  const employerNames = employers.map((e) => (e.kind === 'PLATFORM' ? 'ResiSmart' : e.name)).filter(Boolean).join(', ');
+  const [removalNote, setRemovalNote] = useState<{ text: string; error: boolean } | null>(null);
+  const askRemoval = () => {
+    setRemovalNote(null);
+    removal.mutate(undefined, {
+      onSuccess: (r) => setRemovalNote({ text: r.alreadyRequested ? t('account.delete.removalAlready') : t('account.delete.removalSent'), error: false }),
+      onError: (e: unknown) => setRemovalNote({ text: apiErrorMessage(e, t('account.delete.sendFailed')), error: true }),
+    });
+  };
+  // <<< P10S
 
   const askLeave = (place: Place, flat?: PlaceFlat) => {
     Alert.alert(
@@ -121,8 +136,10 @@ export default function DeleteAccountScreen() {
         setCodeError(undefined);
         setCooldown(RESEND_SECONDS);
       },
+      // P10S — a staff refusal: re-read the places so the employer card shows.
+      onError: (e: unknown) => { if (apiErrorCode(e) === 'ACCOUNT_MANAGED_BY_EMPLOYER') void places.refetch(); },
     });
-  }, [request]);
+  }, [request, places]);
 
   const deleteNow = useCallback(() => {
     confirm
@@ -190,13 +207,14 @@ export default function DeleteAccountScreen() {
           ? t('account.delete.blockedTitle')
           // M01 audit: the other two 409 blocks are not "could not send".
           : apiErrorCode(request.error) === 'DELETION_SOLE_OWNER' || apiErrorCode(request.error) === 'DELETION_PLATFORM_STAFF'
+            || apiErrorCode(request.error) === 'ACCOUNT_MANAGED_BY_EMPLOYER' // P10S
             ? t('accountPlaces.blockedTitle')
             : t('account.delete.sendFailedTitle'),
         body: apiErrorMessage(request.error, t('account.delete.sendFailed')),
       }
     : null;
 
-  const busy = request.isPending || confirm.isPending || leave.isPending;
+  const busy = request.isPending || confirm.isPending || leave.isPending || removal.isPending;
   const canDelete = code.length === CODE_LENGTH && !busy;
 
   return (
@@ -233,7 +251,44 @@ export default function DeleteAccountScreen() {
         ) : null}
       </Rise>
 
+      {/* P10S — staff: managed by the employer; "Request removal" instead of delete. */}
+      {employers.length > 0 ? (
+        <Rise index={1} style={styles.section}>
+          <SectionTitle>{t('accountPlaces.fullTitle')}</SectionTitle>
+          <Card padding={18} testID="managed-by-employer">
+            <View style={styles.warningHead}>
+              <MaterialCommunityIcons name="briefcase-account-outline" size={22} color={status.brand.fg} />
+              <Text style={[typeScale.section, styles.flex, { color: ds.ink }]}>{t('account.delete.managedTitle')}</Text>
+            </View>
+            <Text style={[typeScale.detail, { color: ds.ink }]}>
+              {employerNames ? t('account.delete.managedBody', { names: employerNames }) : t('account.delete.managedBodyNoName')}
+            </Text>
+            <Text style={[typeScale.detail, { color: ds.muted }]}>{t('account.delete.managedAfter')}</Text>
+            {removalAsked ? (
+              <View style={[styles.alert, { backgroundColor: status.success.bg }]} accessibilityLiveRegion="polite">
+                <Text style={[typeScale.row, { color: status.success.fg }]}>{t('account.delete.removalSentToday')}</Text>
+              </View>
+            ) : (
+              <Button
+                label={t('account.delete.requestRemoval')}
+                icon="send-outline"
+                fullWidth
+                loading={removal.isPending}
+                disabled={busy}
+                onPress={askRemoval}
+              />
+            )}
+            {removalNote ? (
+              <Text style={[typeScale.detail, { color: removalNote.error ? status.danger.fg : status.success.fg }]} accessibilityLiveRegion="polite">
+                {removalNote.text}
+              </Text>
+            ) : null}
+          </Card>
+        </Rise>
+      ) : null}
+
       {/* 2. Delete the whole login — secondary, warned, 30 days. */}
+      {employers.length === 0 ? (<>
       <Rise index={1} style={styles.section}>
         <SectionTitle>{t('accountPlaces.fullTitle')}</SectionTitle>
         {/* <<< M01 audit */}
@@ -269,7 +324,7 @@ export default function DeleteAccountScreen() {
           ))}
           <TouchableOpacity onPress={openPolicy} accessibilityRole="link" style={styles.link}>
             <MaterialCommunityIcons name="open-in-new" size={16} color={link} />
-            <Text style={{ color: link, fontWeight: '600' }}>{t('account.delete.readPolicy')}</Text>
+            <Text style={{ color: link, fontWeight: '600', flexShrink: 1 }}>{t('account.delete.readPolicy')}</Text>
           </TouchableOpacity>
         </Card>
       </Rise>
@@ -366,6 +421,7 @@ export default function DeleteAccountScreen() {
           </Card>
         </Rise>
       )}
+      </>) : null}
     </Screen>
   );
 }
@@ -398,7 +454,9 @@ function PlaceCard({ place, busy, onLeave }: {
         </View>
       </View>
       {place.kind === 'PARTNER' ? (
-        <Text style={[typeScale.detail, { color: ds.muted }]}>{t('accountPlaces.businessNoteShop')}</Text>
+        <Text style={[typeScale.detail, { color: ds.muted }]}>
+          {place.managedByEmployer ? t('accountPlaces.staffPlaceNote') : t('accountPlaces.businessNoteShop')}
+        </Text>
       ) : (
         <>
           {place.flats.map((f) => (
@@ -419,7 +477,9 @@ function PlaceCard({ place, busy, onLeave }: {
               ) : null}
             </View>
           ))}
-          {place.leaveBlock === 'LEAVE_SOLE_ADMIN' ? (
+          {place.leaveBlock === 'ACCOUNT_MANAGED_BY_EMPLOYER' ? (
+            <Text style={[typeScale.detail, { color: ds.muted }]}>{t('accountPlaces.staffPlaceNote')}</Text>
+          ) : place.leaveBlock === 'LEAVE_SOLE_ADMIN' ? (
             <Text style={[typeScale.detail, { color: status.danger.fg }]}>{t('accountPlaces.soleAdminNote')}</Text>
           ) : place.leaveBlock === 'LEAVE_SOLE_OWNER' ? (
             <Text style={[typeScale.detail, { color: status.danger.fg }]}>{t('accountPlaces.soleOwnerNote', { flats: soleOwnerFlats.join(', ') })}</Text>

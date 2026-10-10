@@ -68,6 +68,8 @@ export interface MyReach {
   verificationStatus: string;
   showLivesHereBadge?: boolean;
   homeFlatLabel?: string;
+  /** P8A: the society office linked the owner's flat. Every login gets this; `homeFlatLabel` goes to owner logins only. */
+  hasHomeFlat?: boolean;
   canWiden: boolean;
   nearbyKm?: number;
   /** P2A (M04-Q13): the home society's account is paused (suspended by ResiSmart). */

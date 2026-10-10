@@ -15,6 +15,7 @@ import { istToday } from '../../../src/features/p2/dates';
 import { appointmentsApi, apptKeys } from '../../../src/features/appointments/api';
 import { StaffFilter, staffSections } from '../../../src/features/appointments/logic';
 import { StaffSectionView } from '../../../src/features/appointments/components/StaffSection';
+import { Rise } from '../../../src/theme/motion'; // M22
 
 /**
  * The day diary per person (S-priority): ◀ day ▶, a chip per person, then one
@@ -53,7 +54,7 @@ export default function AppointmentsCalendarScreen() {
     router.push(`/appointments/new?day=${day}${staffPart}` as Href);
   };
 
-  const body = q.isLoading ? <Loading c={c} />
+  const body = q.isLoading ? <Loading c={c} skeleton={4} />
     : q.isError ? <ErrorBlock c={c} message={apiErrorMessage(q.error, t('p2.common.loadFailed'))} onRetry={() => q.refetch()} />
     : !sections.length ? <EmptyBlock c={c} icon="calendar-blank-outline" title={t('p2.appointments.cal.empty')} />
     : wide ? (
@@ -62,7 +63,11 @@ export default function AppointmentsCalendarScreen() {
       </ScrollView>
     ) : (
       <View style={{ gap: 14 }}>
-        {sections.map((s) => <StaffSectionView key={s.key} c={c} section={s} day={day} onOpen={open} />)}
+        {sections.map((s, i) => (
+          <Rise key={s.key} index={Math.min(i, 5)}>
+            <StaffSectionView c={c} section={s} day={day} onOpen={open} />
+          </Rise>
+        ))}
       </View>
     );
 
@@ -87,16 +92,19 @@ export default function AppointmentsCalendarScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => q.refetch()} />}
       >
+        <Rise index={0}>
         <ActionRow>
           <PillButton c={c} tone="outline" icon="calendar-remove-outline" label={t('p2.appointments.nav.timeOff')} onPress={() => router.push('/appointments/time-off' as Href)} testID="appt-nav-timeoff" />
           <PillButton c={c} tone="outline" icon="repeat" label={t('p2.appointments.nav.series')} onPress={() => router.push('/appointments/series' as Href)} testID="appt-nav-series" />
           <PillButton c={c} tone="outline" icon="ticket-confirmation-outline" label={t('p2.appointments.nav.packages')} onPress={() => router.push('/appointments/packages' as Href)} testID="appt-nav-packages" />
         </ActionRow>
-        <DayStepper c={c} day={day} onChange={setDay} testID="appt-day" />
+        </Rise>
+        <Rise index={1}><DayStepper c={c} day={day} onChange={setDay} testID="appt-day" /></Rise>
         {staff.length ? (
           <ChoiceChips c={c} options={chips} value={[filter]} onChange={(v) => setFilter(v[0] ?? 'ALL')} testID="appt-staff-filter" />
         ) : null}
-        {body}
+        {/* M22 — re-keyed per day, so moving ◀ ▶ slides the new day in. */}
+        <Rise key={day} index={2}>{body}</Rise>
       </ScrollView>
     </Screen>
   );

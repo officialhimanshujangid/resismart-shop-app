@@ -18,6 +18,7 @@ import { GateCard } from '../../../src/features/jobs/components/GateCard';
 import { InvoiceCard, JobHeaderCard, QuotesCard, VisitsCard } from '../../../src/features/jobs/components/JobCards';
 import { AddVisitSheet } from '../../../src/features/jobs/components/AddVisitSheet';
 import { RaiseBillSheet } from '../../../src/features/jobs/components/RaiseBillSheet';
+import { JobStageTrack } from '../../../src/features/jobs/components/JobStageTrack'; // M22
 
 /**
  * One job: who and what, the GATE (the code big while the pass is live), the
@@ -42,7 +43,7 @@ export default function JobDetailScreen() {
 
   const refresh = () => qc.invalidateQueries({ queryKey: jobKeys.all() });
 
-  if (q.isPending) return <Screen title={t('p2.jobs.detail.title')} c={c}><Loading c={c} /></Screen>;
+  if (q.isPending) return <Screen title={t('p2.jobs.detail.title')} c={c}><Loading c={c} skeleton={5} /></Screen>;
   if (q.isError || !q.data) {
     return (
       <Screen title={t('p2.jobs.detail.title')} c={c}>
@@ -109,6 +110,7 @@ export default function JobDetailScreen() {
   const left = (
     <View style={{ gap: 12 }}>
       <JobHeaderCard c={c} job={d.job} />
+      <JobStageTrack stage={d.job.stage} billed={!!d.invoice} />
       <GateCard c={c} gate={d.gate} canRefresh={acts.refreshGate} refreshing={refreshing} onRefresh={refreshGate} message={gateMsg} />
       {error ? <Banner c={c} tone="error" body={error} testID="job-error" /> : null}
       {actions}
@@ -129,6 +131,7 @@ export default function JobDetailScreen() {
       title={d.job.code}
       subtitle={d.job.serviceName}
       c={c}
+      rise
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3000}>{toast ?? ''}</Snackbar>}
     >
       <TwoPane left={left} right={right} />

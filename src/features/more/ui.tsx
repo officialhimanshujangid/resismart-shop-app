@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
+import { StyleSheet, View, ScrollView } from 'react-native';
 import { ActivityIndicator, IconButton, Text } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -11,6 +11,11 @@ import { fontFamily, radius, MIN_TOUCH } from '../../theme/tokens';
 import { useAppTheme } from '../../theme/useAppTheme';
 import { useIsOnline } from '../../hooks/useIsOnline';
 import { HelpButton } from '../help/HelpButton';
+// M19 — motion for every More-area screen: rise + stagger (opt-in), press scale, skeletons, error shake.
+import { PressableScale, Rise } from '../../theme/motion';
+import { SkeletonList } from '../../components/ui/States';
+import { useShake } from '../../components/ui/Feedback';
+import Animated from 'react-native-reanimated';
 
 /**
  * Shared chrome for every screen under More — parties, staff, reports,
@@ -27,6 +32,7 @@ export function Screen({
   scroll = true,
   floating,
   help = true,
+  rise = false,
 }: {
   title: string;
   subtitle?: string;
@@ -51,8 +57,19 @@ export function Screen({
    * False on the Help screens themselves.
    */
   help?: boolean;
+  /**
+   * M19 — the DS screen-open motion: each top-level child rises in, 100 ms apart
+   * (capped, so a long page never waits). Opt-in so screens that run their own
+   * Rise are not animated twice; reduce-motion shows everything at once.
+   */
+  rise?: boolean;
 }) {
   const { t } = useTranslation();
+  const body = rise
+    ? React.Children.toArray(children).map((child, i) => (
+      <Rise key={(child as { key?: React.Key }).key ?? i} index={Math.min(i, 6)}>{child}</Rise>
+    ))
+    : children;
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top']}>
       <View style={styles.header}>
@@ -71,7 +88,7 @@ export function Screen({
       </View>
       {scroll ? (
         <ScrollView style={styles.body} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          {children}
+          {body}
         </ScrollView>
       ) : (
         <View style={styles.body}>{children}</View>
@@ -93,9 +110,23 @@ export function Screen({
  * appended to: "Loading your payments…" is not what is happening, and the
  * reason is the same on every screen.
  */
-export function Loading({ c, label }: { c: ColorScheme; label?: string }) {
+export function Loading({ c, label, skeleton }: { c: ColorScheme; label?: string; skeleton?: number }) {
   const { t } = useTranslation();
   const online = useIsOnline();
+  // M19 — `skeleton={n}`: n row-shaped placeholders instead of a lone spinner (DS §5).
+  // The offline line still shows, because a held query never resolves on its own.
+  if (skeleton) {
+    return (
+      <View style={styles.skeletonBlock}>
+        <SkeletonList rows={skeleton} />
+        {!online || label ? (
+          <Text style={[styles.centerText, { color: c.textSecondary }]}>
+            {online ? label : t('common.offlineWaiting')}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
   return (
     <View style={styles.centerBlock}>
       <ActivityIndicator size="large" color={c.primary} />
@@ -108,16 +139,19 @@ export function Loading({ c, label }: { c: ColorScheme; label?: string }) {
 
 export function ErrorBlock({ c, message, onRetry }: { c: ColorScheme; message: string; onRetry?: () => void }) {
   const { t } = useTranslation();
+  // M19 — one small shake when an error appears (or its text changes); none under reduce-motion.
+  const { style: shakeStyle, shake } = useShake();
+  React.useEffect(() => { shake(); }, [message, shake]);
   return (
-    <View style={styles.centerBlock}>
+    <Animated.View style={[styles.centerBlock, shakeStyle]} accessibilityLiveRegion="polite">
       <MaterialCommunityIcons name="alert-circle-outline" size={32} color={c.error} />
       <Text style={[styles.centerText, { color: c.textPrimary }]}>{message}</Text>
       {onRetry ? (
-        <Pressable onPress={onRetry} style={[styles.retryBtn, { borderColor: c.primary }]}>
+        <PressableScale onPress={onRetry} accessibilityRole="button" style={[styles.retryBtn, { borderColor: c.primary }]}>
           <Text style={{ color: c.primary, fontWeight: '600' }}>{t('common.tryAgain')}</Text>
-        </Pressable>
+        </PressableScale>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -166,11 +200,20 @@ export function Row({
           <Text style={[styles.rowSubtitle, { color: c.textSecondary }]} numberOfLines={2}>{subtitle}</Text>
         ) : null}
       </View>
-      {right ?? (onPress ? <MaterialCommunityIcons name="chevron-right" size={22} color={c.textDisabled} /> : null)}
+      {right ?? (onPress ? <MaterialCommunityIcons name="chevron-right" size={22} color={c.iconMuted} /> : null)}
     </View>
   );
   if (!onPress) return content;
-  return <Pressable onPress={onPress}>{content}</Pressable>;
+  // M19 — press scale (DS §5) and a real button for screen readers.
+  return (
+    <PressableScale
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={[title, subtitle].filter(Boolean).join('. ')}
+    >
+      {content}
+    </PressableScale>
+  );
 }
 
 export function Card({ c, children, style }: { c: ColorScheme; children: React.ReactNode; style?: object }) {
@@ -198,8 +241,9 @@ export function ChipRow<T extends string>({
       {options.map((o) => {
         const active = o.key === value;
         return (
-          <Pressable
+          <PressableScale
             key={o.key}
+            scaleTo={0.95}
             onPress={() => onChange(o.key)}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
@@ -210,7 +254,7 @@ export function ChipRow<T extends string>({
             ]}
           >
             <Text style={[styles.chipText, { color: active ? c.textInverse : c.textPrimary }]}>{o.label}</Text>
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>
@@ -228,6 +272,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12, marginTop: 1 },
   body: { flex: 1 },
   scrollContent: { padding: 18, paddingBottom: 40, gap: 12 },
+  skeletonBlock: { gap: 10, paddingVertical: 4 },
   centerBlock: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 48, paddingHorizontal: 24 },
   centerText: { fontSize: 13, textAlign: 'center', lineHeight: 19 },
   emptyTitle: { fontSize: 15, fontWeight: '600', textAlign: 'center' },

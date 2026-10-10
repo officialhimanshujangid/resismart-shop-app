@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +8,7 @@ import { radii, themeColors } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
 import { Sheet } from '../../p2/ui';
 import { useVariants } from '../hooks';
+import { SkeletonList } from '../../../components/ui';
 
 /** What the till needs from a size / type to bill it (a product row). */
 export interface VariantChoice {
@@ -48,7 +49,7 @@ export function VariantPickerSheet({
   const rows = (variants ?? (fetched.data as VariantChoice[] | undefined) ?? []).filter((v) => v.isActive !== false);
   return (
     <Sheet visible={visible} onDismiss={onDismiss} title={t('commerce.counter.whichOne', { name: parentName })} testID="variant-picker">
-      {!variants && fetched.isPending ? <ActivityIndicator color={c.primary} /> : null}
+      {!variants && fetched.isPending ? <SkeletonList rows={2} /> : null}
       {rows.map((v) => {
         const out = v.trackStock !== false && v.stockQty !== undefined && v.stockQty <= 0;
         return (

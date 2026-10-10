@@ -43,7 +43,7 @@ export function UsageMeterBar({ cap, c }: { cap: CapacityView; c: ColorScheme })
         {/* `noun` is the SERVER's word and arrives in English — the same trade
             `features/billing/components/UsageMeter.tsx` documents. The fallback
             when the server sends none IS ours, so that one is translated. */}
-        <Text style={[styles.text, { color: c.textPrimary }]}>
+        <Text style={[styles.text, { color: c.textPrimary }, { flexShrink: 1 }]}>
           {t('planItems.ofLimit', { used: cap.used, limit: cap.limit }) /* X2F */}
         </Text>
         {cap.atLimit && <Text style={[styles.atLimit, { color: c.error }]}>{t('catalog.meter.limitReached')}</Text>}

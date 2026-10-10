@@ -104,7 +104,7 @@ export function HeroHeader({
               ]}
             >
               {ch.live ? <LiveDot color="#B8F5CF" size={7} /> : null}
-              <Text style={styles.chipText}>{ch.label}</Text>
+              <Text style={[styles.chipText, { flexShrink: 1 }]}>{ch.label}</Text>
             </View>
           ))}
         </Rise>

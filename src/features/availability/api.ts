@@ -27,6 +27,20 @@ export const availabilityApi = {
     }
   },
 
+  /**
+   * P9A (Owner Q7): EVERY schedule at once — the business's own (`staffId: null`)
+   * and each person's own hours. Same call the website's Working hours screen makes.
+   */
+  list: async (): Promise<AvailabilityRow[]> => {
+    const res = await apiClient.get<ApiEnvelope<AvailabilityRow[]>>('/partners/me/availability');
+    const rows = unwrap(res.data);
+    return Array.isArray(rows) ? rows : [];
+  },
+
+  /** P9A Q7: "Back on the business's hours" — removes ONE person's own hours (never the business's). */
+  removeOverride: (staffId: string) =>
+    apiClient.delete<ApiEnvelope<unknown>>(`/partners/me/availability/${encodeURIComponent(staffId)}`).then((r) => r.data),
+
   /** Upsert — same request whether this is the first save or the fiftieth. */
   save: (body: Record<string, unknown>) =>
     apiClient.put<ApiEnvelope<AvailabilityRow>>('/partners/me/availability', body).then((r) => unwrap(r.data)),

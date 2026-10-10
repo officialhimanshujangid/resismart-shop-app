@@ -190,7 +190,7 @@ for (const [code, seg] of COMMERCE) {
 // >>> X2F — one-factor partner plans: the catalogue-items codes a SHOP can meet
 // (the plans-editor codes are owner-only and stay out of this catalogue).
 const PLAN_ITEMS = entries(block(read('plan-items-codes.ts'), 'export const PLAN_ITEMS_CODES = {'));
-for (const code of ['PLAN_TOO_FEW_ITEMS', 'CATALOG_ITEMS_LIMIT', 'CATALOG_ITEMS_LIMIT_BULK', 'ITEM_VIEW_ONLY', 'PARTNER_WHATSAPP_OFF']) {
+for (const code of ['PLAN_TOO_FEW_ITEMS', 'CATALOG_ITEMS_LIMIT', 'CATALOG_ITEMS_LIMIT_BULK', 'ITEM_VIEW_ONLY', 'ITEM_VIEW_ONLY_SALE' /* M23 */, 'PARTNER_WHATSAPP_OFF']) {
   const seg = PLAN_ITEMS.get(code);
   if (seg) backend.set(code, { en: field(seg, 'en') ?? '', hi: field(seg, 'hi') ?? '' });
 }

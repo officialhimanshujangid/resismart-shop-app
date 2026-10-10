@@ -156,7 +156,7 @@ export default function PaymentsScreen() {
           }
           ListEmptyComponent={
             query.isPending ? (
-              <Loading c={c} label={t('payments.list.loading')} />
+              <Loading c={c} skeleton={4} label={t('payments.list.loading')} />
             ) : query.isError ? (
               <ErrorBlock c={c} message={apiErrorMessage(query.error, t('payments.list.loadFailed'))} onRetry={() => void query.refetch()} />
             ) : (
@@ -236,7 +236,7 @@ function PaymentRow({
       <View style={styles.rowRight}>
         <Text style={[styles.amount, { color: c.textPrimary }]}>{formatPaise(item.amountPaise)}</Text>
         {cancelled ? (
-          <Text style={[styles.cancelledLabel, { color: c.textDisabled }]}>{t('payments.list.cancelledLabel')}</Text>
+          <Text style={[styles.cancelledLabel, { color: c.textSecondary }]}>{t('payments.list.cancelledLabel')}</Text>
         ) : canManage ? (
           <Button
             mode="text"

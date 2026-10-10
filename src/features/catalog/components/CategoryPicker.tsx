@@ -259,7 +259,7 @@ function Chip({ label, active, onPress, c }: { label: string; active: boolean; o
         { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider },
       ]}
     >
-      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }

@@ -64,10 +64,22 @@ export function useLeavePlace() {
   return useMutation({
     mutationFn: (body: { societyId: string; flatId?: string }) => accountApi.leave(body),
     onSuccess: (res) => {
-      queryClient.setQueryData(PLACES_KEY, (old: { otherLogins?: number } | undefined) => ({
+      queryClient.setQueryData(PLACES_KEY, (old: { otherLogins?: number; employers?: unknown[]; removalRequestedToday?: boolean } | undefined) => ({
+        ...(old ?? {}), // P10S — keep employers / removalRequestedToday
         places: res.places,
         otherLogins: old?.otherLogins ?? 0,
       }));
+    },
+  });
+}
+
+/** P10S — "Request removal" (staff): the list then says it was sent today. */
+export function useRequestStaffRemoval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => accountApi.requestRemoval(),
+    onSuccess: () => {
+      queryClient.setQueryData(PLACES_KEY, (old: Record<string, unknown> | undefined) => (old ? { ...old, removalRequestedToday: true } : old));
     },
   });
 }

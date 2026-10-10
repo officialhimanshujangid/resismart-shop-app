@@ -47,6 +47,14 @@ jest.mock('react-native-reanimated', () => {
   return { __esModule: true, ...actual, default: actual.default, useReducedMotion: () => true };
 });
 
+/*
+  UX-P (2026-10-10): gesture-handler's own jest setup — its native module is
+  mocked the way the library documents, so the kit's gesture pieces
+  (SwipeAction, SnapSheet's GestureHandlerRootView/GestureDetector) render in
+  tests. Nothing about a screen's behaviour changes.
+*/
+require('react-native-gesture-handler/jestSetup');
+
 require('../../i18n').initI18n('en');
 
 /*

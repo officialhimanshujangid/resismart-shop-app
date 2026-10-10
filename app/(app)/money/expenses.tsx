@@ -93,7 +93,7 @@ export default function ExpensesScreen() {
           </ActionRow>
         )}
       </View>
-      {query.isPending ? <Loading c={c} /> : query.isError && !rows.length ? (
+      {query.isPending ? <Loading c={c} skeleton={4} /> : query.isError && !rows.length ? (
         <ErrorBlock c={c} message={apiErrorMessage(query.error, t('money.loadFailed'))} onRetry={() => query.refetch()} />
       ) : (
         <FlatList

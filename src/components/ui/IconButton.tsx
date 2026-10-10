@@ -48,7 +48,7 @@ export function IconButton({
     glass: { bg: 'rgba(255,255,255,0.18)', fg: '#FFFFFF', border: 'rgba(255,255,255,0.4)' },
     soft: { bg: ds.primarySoft, fg: ds.primary },
     ink: { bg: ds.inkButton, fg: ds.onInkButton },
-    plain: { bg: 'transparent', fg: ds.faint },
+    plain: { bg: 'transparent', fg: ds.iconMuted },
   };
   const l = look[variant];
   const showBadge = badge !== undefined && badge !== 0 && badge !== '';
@@ -77,8 +77,9 @@ export function IconButton({
       ]}
     >
       <MaterialCommunityIcons name={icon as never} size={Math.round(box * 0.48)} color={l.fg} />
+      {/* E-VISUAL-APPS: coral-600 like the tab-bar badge — white on coral-400 was 2.3:1 */}
       {showBadge ? (
-        <View style={[styles.badge, { backgroundColor: palette.coral[400] }]} pointerEvents="none">
+        <View style={[styles.badge, { backgroundColor: palette.coral[600] }]} pointerEvents="none">
           <Text style={styles.badgeText} numberOfLines={1}>
             {typeof badge === 'number' && badge > 99 ? '99+' : String(badge)}
           </Text>

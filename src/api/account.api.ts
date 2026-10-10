@@ -37,9 +37,18 @@ export interface Place {
   flats: PlaceFlat[];
   soleAdmin: boolean;
   canLeave: boolean;
-  leaveBlock: 'LEAVE_SOLE_ADMIN' | 'LEAVE_SOLE_OWNER' | null;
+  leaveBlock: 'LEAVE_SOLE_ADMIN' | 'LEAVE_SOLE_OWNER' | 'ACCOUNT_MANAGED_BY_EMPLOYER' | null;
+  /** P10S — this person works here; only the owner / HR can take them off. */
+  managedByEmployer?: boolean;
 }
-export interface MyPlaces { places: Place[]; otherLogins: number }
+/** P10S — who employs this person (a business, a society, or ResiSmart itself). */
+export interface Employer { kind: 'SOCIETY' | 'PARTNER' | 'PLATFORM'; id?: string; name: string }
+export interface MyPlaces {
+  places: Place[]; otherLogins: number;
+  /** P10S — staff logins cannot delete themselves; they ask the owner / HR. */
+  employers: Employer[];
+  removalRequestedToday: boolean;
+}
 // <<< M01 audit
 
 export const accountApi = {
@@ -65,8 +74,20 @@ export const accountApi = {
   places: () =>
     apiClient.get<ApiEnvelope<MyPlaces>>('/me/account/places').then((r): MyPlaces => {
       const d = (unwrap(r.data) ?? {}) as Partial<MyPlaces>;
-      return { places: Array.isArray(d.places) ? d.places : [], otherLogins: Number(d.otherLogins) || 0 };
+      return {
+        places: Array.isArray(d.places) ? d.places : [], otherLogins: Number(d.otherLogins) || 0,
+        employers: Array.isArray(d.employers) ? d.employers : [], // P10S
+        removalRequestedToday: d.removalRequestedToday === true, // P10S
+      };
     }),
+  /**
+   * P10S — POST /me/account/removal-request: a staff login cannot delete itself;
+   * this tells the business owner / staff managers (or the society office), once a day.
+   */
+  requestRemoval: () =>
+    apiClient
+      .post<ApiEnvelope<{ alreadyRequested?: boolean }>>('/me/account/removal-request', {})
+      .then((r) => ({ alreadyRequested: (unwrap(r.data) as { alreadyRequested?: boolean } | undefined)?.alreadyRequested === true })),
   /** POST /me/account/leave — one society (no flatId) or one flat; every other place stays. */
   leave: (body: { societyId: string; flatId?: string }) =>
     apiClient

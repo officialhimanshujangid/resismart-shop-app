@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +10,8 @@ import { istTimeOf } from '../../p2/dates';
 import { Pill } from '../../p2/ui';
 import { statusTone } from '../logic';
 import type { CalendarBooking, CalendarTimeOff } from '../types';
+import { PressableScale } from '../../../theme/motion'; // M22 — press feedback
+import { fontFamily } from '../../../theme/tokens'; // M22 — Sora for the time
 
 /** One booking in a staff section: the time big, then who and what, the status and small markers. */
 export function BookingCard({ c, b, onPress }: { c: ColorScheme; b: CalendarBooking; onPress: () => void }) {
@@ -17,7 +19,7 @@ export function BookingCard({ c, b, onPress }: { c: ColorScheme; b: CalendarBook
   const range = `${istTimeOf(b.slotStart)}–${istTimeOf(b.slotEnd)}`;
   const statusKey = (STATUS_LABEL_KEYS as Record<string, string>)[b.status];
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${range} ${b.customerName}`}
@@ -41,7 +43,7 @@ export function BookingCard({ c, b, onPress }: { c: ColorScheme; b: CalendarBook
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -67,7 +69,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderRadius: radii.card, borderWidth: StyleSheet.hairlineWidth,
     padding: 12, minHeight: 64,
   },
-  time: { fontSize: 16, fontWeight: '700', minWidth: 92 },
+  time: { fontSize: 16, fontFamily: fontFamily.sora600, minWidth: 92 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' },
   off: {
     flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radii.card, borderWidth: 1, borderStyle: 'dashed',

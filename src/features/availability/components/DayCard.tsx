@@ -31,7 +31,7 @@ export function DayCard({
   return (
     <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]}>
       <Pressable onPress={onToggleOpen} disabled={disabled} style={styles.headerRow}>
-        <Text style={[styles.dayName, { color: c.textPrimary }]}>{t(DAY_NAME_KEYS[day.day])}</Text>
+        <Text style={[styles.dayName, { color: c.textPrimary }, { flexShrink: 1 }]}>{t(DAY_NAME_KEYS[day.day])}</Text>
         <Switch value={day.isOpen} onValueChange={onToggleOpen} disabled={disabled} />
       </Pressable>
 
@@ -55,7 +55,7 @@ export function DayCard({
               style={styles.linkRow}
             >
               <MaterialCommunityIcons name="plus" size={15} color={c.primary} />
-              <Text style={[styles.linkText, { color: c.primary }]}>{t('availability.day.anotherWindow')}</Text>
+              <Text style={[styles.linkText, { color: c.primary }, { flexShrink: 1 }]}>{t('availability.day.anotherWindow')}</Text>
             </Pressable>
           )}
 
@@ -71,7 +71,7 @@ export function DayCard({
                       onPress={() => !disabled && onPatch({ slotMin: m })}
                       style={[styles.slotChip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
                     >
-                      <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 11, fontWeight: '600' }}>{t('availability.day.slotChip', { count: m })}</Text>
+                      <Text style={{ color: active ? c.textInverse : c.textSecondary, fontSize: 11, fontWeight: '600' }}>{t('availability.day.slotChip', { count: m })}</Text>
                     </Pressable>
                   );
                 })}
@@ -80,11 +80,11 @@ export function DayCard({
           </View>
 
           <View style={styles.capacityRow}>
-            <Text style={[styles.smallLabel, { color: c.textSecondary }]}>{t('availability.day.capacity')}</Text>
+            <Text style={[styles.smallLabel, { color: c.textSecondary }, { flexShrink: 1 }]}>{t('availability.day.capacity')}</Text>
             <View style={styles.stepper}>
               <IconButton icon="minus" size={16} iconColor={c.textPrimary} disabled={disabled || day.capacityPerSlot <= 1}
                 onPress={() => onPatch({ capacityPerSlot: Math.max(1, day.capacityPerSlot - 1) })} />
-              <Text style={[styles.capacityValue, { color: c.textPrimary }]}>{day.capacityPerSlot}</Text>
+              <Text style={[styles.capacityValue, { color: c.textPrimary }, { flexShrink: 1 }]}>{day.capacityPerSlot}</Text>
               <IconButton icon="plus" size={16} iconColor={c.textPrimary} disabled={disabled}
                 onPress={() => onPatch({ capacityPerSlot: Math.min(100, day.capacityPerSlot + 1) })} />
             </View>
@@ -94,7 +94,7 @@ export function DayCard({
             !disabled && (
               <Pressable onPress={() => onPatchBreaks([{ day: day.day, from: '13:00', to: '14:00' }])} style={styles.linkRow}>
                 <MaterialCommunityIcons name="coffee-outline" size={15} color={c.primary} />
-                <Text style={[styles.linkText, { color: c.primary }]}>{t('availability.day.addBreak')}</Text>
+                <Text style={[styles.linkText, { color: c.primary }, { flexShrink: 1 }]}>{t('availability.day.addBreak')}</Text>
               </Pressable>
             )
           ) : (

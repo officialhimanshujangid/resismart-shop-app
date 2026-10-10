@@ -113,10 +113,10 @@ export default function BillFromGrnsScreen() {
   };
 
   const title = t('purchases.bill.title');
-  if (list.isPending) return <Screen c={c} title={title}><Loading c={c} /></Screen>;
+  if (list.isPending) return <Screen c={c} rise title={title}><Loading c={c} skeleton={3} /></Screen>;
   if (list.isError) {
     return (
-      <Screen c={c} title={title}>
+      <Screen c={c} rise title={title}>
         <ErrorBlock c={c} message={apiErrorMessage(list.error, t('purchases.loadFailed'))} onRetry={() => list.refetch()} />
       </Screen>
     );
@@ -176,6 +176,7 @@ export default function BillFromGrnsScreen() {
 
   return (
     <Screen
+      rise
       c={c}
       title={title}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}

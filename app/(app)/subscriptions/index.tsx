@@ -15,6 +15,8 @@ import { subKeys, subscriptionsApi } from '../../../src/features/subscriptions/a
 import { SUBSCRIPTION_KINDS, SubscriptionKind, SubscriptionStatus } from '../../../src/features/subscriptions/types';
 import { HubDoor } from '../../../src/features/subscriptions/components/HubDoor';
 import { SubscriptionListRow } from '../../../src/features/subscriptions/components/SubscriptionListRow';
+import { Segmented } from '../../../src/components/ui'; // M22 — sliding pill
+import { Rise } from '../../../src/theme/motion'; // M22
 
 /**
  * The subscriptions hub. The daily doors first (Today's deliveries, Mark
@@ -78,10 +80,10 @@ export default function SubscriptionsHub() {
             inputStyle={{ fontSize: 14 }}
             testID="sub-search"
           />
-          <ChipRow<StatusKey>
-            c={c}
+          <Segmented<StatusKey>
             value={status}
             onChange={setStatus}
+            testID="sub-status"
             options={(['ACTIVE', 'ENDED', 'ALL'] as StatusKey[]).map((k) => ({
               key: k, label: k === 'ALL' ? t('p2.common.all') : t(`p2.subscriptions.status.${k}`),
             }))}
@@ -100,7 +102,7 @@ export default function SubscriptionsHub() {
   );
 
   const empty = !canView ? null
-    : list.isPending ? <Loading c={c} />
+    : list.isPending ? <Loading c={c} skeleton={5} />
       : list.isError ? <ErrorBlock c={c} message={apiErrorMessage(list.error, t('p2.common.loadFailed'))} onRetry={() => void list.refetch()} />
         : <EmptyBlock c={c} icon="calendar-sync-outline" title={t('p2.subscriptions.hub.empty')} body={canManage ? t('p2.subscriptions.hub.emptyBody') : undefined} />;
 
@@ -114,9 +116,16 @@ export default function SubscriptionsHub() {
         ItemSeparatorComponent={Gap}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (index < 8 ? (
+          // M22 — the first screenful rises in on a stagger; later rows appear at once.
+          <Rise index={Math.min(index, 6)}>
+            <SubscriptionListRow c={c} row={item} onPress={() => router.push(`/subscriptions/${item.id}` as Href)} />
+          </Rise>
+        ) : (
           <SubscriptionListRow c={c} row={item} onPress={() => router.push(`/subscriptions/${item.id}` as Href)} />
-        )}
+        ))}
+        initialNumToRender={10}
+        windowSize={9}
         ListFooterComponent={canView && (list.data?.total ?? 0) > rows.length ? (
           <Text style={{ color: c.textSecondary, fontSize: 12, marginTop: 10 }}>
             {t('p2.common.showing', { shown: rows.length, total: list.data?.total ?? 0 })}

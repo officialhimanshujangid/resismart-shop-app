@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, useColorScheme, View } from 'react-native';
+import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
 import { IconButton, Text, TextInput } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +12,7 @@ import { Sheet } from '../../p2/ui';
 import { useDiscardHold, useHoldBill, useHolds, useResumeHold } from '../hooks';
 import { holdMinutesLeft } from '../logic';
 import type { HoldInput, ResumeResult } from '../types';
+import { SkeletonList } from '../../../components/ui';
 
 /**
  * Hold a bill (D-5): a saved cart — no number, no stock, no ledger — kept 24 h,
@@ -106,7 +107,7 @@ export function HoldTraySheet({
   return (
     <Sheet visible={visible} onDismiss={onDismiss} title={t('commerce.counter.heldBills')} testID="hold-tray">
       {warning && rows.length ? <Text style={{ color: c.warning, fontSize: 12.5, fontWeight: '600' }}>{warning}</Text> : null}
-      {holds.isPending ? <ActivityIndicator color={c.primary} /> : null}
+      {holds.isPending ? <SkeletonList rows={2} /> : null}
       {holds.isError ? <Text style={{ color: c.error }}>{apiErrorMessage(holds.error)}</Text> : null}
       {holds.isSuccess && rows.length === 0 ? (
         <Text style={{ color: c.textSecondary }}>{t('commerce.counter.noHeld')}</Text>

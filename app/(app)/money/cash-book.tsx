@@ -13,7 +13,9 @@ import { formatI18nDate } from '../../../src/i18n';
 import { DateField } from '../../../src/components/DateField';
 import { CashBookRow, moneyApi } from '../../../src/features/money/api';
 import { ChipRow, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
-import { StatGrid, StatTile, useIsWide } from '../../../src/features/p1/ui';
+import { StatGrid, useIsWide } from '../../../src/features/p1/ui';
+import { MoneyStatTile } from '../../../src/features/money/components/MoneyStatTile';
+import { Rise } from '../../../src/theme/motion';
 import { isoEndOfDay, isoOfDay, monthStartYmd, todayYmd } from '../../../src/features/p1/dates';
 
 /**
@@ -37,7 +39,9 @@ export default function CashBookScreen() {
   });
   const shown = accountId || book.data?.account?._id || '';
 
-  const renderRow = ({ item }: { item: CashBookRow }) => (
+  // M21: the first screenful of book lines rises in; FlatList keeps the rest virtualised.
+  const renderRow = ({ item, index }: { item: CashBookRow; index: number }) => (
+    <Rise index={Math.min(index, 6)}>
     <View style={[styles.row, { backgroundColor: c.surface }]}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ color: c.textPrimary, fontWeight: '600' }} numberOfLines={1}>
@@ -54,6 +58,7 @@ export default function CashBookScreen() {
         <Text style={{ color: c.textSecondary, fontSize: 11 }}>{t('money.book.balance', { amount: formatPaise(item.balancePaise) })}</Text>
       </View>
     </View>
+    </Rise>
   );
 
   return (
@@ -66,12 +71,12 @@ export default function CashBookScreen() {
         </View>
         {book.data && (
           <StatGrid>
-            <StatTile c={c} label={t('money.book.opening')} value={formatPaise(book.data.openingPaise)} />
-            <StatTile c={c} label={t('money.book.closing')} value={formatPaise(book.data.closingPaise)} testID="cashbook-closing" />
+            <MoneyStatTile c={c} label={t('money.book.opening')} paise={book.data.openingPaise} />
+            <MoneyStatTile c={c} label={t('money.book.closing')} paise={book.data.closingPaise} testID="cashbook-closing" />
           </StatGrid>
         )}
       </View>
-      {book.isPending ? <Loading c={c} /> : book.isError ? (
+      {book.isPending ? <Loading c={c} skeleton={4} /> : book.isError ? (
         <ErrorBlock c={c} message={apiErrorMessage(book.error, t('money.loadFailed'))} onRetry={() => book.refetch()} />
       ) : (
         <FlatList

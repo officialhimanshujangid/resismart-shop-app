@@ -185,7 +185,7 @@ function BusyHours({ c, grid }: { c: ColorScheme; grid: HeatCell[][] }) {
         </View>
       ))}
       <View style={styles.legend}>
-        <Text style={{ color: c.textSecondary, fontSize: 11 }}>{t('commerce.insights.quiet')}</Text>
+        <Text style={{ color: c.textSecondary, fontSize: 11, flexShrink: 1 }}>{t('commerce.insights.quiet')}</Text>
         {[1, 2, 3, 4].map((l) => <View key={l} style={[styles.legendCell, { backgroundColor: `${c.primary}${['', '33', '66', 'A6', 'FF'][l]}` }]} />)}
         <Text style={{ color: c.textSecondary, fontSize: 11 }}>{t('commerce.insights.busy')}</Text>
       </View>

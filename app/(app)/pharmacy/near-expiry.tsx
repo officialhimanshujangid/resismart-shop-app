@@ -4,6 +4,7 @@ import { Snackbar, Text } from 'react-native-paper';
 import { router, type Href } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { Rise } from '../../../src/theme/motion'; // M20 — first screenful of rows rises in
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -54,7 +55,7 @@ export default function NearExpiryScreen() {
       )}
     >
       {query.isPending ? (
-        <Loading c={c} />
+        <Loading c={c} skeleton={3} />
       ) : query.isError ? (
         <ErrorBlock c={c} message={apiErrorMessage(query.error, t('p2.pharmacy.nearExpiry.loadFailed'))} onRetry={() => query.refetch()} />
       ) : (
@@ -74,7 +75,8 @@ export default function NearExpiryScreen() {
               </Text>
             </View>
           )}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
+            <Rise index={index < 8 ? Math.min(index, 5) + 1 : 0} duration={index < 8 ? undefined : 1}>
             <BatchRowItem
               c={c}
               row={item}
@@ -91,7 +93,10 @@ export default function NearExpiryScreen() {
                 />
               ) : undefined}
             />
+            </Rise>
           )}
+          initialNumToRender={10}
+          windowSize={9}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           contentContainerStyle={styles.list}
           onRefresh={() => void query.refetch()}

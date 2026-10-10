@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-na
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { MIN_TOUCH, radius, typeScale, type TintName } from '../../theme/tokens';
+import { MIN_TOUCH, radius, tileDepth, typeScale, type TintName } from '../../theme/tokens';
 import { useAppTheme } from '../../theme/useAppTheme';
 import { PressableScale } from '../../theme/motion';
 
@@ -46,7 +46,7 @@ export function ListRow({
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const { ds, tints, status, shadow } = useAppTheme();
+  const { ds, tints, status, shadow, isDark } = useAppTheme();
   const tn = tints[danger ? 'sos' : tint];
   const showChevron = chevron ?? (!!onPress && !trailing && !amount);
   const amountColor =
@@ -55,7 +55,7 @@ export function ListRow({
   const content = (
     <>
       {icon ? (
-        <View style={styles.iconTile}>
+        <View style={[styles.iconTile, tileDepth(tn, isDark, 'soft')]}>
           <LinearGradient colors={[tn.from, tn.to]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, styles.iconFill]} />
           <MaterialCommunityIcons name={icon as never} size={21} color={tn.icon} />
         </View>
@@ -72,7 +72,7 @@ export function ListRow({
       </View>
       {amount ? <Text style={[typeScale.number, styles.amount, { color: amountColor }]}>{amount}</Text> : null}
       {trailing}
-      {showChevron ? <MaterialCommunityIcons name="chevron-right" size={22} color={ds.faint} /> : null}
+      {showChevron ? <MaterialCommunityIcons name="chevron-right" size={22} color={ds.iconMuted} /> : null}
     </>
   );
 

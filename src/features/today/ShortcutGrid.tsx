@@ -8,10 +8,9 @@ import { useTranslation } from 'react-i18next';
 
 import type { ColorScheme } from '../../constants/colors';
 import { SectionTitle } from '../../components/ui';
-import { motion, radius, type TintName } from '../../theme/tokens';
+import { motion, radius, tileDepth, type TintName } from '../../theme/tokens';
 import { useAppTheme } from '../../theme/useAppTheme';
 import { PressableScale, Rise } from '../../theme/motion';
-import { withAlpha } from '../../theme/colorUtils';
 import { usePartnerEntitlements } from '../../hooks';
 import type { PartnerAccessModule, PartnerModule } from '../../types/api-contract.generated';
 import { useCommerceAccess, type CommerceAccess } from '../commerce/access';
@@ -131,15 +130,13 @@ const TILE_TINT: Record<string, TintName> = {
 function ShortcutTileButton({
   label, icon, tint, labelSlot, onPress, testID,
 }: { label: string; icon: string; tint: TintName; labelSlot: number; onPress: () => void; testID: string }) {
-  const { tints, ds, isDark, shadow } = useAppTheme();
+  const { tints, ds, isDark } = useAppTheme();
   const tn = tints[tint];
-  // Light `tints.green.icon` (#2E9C68) is 2.9:1 on its own gradient — below the
-  // 3:1 an icon needs (rule 17). The deeper brand token reads at ≈4:1. Kit/theme
-  // change requested (M04-H); until then the override lives here.
-  const iconColor = tint === 'green' && !isDark ? ds.primaryDeep : tn.icon;
-  const glow = isDark
-    ? shadow('tile').boxShadow
-    : `inset 0px 1px 0px ${ds.surface}, 0px 6px 14px ${withAlpha(tn.icon, 0.12)}`;
+  // UX-ICON: every light tint glyph is now its deep ink (green #1B6E47 4.8:1 on
+  // the tile's darker stop), so the old green-only override (M04-H) is gone;
+  // depth is the kit's one recipe (ink-tinted lift light, hairline dark).
+  const iconColor = tn.icon;
+  const depth = tileDepth(tn, isDark, 'tile');
   return (
     <PressableScale
       onPress={onPress}
@@ -149,7 +146,7 @@ function ShortcutTileButton({
       testID={testID}
       style={styles.tile}
     >
-      <View style={[styles.square, { boxShadow: glow }]}>
+      <View style={[styles.square, depth]}>
         <LinearGradient
           colors={[tn.from, tn.to]}
           start={{ x: 0, y: 0 }}

@@ -23,6 +23,7 @@ import { radius, typeScale, type StatusTone } from '../../../src/theme/tokens';
 import { Rise, useMotionOK } from '../../../src/theme/motion';
 import { ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 import { limitsFormFrom, limitsFromForm, RoleLimitsCard, RoleLimitsForm } from '../../../src/features/p1/RoleLimitsCard';
+import { RoleJobScopeCard, type RoleJobScope } from '../../../src/features/p1/RoleJobScopeCard'; // P9A Q6
 import { HelpButton } from '../../../src/features/help/HelpButton'; // M02 audit
 
 /**
@@ -71,7 +72,7 @@ function LevelPill({ level, label }: { level: PermissionLevel; label: string }) 
       style={[styles.levelPill, { backgroundColor: pair.bg, borderColor: tonePair.fg }]}
     >
       <MaterialCommunityIcons name={look.icon as never} size={15} color={pair.fg} />
-      <Text style={[typeScale.caption, { color: pair.fg }]}>{label}</Text>
+      <Text style={[typeScale.caption, { color: pair.fg }, { flexShrink: 1 }]}>{label}</Text>
     </Animated.View>
   );
 }
@@ -91,6 +92,8 @@ export default function RolesScreen() {
     (can(module, 'FULL') ? 'FULL' : can(module, 'READ') ? 'READ' : 'NONE');
 
   const query = useQuery({ queryKey: qk.staffRoles(), queryFn: rolesApi.list });
+  /** P9A Q6: the "which jobs" choice only matters to a business that takes bookings. */
+  const offersJobScope = (query.data?.catalog ?? []).some((e) => e.key === 'BOOKINGS_VIEW');
 
   // `undefined` = editor closed. `null` = creating a new role. A role = editing that role.
   const [editingRole, setEditingRole] = useState<PartnerAccessRole | null | undefined>(undefined);
@@ -98,6 +101,8 @@ export default function RolesScreen() {
   // P1 (screen S24): the role's limits — the OWNER alone may set or clear them.
   const [limits, setLimits] = useState<RoleLimitsForm>(limitsFormFrom());
   const [limitsError, setLimitsError] = useState<keyof RoleLimitsForm | undefined>(undefined);
+  /** P9A Q6: "All jobs" (default) / "Only their assigned jobs" — the owner alone sets it. */
+  const [jobScope, setJobScope] = useState<RoleJobScope>('ALL');
   const isOwner = entitlements.isAdmin;
   /** `undefined` = leave limits alone (not the owner, or unchanged); else the value to send. */
   const limitsToSend = (): { ok: boolean; value?: ReturnType<typeof limitsFromForm>['limits'] } => {
@@ -113,6 +118,7 @@ export default function RolesScreen() {
     setDraft(draftFrom(role));
     setLimits(limitsFormFrom(role?.limits));
     setLimitsError(undefined);
+    setJobScope(role?.jobScope === 'ASSIGNED' ? 'ASSIGNED' : 'ALL');
   };
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: qk.staffRoles() });
@@ -120,6 +126,7 @@ export default function RolesScreen() {
   const createMutation = useMutation({
     mutationFn: (lim: ReturnType<typeof limitsFromForm>['limits'] | undefined) => rolesApi.create({
       ...(lim ? { limits: lim } : {}),
+      ...(isOwner && offersJobScope ? { jobScope } : {}), // P9A Q6
       name: draft.name.trim(),
       description: draft.description.trim() || undefined,
       permissions: [...draft.grants.entries()]
@@ -133,6 +140,7 @@ export default function RolesScreen() {
   const updateMutation = useMutation({
     mutationFn: (lim: ReturnType<typeof limitsFromForm>['limits'] | undefined) => rolesApi.update(editingRole!._id, {
       ...(lim !== undefined ? { limits: lim } : {}),
+      ...(isOwner && offersJobScope ? { jobScope } : {}), // P9A Q6
       name: draft.name.trim(),
       description: draft.description.trim() || undefined,
       permissions: [...draft.grants.entries()].map(([module, level]) => ({ module, level } as PartnerModuleGrant)),
@@ -246,6 +254,12 @@ export default function RolesScreen() {
           </Rise>
         ) : null}
 
+        {isOwner && offersJobScope ? (
+          <Rise index={3}>
+            <RoleJobScopeCard c={c} value={jobScope} onChange={setJobScope} />
+          </Rise>
+        ) : null}
+
         <Rise index={3} style={styles.actions}>
           {!beyondMe ? (
             <Button
@@ -315,6 +329,7 @@ export default function RolesScreen() {
                   + (role.isSystem ? t('staff.roles.seededSuffix') : '')
                   + (!role.isActive ? t('staff.roles.inactiveSuffix') : '')
                   + (role.assignable === false ? t('staff.roles.beyondYouSuffix') : '')
+                  + (role.jobScope === 'ASSIGNED' ? t('staff.jobScope.suffix') : '') // P9A Q6
                 }
                 onPress={() => openEditor(role)}
               />

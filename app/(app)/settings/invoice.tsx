@@ -1,16 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Switch, useColorScheme, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Alert, Image, StyleSheet, Switch, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Text } from 'react-native-paper';
+import * as ImagePicker from 'expo-image-picker';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { uploadPublicImage } from '../../../src/api/partner.api';
+import { PressableScale } from '../../../src/theme/motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { Colors, themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { PausedReadOnlyNote, useIsPaused } from '../../../src/features/p1/PausedReadOnlyNote'; // P9A Q10
 import { qk } from '../../../src/lib/queryKeys';
 import { settingsApi, InvoiceTheme, INVOICE_THEMES } from '../../../src/api/settings.api';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { AppInput } from '../../../src/components/AppInput';
-import { AppButton } from '../../../src/components/AppButton';
+import { Button, useToast } from '../../../src/components/ui'; // M19: kit button (haptic) + success toast
 import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 
 // Paper widths, not words — the same in both languages, so no catalogue entry.
@@ -29,8 +34,11 @@ export default function InvoiceSettingsScreen() {
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const { can } = usePartnerEntitlements();
-  const canEdit = can('SETTINGS', 'FULL');
+  // P9A (Owner Q10): a paused business may read these settings, never change them.
+  const paused = useIsPaused();
+  const canEdit = can('SETTINGS', 'FULL') && !paused;
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const query = useQuery({ queryKey: qk.billing.settings(), queryFn: settingsApi.invoice.get });
 
@@ -61,6 +69,10 @@ export default function InvoiceSettingsScreen() {
   // `<string>` explicitly: `Colors` is `as const`, so the seed's type would
   // otherwise narrow to the literal `'#0E7C43'` and refuse every edit.
   const [accentColor, setAccentColor] = useState<string>(Colors.primary);
+  // M19 parity with web: logo + signature images (the PDF draws both now).
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<'logo' | 'signature' | null>(null);
   const [terms, setTerms] = useState('');
   const [notes, setNotes] = useState('');
   const [bankName, setBankName] = useState('');
@@ -86,6 +98,8 @@ export default function InvoiceSettingsScreen() {
     if (!s) return;
     setTheme(s.theme);
     setAccentColor(s.accentColor);
+    setLogoUrl(s.logoUrl || null);
+    setSignatureUrl(s.signatureUrl || null);
     setTerms(s.terms ?? '');
     setNotes(s.notes ?? '');
     setBankName(s.bankDetails.name ?? '');
@@ -110,6 +124,11 @@ export default function InvoiceSettingsScreen() {
     mutationFn: () => settingsApi.invoice.update({
       theme,
       accentColor,
+      // `null` clears on the server; a removed image must not be silently kept.
+      // P8R — sent only when CHANGED from what was loaded: a legacy stored link that
+      // predates the upload rule would otherwise refuse every save (FIELD_INVALID).
+      ...(logoUrl !== (query.data?.logoUrl || null) ? { logoUrl } : {}),
+      ...(signatureUrl !== (query.data?.signatureUrl || null) ? { signatureUrl } : {}),
       terms: terms.trim() || null,
       notes: notes.trim() || null,
       bankDetails: {
@@ -126,10 +145,29 @@ export default function InvoiceSettingsScreen() {
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.billing.settings() });
-      Alert.alert(t('settings.invoice.savedTitle'), t('settings.invoice.savedBody'));
+      toast.show({ message: `${t('settings.invoice.savedTitle')} — ${t('settings.invoice.savedBody')}`, tone: 'success' });
     },
     onError: (err) => Alert.alert(t('settings.invoice.couldNotSave'), apiErrorMessage(err)),
   });
+
+  const pickAndUpload = async (kind: 'logo' | 'signature') => {
+    setUploading(kind);
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+      if (picked.canceled || !picked.assets.length) return;
+      const a = picked.assets[0];
+      const url = await uploadPublicImage({
+        uri: a.uri,
+        name: a.fileName ?? `${kind}-${Date.now()}.jpg`,
+        mimeType: a.mimeType ?? 'image/jpeg',
+      });
+      if (kind === 'logo') setLogoUrl(url); else setSignatureUrl(url);
+    } catch (e) {
+      Alert.alert(t(kind === 'logo' ? 'settings.invoice.uploadFailedLogo' : 'settings.invoice.uploadFailedSignature'), apiErrorMessage(e));
+    } finally {
+      setUploading(null);
+    }
+  };
 
   const onSave = () => {
     const next: Record<string, string> = {};
@@ -140,17 +178,64 @@ export default function InvoiceSettingsScreen() {
     save.mutate();
   };
 
-  if (query.isPending) return <Screen c={c} title={t('settings.invoice.title')}><Loading c={c} /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('settings.invoice.title')}><Loading c={c} skeleton={5} /></Screen>;
   if (query.isError) {
     return <Screen c={c} title={t('settings.invoice.title')}><ErrorBlock c={c} message={apiErrorMessage(query.error, t('settings.invoice.couldNotLoad'))} onRetry={() => query.refetch()} /></Screen>;
   }
 
   return (
-    <Screen c={c} title={t('settings.invoice.title')}>
+    <Screen c={c} title={t('settings.invoice.title')} rise>
+      <PausedReadOnlyNote />
       <Card c={c}>
         <SectionLabel c={c}>{t('settings.invoice.lookSection')}</SectionLabel>
         <ChipRow c={c} value={theme} options={themeOptions} onChange={setTheme} />
         <AppInput label={t('settings.invoice.accent')} value={accentColor} onChangeText={setAccentColor} autoCapitalize="none" disabled={!canEdit} error={errors.accentColor} />
+      </Card>
+
+      <Card c={c}>
+        <SectionLabel c={c}>{t('settings.invoice.brandingSection')}</SectionLabel>
+        <View style={styles.slots}>
+          <UploadSlot
+            c={c}
+            label={t('settings.invoice.logo')}
+            url={logoUrl}
+            busy={uploading === 'logo'}
+            disabled={!canEdit || uploading !== null}
+            onPick={() => void pickAndUpload('logo')}
+            onClear={() => setLogoUrl(null)}
+          />
+          <UploadSlot
+            c={c}
+            label={t('settings.invoice.signature')}
+            url={signatureUrl}
+            busy={uploading === 'signature'}
+            disabled={!canEdit || uploading !== null}
+            onPick={() => void pickAndUpload('signature')}
+            onClear={() => setSignatureUrl(null)}
+          />
+        </View>
+        {/* P8A (Owner 2026-10-10): an old outside-link logo / signature is kept on file but never
+            prints (the PDF refuses it). Say so until a new image replaces it — same as the web. */}
+        {(() => {
+          const staleLogo = query.data?.logoNeedsUpload === true && !!logoUrl && logoUrl === (query.data?.logoUrl || null);
+          const staleSignature = query.data?.signatureNeedsUpload === true && !!signatureUrl && signatureUrl === (query.data?.signatureUrl || null);
+          if (!staleLogo && !staleSignature) return null;
+          return (
+            <View
+              testID="invoice-asset-reupload"
+              accessibilityLiveRegion="polite"
+              style={[styles.reupload, { backgroundColor: `${c.warning}1A`, borderColor: `${c.warning}40` }]}
+            >
+              <MaterialCommunityIcons name="information-outline" size={18} color={c.warning} />
+              <Text style={{ color: c.warning, fontSize: 12.5, lineHeight: 18, fontWeight: '600', flex: 1, minWidth: 0 }}>
+                {staleLogo && staleSignature
+                  ? t('settings.invoice.reuploadBoth')
+                  : staleLogo ? t('settings.invoice.reuploadLogo') : t('settings.invoice.reuploadSignature')}
+              </Text>
+            </View>
+          );
+        })()}
+        <Text style={{ color: c.textSecondary, fontSize: 11.5, lineHeight: 16 }}>{t('settings.invoice.brandingNote')}</Text>
       </Card>
 
       <Card c={c}>
@@ -161,24 +246,8 @@ export default function InvoiceSettingsScreen() {
         <ToggleRow c={c} label={t('settings.invoice.showUpiQr')} value={showUpiQr} onChange={setShowUpiQr} disabled={!canEdit} />
         <ToggleRow c={c} label={t('settings.invoice.showSignature')} value={showSignature} onChange={setShowSignature} disabled={!canEdit} />
         {/*
-          RENAMED, and the note below it is the honest half.
-
-          The toggle was labelled "Signature", which reads as "print my
-          signature" — and a partner who switched it on and looked at the PDF
-          found a ruled line and the words "Authorised signatory", which is what
-          `partner-document-pdf.service.ts` actually draws. That is a useful
-          thing and it is not what the label promised.
-
-          THERE IS DELIBERATELY NO UPLOAD HERE. `logoUrl` and `signatureUrl` are
-          both on the payload and both reach the render model, and the PDF
-          service does nothing with the logo at all and prints the literal text
-          `[signature image]` where a signature image would go (its own comment
-          says the fetch-and-inline step was left to whoever wired issuance).
-          So shipping an upload today would not add a signature to anybody's
-          invoice — it would put the string "[signature image]" on bills handed
-          to customers, which is worse than the blank line they get now. The
-          uploader belongs in the same change as the backend fix; see this
-          phase's report for the two lines that need to happen first.
+          The toggle draws the "Authorised signatory" line; the image itself is the
+          Logo and signature card above (M19 — the PDF draws both now, web parity).
         */}
         <Text style={{ color: c.textSecondary, fontSize: 11.5, marginTop: -2 }}>
           {t('settings.invoice.signatureNote')}
@@ -234,21 +303,79 @@ export default function InvoiceSettingsScreen() {
       </Card>
 
       {canEdit && (
-        <AppButton label={t('settings.invoice.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} style={{ marginTop: 8 }} />
+        <Button fullWidth label={t('settings.invoice.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} style={{ marginTop: 8 }} />
       )}
     </Screen>
+  );
+}
+
+function UploadSlot({
+  c, label, url, busy, disabled, onPick, onClear,
+}: {
+  c: ReturnType<typeof themeColors>; label: string; url: string | null; busy: boolean; disabled: boolean;
+  onPick: () => void; onClear: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.slot}>
+      <Text style={{ color: c.textSecondary, fontSize: 11.5, fontWeight: '600' }}>{label}</Text>
+      {url ? (
+        <View style={[styles.slotBox, { borderColor: c.border, backgroundColor: c.surface }]}>
+          <Image source={{ uri: url }} style={styles.slotImg} resizeMode="contain" accessibilityLabel={label} />
+          {!disabled ? (
+            <PressableScale
+              onPress={onClear}
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.invoice.removeImage', { what: label })}
+              hitSlop={8}
+              style={[styles.slotClear, { backgroundColor: c.textPrimary }]}
+            >
+              <MaterialCommunityIcons name="close" size={14} color={c.background} />
+            </PressableScale>
+          ) : null}
+        </View>
+      ) : (
+        <PressableScale
+          onPress={onPick}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={`${t('settings.invoice.upload')}: ${label}`}
+          accessibilityState={{ disabled, busy }}
+          style={[styles.slotBox, styles.slotEmpty, { borderColor: c.border }, disabled && !busy ? { opacity: 0.6 } : null]}
+        >
+          {busy ? <ActivityIndicator size="small" color={c.primary} /> : <MaterialCommunityIcons name="upload" size={18} color={c.textSecondary} />}
+          <Text style={{ color: c.textSecondary, fontSize: 11.5, fontWeight: '600' }}>
+            {busy ? t('settings.invoice.uploading') : t('settings.invoice.upload')}
+          </Text>
+        </PressableScale>
+      )}
+    </View>
   );
 }
 
 function ToggleRow({ c, label, value, onChange, disabled }: { c: ReturnType<typeof themeColors>; label: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <View style={styles.switchRow}>
-      <Text style={{ color: c.textPrimary, fontSize: 14 }}>{label}</Text>
-      <Switch value={value} onValueChange={onChange} disabled={disabled} />
+      {/* M19 — the label takes the room and wraps (a long Hindi label pushed the switch off a 360 px screen). */}
+      <Text style={{ color: c.textPrimary, fontSize: 14, flex: 1, lineHeight: 19 }}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        disabled={disabled}
+        accessibilityLabel={label}
+        trackColor={{ false: c.border, true: c.primary }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
+  slots: { flexDirection: 'row', gap: 12 },
+  reupload: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderWidth: 1, borderRadius: 12, padding: 10 }, // P8A
+  slot: { flex: 1, minWidth: 0, gap: 6 },
+  slotBox: { height: 84, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  slotEmpty: { borderStyle: 'dashed', borderWidth: 1.5, gap: 4 },
+  slotImg: { width: '100%', height: '100%' },
+  slotClear: { position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 6, minHeight: 44 },
 });

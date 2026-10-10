@@ -11,6 +11,7 @@ import { radii, themeColors } from '../../../src/constants/colors';
 import { apiErrorCode, apiErrorMessage } from '../../../src/api/axios';
 import { formatPaise } from '../../../src/lib/money';
 import { EmptyBlock, ErrorBlock, Loading } from '../../../src/features/more/ui';
+import { Rise } from '../../../src/theme/motion'; // M23
 import { ActionRow, PillButton } from '../../../src/features/p1/ui';
 import { HelpButton } from '../../../src/features/help/HelpButton';
 import { ORDER_STATUS_LABEL_KEYS } from '../../../src/features/orders/backend-mirror';
@@ -92,19 +93,21 @@ export default function MyDeliveriesScreen() {
         >
           <View style={styles.wrap}>
             <CommerceHint c={c} helpKey="deliveries" />
-            {list.isPending ? <Loading c={c} /> : null}
+            {list.isPending ? <Loading c={c} skeleton={4} /> : null}
             {list.isError ? <ErrorBlock c={c} message={apiErrorMessage(list.error)} onRetry={() => void list.refetch()} /> : null}
             {list.isSuccess && rows.length === 0 ? (
               <EmptyBlock c={c} icon="moped-outline" title={t('commerce.fulfilment.noDeliveries')} body={t('commerce.fulfilment.noDeliveriesBody')} />
             ) : null}
-            {rows.map((o) => {
+            {rows.map((o, i) => {
               const where = [o.customer.flatLabel, o.customer.societyName].filter(Boolean).join(', ');
               const canDispatch = o.allowedVerbs.includes('dispatch');
               const canDeliverNow = o.allowedVerbs.includes('deliver');
               // GAP-C-SHOP: what hand-over will ask for — nothing at all when the shop needs no proof.
               const proofKey = o.deliveryMode === 'DELIVERY' ? proofNeededKey(o.delivery?.proofMode) : null;
               return (
-                <View key={o.id} style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]} testID={`delivery-${o.id}`}>
+                // M23 — the first screenful rises in on a stagger.
+                <Rise key={o.id} index={Math.min(i, 6)}>
+                <View style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]} testID={`delivery-${o.id}`}>
                   <View style={styles.cardHead}>
                     <Text style={{ color: c.textPrimary, fontWeight: '800', fontSize: 16, flex: 1 }}>{o.code}</Text>
                     <Tag c={c} tone={o.status === 'OUT_FOR_DELIVERY' ? 'info' : 'neutral'} label={t(ORDER_STATUS_LABEL_KEYS[o.status])} />
@@ -135,6 +138,7 @@ export default function MyDeliveriesScreen() {
                     ) : null}
                   </ActionRow>
                 </View>
+                </Rise>
               );
             })}
           </View>

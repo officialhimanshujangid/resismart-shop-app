@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Switch, useColorScheme, View } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { StyleSheet, Switch, useColorScheme, View } from 'react-native';
+import { Text } from 'react-native-paper';
+// M19 redesign: kit buttons, press-scale radio cards with a selection tap, rise, skeleton.
+import { Button } from '../../../src/components/ui';
+import { SuccessCheck } from '../../../src/components/ui/Feedback'; // P8A: animated success, same moment as the web
+import { PressableScale, tapHaptic } from '../../../src/theme/motion';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -31,6 +35,10 @@ import { PARTNER_REACHES, type MyReach, type PartnerReach } from '../../../src/f
  *
  * Reading is open to any partner login; changing is for an owner (the server's
  * `assertOwnerLogin`), so staff see the state and a one-line reason.
+ *
+ * P8A (Owner 2026-10-10): the web now works the same way ("choose, then Save",
+ * an "unsaved" hint, the animated check). The owner's flat label is sent to
+ * owner logins only; staff read `hasHomeFlat`.
  */
 export default function ReachScreen() {
   const { t } = useTranslation();
@@ -79,7 +87,7 @@ export default function ReachScreen() {
   });
 
   if (reach.isPending) {
-    return <Screen c={c} title={t('society.reach.title')}><Loading c={c} /></Screen>;
+    return <Screen c={c} title={t('society.reach.title')}><Loading c={c} skeleton={3} /></Screen>;
   }
   if (reach.isError || !reach.data) {
     return (
@@ -106,10 +114,11 @@ export default function ReachScreen() {
   const revoked = r.societyApproval?.status === 'REVOKED';
   const selected = choice ?? r.reach;
   const dirty = selected !== r.reach;
+  const hasFlat = r.hasHomeFlat === true || !!r.homeFlatLabel; // P8A
   const goVerify = () => router.push('/settings/verification');
 
   return (
-    <Screen c={c} title={t('society.reach.title')} subtitle={society}>
+    <Screen c={c} title={t('society.reach.title')} subtitle={society} rise>
       <View style={styles.column}>
         {revoked ? (
           <Card c={c} style={{ borderLeftWidth: 3, borderLeftColor: c.warning }}>
@@ -132,14 +141,14 @@ export default function ReachScreen() {
           const locked = state === 'LOCKED';
           const active = selected === opt;
           return (
-            <Pressable
+            <PressableScale
               key={opt}
               testID={`reach-option-${opt}`}
               accessibilityRole="radio"
               accessibilityState={{ selected: active, disabled: locked || !owner }}
               accessibilityLabel={t(`society.reach.option.${opt}.title`)}
               disabled={locked || !owner || save.isPending}
-              onPress={() => { setChoice(opt); setSaved(false); setError(null); }}
+              onPress={() => { tapHaptic(); setChoice(opt); setSaved(false); setError(null); }}
               style={[
                 styles.option,
                 { backgroundColor: c.surface, borderColor: active ? c.primary : c.border },
@@ -149,7 +158,7 @@ export default function ReachScreen() {
               <MaterialCommunityIcons
                 name={locked ? 'lock-outline' : active ? 'radiobox-marked' : 'radiobox-blank'}
                 size={22}
-                color={locked ? c.textDisabled : active ? c.primary : c.textSecondary}
+                color={active ? c.primary : c.textSecondary}
               />
               <View style={styles.optionText}>
                 <View style={styles.optionHead}>
@@ -163,7 +172,7 @@ export default function ReachScreen() {
                   {t(`society.reach.option.${opt}.body`, { society, km })}
                 </Text>
               </View>
-            </Pressable>
+            </PressableScale>
           );
         })}
 
@@ -173,9 +182,7 @@ export default function ReachScreen() {
               {r.verificationStatus === 'PENDING' ? t('society.reach.kycPending') : t('errors.REACH_NEEDS_KYC')}
             </Text>
             {r.verificationStatus !== 'PENDING' ? (
-              <Button mode="outlined" icon="shield-check-outline" onPress={goVerify} style={styles.btn}>
-                {t('society.reach.goVerify')}
-              </Button>
+              <Button variant="outline" icon="shield-check-outline" label={t('society.reach.goVerify')} onPress={goVerify} />
             ) : null}
           </Card>
         ) : null}
@@ -184,22 +191,27 @@ export default function ReachScreen() {
           <View style={styles.errorBlock}>
             <Text style={[styles.error, { color: c.error }]} accessibilityLiveRegion="polite">{error.text}</Text>
             {error.kyc ? (
-              <Button mode="text" compact onPress={goVerify} style={styles.btn}>{t('society.reach.goVerify')}</Button>
+              <Button variant="ghost" size="sm" label={t('society.reach.goVerify')} onPress={goVerify} />
             ) : null}
           </View>
         ) : null}
-        {saved && !dirty ? <Text style={[styles.meta, { color: c.success }]}>{t('society.reach.saved')}</Text> : null}
+        {owner && dirty ? (
+          <Text style={[styles.meta, { color: c.warning }]} accessibilityLiveRegion="polite" testID="reach-unsaved">{t('society.reach.unsaved')}</Text>
+        ) : null}
+        {saved && !dirty ? (
+          <View style={styles.savedRow} accessibilityLiveRegion="polite">
+            <SuccessCheck size={24} testID="reach-saved" />
+            <Text style={[styles.meta, { color: c.success }, { flexShrink: 1 }]}>{t('society.reach.saved')}</Text>
+          </View>
+        ) : null}
 
         {owner ? (
           <Button
-            mode="contained"
+            label={t('common.save')}
             onPress={() => save.mutate(selected)}
             disabled={!dirty || save.isPending}
             loading={save.isPending}
-            style={styles.btn}
-          >
-            {t('common.save')}
-          </Button>
+          />
         ) : (
           <Text style={[styles.meta, { color: c.textSecondary }]}>{t('society.reach.ownerOnly')}</Text>
         )}
@@ -216,13 +228,13 @@ export default function ReachScreen() {
             <Switch
               testID="lives-here-switch"
               value={!!r.showLivesHereBadge}
-              disabled={!owner || !r.homeFlatLabel || badge.isPending}
+              disabled={!owner || !hasFlat || badge.isPending}
               onValueChange={(v) => badge.mutate(v)}
               accessibilityLabel={t('society.reach.badgeTitleNoFlat')}
               trackColor={{ true: c.primary, false: c.border }}
             />
           </View>
-          {!r.homeFlatLabel ? <Text style={[styles.meta, { color: c.textSecondary }]}>{t('errors.LIVES_HERE_NEEDS_FLAT')}</Text> : null}
+          {!hasFlat ? <Text style={[styles.meta, { color: c.textSecondary }]}>{t('errors.LIVES_HERE_NEEDS_FLAT')}</Text> : null}
           {badgeError ? <Text style={[styles.error, { color: c.error }]}>{badgeError}</Text> : null}
         </Card>
       </View>
@@ -241,6 +253,6 @@ const styles = StyleSheet.create({
   optionTitle: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   errorBlock: { gap: 2 },
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   error: { fontSize: 12.5, lineHeight: 18 },
-  btn: { alignSelf: 'flex-start', borderRadius: 12 },
 });

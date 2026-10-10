@@ -1,4 +1,4 @@
-import { apiClient, ApiEnvelope, unwrap } from './axios';
+import { apiClient, ApiEnvelope, unwrap, withIdempotency } from './axios';
 
 /**
  * `/partners/me/parties` — customers, suppliers, and the ones who are both.
@@ -52,6 +52,31 @@ export interface PartnerParty {
   isResidentLinked?: boolean;
   /** Set when the customer is a resident on the ResiSmart app (the party JSON carries this, not the flag). */
   residentUserId?: string;
+  // ── M21 merge customer: set on a row merged into another (a hidden tombstone).
+  mergedIntoPartyId?: string;
+  mergedAt?: string;
+  mergedByName?: string;
+  /** Sent by getOne for a merged row: where its customer lives now. */
+  mergedInto?: { id: string; name: string };
+}
+
+/** M21 — why two rows are the same person (the only rows that may be merged). */
+export type MergeMatch = 'SAME_PERSON_LOGIN' | 'PHONE' | 'EMAIL';
+
+export interface MergeCandidate {
+  partyId: string; name: string; phoneMasked?: string; emailMasked?: string;
+  outstandingPaise: number; isResidentLinked: boolean; isActive: boolean; matchedBy: MergeMatch[];
+}
+
+export interface MergeSide {
+  partyId: string; name: string; phoneMasked?: string; emailMasked?: string;
+  outstandingPaise: number; walletCreditPaise: number; points: number;
+  counts: { documents: number; payments: number; orders: number; bookings: number; walletEntries: number; other: number };
+}
+
+export interface MergePreview {
+  keep: MergeSide; remove: MergeSide; matchedBy: MergeMatch[];
+  after: { outstandingPaise: number; walletCreditPaise: number; points: number };
 }
 
 /** The supplier master (§1.4). The PAN is stored MASKED — the full PAN is only ever sent, never read back. */
@@ -192,6 +217,21 @@ export const partiesApi = {
   ledger: (id: string, range?: { from?: string; to?: string }) =>
     apiClient
       .get<ApiEnvelope<PartyLedger>>(`/partners/me/parties/${id}/ledger`, { params: range })
+      .then((r) => unwrap(r.data)),
+
+  // ── M21 merge customer (same endpoints and rules as the web) ──
+  mergeCandidates: (id: string) =>
+    apiClient.get<ApiEnvelope<MergeCandidate[]>>(`/partners/me/parties/${id}/merge-candidates`).then((r) => unwrap(r.data)),
+
+  mergePreview: (id: string, otherId: string) =>
+    apiClient
+      .get<ApiEnvelope<MergePreview>>(`/partners/me/parties/${id}/merge-preview`, { params: { otherId } })
+      .then((r) => unwrap(r.data)),
+
+  /** Folds `otherId` into `id`. One Idempotency-Key per intent (held across retries by the caller). */
+  merge: (id: string, otherId: string, idempotencyKey: string) =>
+    apiClient
+      .post<ApiEnvelope<MergePreview & { alreadyMerged: boolean }>>(`/partners/me/parties/${id}/merge`, { otherId }, withIdempotency(idempotencyKey))
       .then((r) => unwrap(r.data)),
 
   /** Rebuild the cached balance from the ledger. Needs `CUSTOMERS` at FULL. */

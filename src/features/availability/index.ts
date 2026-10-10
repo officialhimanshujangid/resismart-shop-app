@@ -1,4 +1,4 @@
-export { useAvailability, useSaveAvailability } from './hooks';
+export { useAvailability, useSaveAvailability, useAvailabilityRows, useRemoveStaffHours } from './hooks';
 export { availabilityApi } from './api';
 export {
   DAY_NAME_KEYS, DAY_SHORT_KEYS, starterDraft, draftFromRow, bodyFromDraft, draftProblem, deviceTimezone,

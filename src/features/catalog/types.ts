@@ -87,6 +87,9 @@ export interface Product {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  /** M20: beyond the plan's catalogue items — view-only, hidden from customers (archiving still allowed). */
+  viewOnly?: boolean;
+  viewOnlyLimit?: number;
   // P1 cost fields (§1.3) — sent ONLY to a viewer holding COSTS; absent otherwise.
   costPricePaise?: number;
   avgCostPaise?: number;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, useColorScheme, View } from 'react-native';
-import { Searchbar, Snackbar, Text } from 'react-native-paper';
+import { Snackbar, Text } from 'react-native-paper';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +17,11 @@ import { CountLineRow } from '../../../../src/features/stock/components/CountLin
 import { VarianceRow } from '../../../../src/features/stock/components/VarianceRow';
 import { SetCountDialog } from '../../../../src/features/stock/components/SetCountDialog';
 import { CountScanner } from '../../../../src/features/stock/components/CountScanner';
-import { ChipRow, EmptyBlock, ErrorBlock, Loading, Screen, SectionLabel } from '../../../../src/features/more/ui';
+import { EmptyBlock, ErrorBlock, Loading, Screen, SectionLabel } from '../../../../src/features/more/ui';
+// M20 — DS v1: sliding segment, search pill, progress bar, row stagger.
+import { SearchField, Segmented } from '../../../../src/components/ui';
+import { Rise } from '../../../../src/theme/motion';
+import { StockBar } from '../../../../src/features/catalog/components/StockBar';
 import { ActionRow, Banner, PillButton, StatGrid, StatTile, TwoPane } from '../../../../src/features/p1/ui';
 import { ReasonDialog } from '../../../../src/features/p1/ReasonDialog';
 
@@ -119,9 +123,9 @@ export default function StockCountScreen() {
   };
 
   const title = count.data?.number ?? t('stock.count.listTitle');
-  if (count.isPending) return <Screen c={c} title={title}><Loading c={c} /></Screen>;
+  if (count.isPending) return <Screen c={c} rise title={title}><Loading c={c} skeleton={3} /></Screen>;
   if (count.isError || !count.data) {
-    return <Screen c={c} title={title}><ErrorBlock c={c} message={apiErrorMessage(count.error, t('stock.count.loadFailed'))} onRetry={() => count.refetch()} /></Screen>;
+    return <Screen c={c} rise title={title}><ErrorBlock c={c} message={apiErrorMessage(count.error, t('stock.count.loadFailed'))} onRetry={() => count.refetch()} /></Screen>;
   }
   const sc = count.data;
   const rows = lines.data?.data ?? [];
@@ -142,6 +146,8 @@ export default function StockCountScreen() {
           </>
         ) : null}
       </StatGrid>
+      {/* M20 — how far the count has got, filling from the left. */}
+      <StockBar qty={sc.countedLineCount ?? 0} max={Math.max(1, sc.lineCount ?? 0)} width={240} style={styles.progress} />
 
       {sc.status === 'COUNTING' && canCount && (
         <>
@@ -189,37 +195,34 @@ export default function StockCountScreen() {
     <View style={{ gap: 8 }}>
       <SectionLabel c={c}>{reviewing ? t('stock.count.differences') : t('stock.count.products')}</SectionLabel>
       {!reviewing && (
-        <ChipRow
-          c={c}
+        <Segmented<LineFilter>
           value={filter}
           options={(['all', 'uncounted', 'counted'] as LineFilter[]).map((k) => ({ key: k, label: t(`stock.count.filter.${k}`) }))}
           onChange={setFilter}
+          testID="count-filter"
         />
       )}
-      <Searchbar
-        placeholder={t('stock.count.search')}
-        value={q}
-        onChangeText={setQ}
-        style={[styles.search, { backgroundColor: c.surfaceVariant }]}
-        inputStyle={{ fontSize: 14 }}
-      />
+      <SearchField placeholder={t('stock.count.search')} value={q} onChangeText={setQ} />
       {lines.isPending ? (
-        <Loading c={c} />
+        <Loading c={c} skeleton={3} />
       ) : rows.length === 0 ? (
         <EmptyBlock c={c} icon="clipboard-text-outline" title={reviewing ? t('stock.count.noDifferences') : t('stock.count.noLines')} />
       ) : reviewing ? (
-        rows.map((l) => (
-          <VarianceRow
-            key={l.productId}
-            c={c}
-            line={l}
-            canSetReason={canManage && sc.status === 'REVIEW'}
-            onReason={(code) => reason.mutate({ productId: l.productId, code })}
-          />
+        rows.map((l, i) => (
+          <Rise key={l.productId} index={i < 8 ? Math.min(i, 5) + 1 : 0} duration={i < 8 ? undefined : 1}>
+            <VarianceRow
+              c={c}
+              line={l}
+              canSetReason={canManage && sc.status === 'REVIEW'}
+              onReason={(code) => reason.mutate({ productId: l.productId, code })}
+            />
+          </Rise>
         ))
       ) : (
-        rows.map((l) => (
-          <CountLineRow key={l.productId} c={c} line={l} onPress={sc.status === 'COUNTING' && canCount ? () => setSetTarget(l) : undefined} />
+        rows.map((l, i) => (
+          <Rise key={l.productId} index={i < 8 ? Math.min(i, 5) + 1 : 0} duration={i < 8 ? undefined : 1}>
+            <CountLineRow c={c} line={l} onPress={sc.status === 'COUNTING' && canCount ? () => setSetTarget(l) : undefined} />
+          </Rise>
         ))
       )}
       {(lines.data?.total ?? 0) > rows.length && (
@@ -230,6 +233,7 @@ export default function StockCountScreen() {
 
   return (
     <Screen
+      rise
       c={c}
       title={title}
       subtitle={sc.name}
@@ -266,4 +270,5 @@ export default function StockCountScreen() {
 
 const styles = StyleSheet.create({
   search: { borderRadius: radii.field, elevation: 0 },
+  progress: { marginTop: 2 },
 });

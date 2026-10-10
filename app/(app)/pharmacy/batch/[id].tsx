@@ -61,12 +61,13 @@ export default function BatchDetailScreen() {
 
   return (
     <Screen
+      rise
       c={c}
       title={title}
       subtitle={batch?.productName ?? view.data?.product.name}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={2500}>{toast ?? ''}</Snackbar>}
     >
-      {productId && view.isPending ? <Loading c={c} /> : null}
+      {productId && view.isPending ? <Loading c={c} skeleton={3} /> : null}
       {view.isError ? (
         <ErrorBlock c={c} message={apiErrorMessage(view.error, t('p2.pharmacy.batch.loadFailed'))} onRetry={() => view.refetch()} />
       ) : null}
@@ -98,7 +99,7 @@ export default function BatchDetailScreen() {
 
       <SectionLabel c={c}>{t('p2.pharmacy.batch.history')}</SectionLabel>
       {moves.isPending ? (
-        <Loading c={c} />
+        <Loading c={c} skeleton={3} />
       ) : moves.isError && rows.length === 0 ? (
         <ErrorBlock c={c} message={apiErrorMessage(moves.error, t('p2.pharmacy.batch.loadFailed'))} onRetry={() => moves.refetch()} />
       ) : rows.length === 0 ? (

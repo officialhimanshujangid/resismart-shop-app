@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, useColorScheme } from 'react-native';
-import { ActivityIndicator } from 'react-native-paper';
 import { Stack, Redirect } from 'expo-router';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { rentAccess } from '../../../src/features/rent/logic';
+import { SkeletonList } from '../../../src/components/ui';
 
 /**
  * The gate for `rent/` — "My shop rent" (CONTRACT-partner-P4 §10.8 / §12 S).
@@ -18,8 +18,8 @@ export default function RentLayout() {
   const { ready, can } = usePartnerEntitlements();
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
-        <ActivityIndicator color={c.primary} />
+      <View style={{ flex: 1, padding: 18, paddingTop: 64, backgroundColor: c.background }}>
+        <SkeletonList rows={4} />
       </View>
     );
   }

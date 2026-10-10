@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, useColorScheme, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Searchbar, Snackbar } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
@@ -14,8 +16,14 @@ import { useDebouncedValue } from '../../../src/features/billing/useDebouncedVal
 import { KhataFilter, khataApi } from '../../../src/features/khata/api';
 import { useKhataActions } from '../../../src/features/khata/useKhataActions';
 import { KhataRowCard } from '../../../src/features/khata/components/KhataRowCard';
-import { ChipRow, EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
-import { ActionRow, PillButton, StatGrid, StatTile, useIsWide } from '../../../src/features/p1/ui';
+import { ChipRow, ErrorBlock, Loading } from '../../../src/features/more/ui';
+import { ActionRow, PillButton, useIsWide } from '../../../src/features/p1/ui';
+import { Rise } from '../../../src/theme/motion';
+// UX-P (A ShopKhata): large title with the total due counting up, illustrated empty state.
+import { CountUp, EmptyState, LargeTitle, LargeTitleBar, useLargeTitleScroll } from '../../../src/components/ui';
+import { HelpButton } from '../../../src/features/help/HelpButton';
+import { useAppTheme } from '../../../src/theme/useAppTheme';
+import { fontFamily } from '../../../src/theme/tokens';
 
 /**
  * Khata (screen S14): who owes the shop, oldest first or biggest first, with
@@ -48,6 +56,8 @@ export default function KhataScreen() {
   });
   const rows = useMemo(() => (query.data?.pages ?? []).flatMap((p) => p?.data ?? []), [query.data]);
   const totals = query.data?.pages?.[0]?.totals;
+  const { ds, isDark } = useAppTheme();
+  const { scrollY, onScroll } = useLargeTitleScroll();
 
   const bulkRemind = useMutation({
     mutationFn: () => khataApi.remindBulk({ partyIds: picked.slice(0, BULK_MAX), channel: 'PUSH', includeUpiLink: true }),
@@ -61,18 +71,15 @@ export default function KhataScreen() {
   });
 
   return (
-    <Screen
-      c={c}
-      title={t('khata.title')}
-      subtitle={t('khata.subtitle')}
-      scroll={false}
-      floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}
-    >
+    <SafeAreaView style={[styles.root, { backgroundColor: ds.ground }]} edges={['top']}>
+      <LargeTitleBar title={t('khata.title')} scrollY={scrollY} right={<HelpButton c={c} />} />
       {/* >>> WEB-UI — the whole screen scrolls as one list: totals, filters,
           search and the bulk row are the list's header (an element, so the
           search box keeps its focus); loading / error / empty sit under it. */}
-        <FlatList
+        <Animated.FlatList
           key={wide ? 'w' : 'n'}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           data={query.isPending || (query.isError && rows.length === 0) ? [] : rows}
           numColumns={wide ? 2 : 1}
           columnWrapperStyle={wide ? { gap: 10 } : undefined}
@@ -80,12 +87,25 @@ export default function KhataScreen() {
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
       <View style={styles.controls}>
-        {totals && (
-          <StatGrid>
-            <StatTile c={c} label={t('khata.totalDue')} value={formatPaise(totals.duePaise)} tone={c.error} testID="khata-total" />
-            <StatTile c={c} label={t('khata.customers')} value={String(totals.parties)} />
-          </StatGrid>
-        )}
+        {/* UX-P (A ShopKhata): "Total due · 18 customers" over the big title, the
+            amount counting up on the right (reduce-motion: at once). */}
+        <LargeTitle
+          title={t('khata.title')}
+          eyebrow={totals ? t('khata.totalDueEyebrow', { count: totals.parties }) : t('khata.subtitle')}
+          scrollY={scrollY}
+          trailing={totals ? (
+            <CountUp
+              value={totals.duePaise}
+              format={formatPaise}
+              testID="khata-total"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+              accessibilityLabel={`${t('khata.totalDue')}: ${formatPaise(totals.duePaise)}`}
+              style={[styles.total, { color: isDark ? ds.primary : ds.primaryDeep }]}
+            />
+          ) : undefined}
+        />
         <ChipRow c={c} value={filter} options={FILTERS.map((f) => ({ key: f, label: t(`khata.filter.${f}`) }))} onChange={setFilter} />
         <Searchbar placeholder={t('khata.search')} value={q} onChangeText={setQ} style={[styles.search, { backgroundColor: c.surfaceVariant }]} inputStyle={{ fontSize: 14 }} />
         {canManage && (
@@ -109,8 +129,9 @@ export default function KhataScreen() {
         )}
       </View>
           }
-          renderItem={({ item }) => (
-            <View style={wide ? { flex: 1 } : undefined}>
+          renderItem={({ item, index }) => (
+            // M21: the first screenful rises in (FlatList keeps the rest virtualised).
+            <Rise index={Math.min(index, 6)} style={wide ? { flex: 1 } : undefined}>
               <KhataRowCard
                 c={c}
                 row={item}
@@ -121,10 +142,10 @@ export default function KhataScreen() {
                 selected={picked.includes(item.partyId)}
                 onToggle={() => setPicked((p) => (p.includes(item.partyId) ? p.filter((x) => x !== item.partyId) : p.length >= BULK_MAX ? p : [...p, item.partyId]))}
               />
-            </View>
+            </Rise>
           )}
           contentContainerStyle={styles.list}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           onRefresh={() => void query.refetch()}
           refreshing={query.isRefetching && !query.isFetchingNextPage}
           onEndReachedThreshold={0.4}
@@ -132,23 +153,26 @@ export default function KhataScreen() {
           ListFooterComponent={query.isFetchingNextPage ? <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} /> : null}
           ListEmptyComponent={
             query.isPending ? (
-              <Loading c={c} />
+              <Loading c={c} skeleton={5} />
             ) : query.isError && rows.length === 0 ? (
               <ErrorBlock c={c} message={apiErrorMessage(query.error, t('khata.loadFailed'))} onRetry={() => query.refetch()} />
             ) : (
-              <EmptyBlock c={c} icon="notebook-check-outline" title={t(`khata.empty.${filter}`)} />
+              <EmptyState illustration="khata" title={t(`khata.empty.${filter}`)} testID="khata-empty" />
             )
           }
         />
       {/* <<< WEB-UI */}
-    </Screen>
+      <Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   // >>> WEB-UI — the controls are the list's header now: the list's side padding
   // covers them, and their bottom padding is the 16dp that used to sit above the list.
-  controls: { paddingTop: 4, gap: 10, paddingBottom: 16 },
+  root: { flex: 1 },
+  controls: { paddingTop: 4, gap: 12, paddingBottom: 16 },
+  total: { fontFamily: fontFamily.sora700, fontSize: 22 },
   search: { borderRadius: radii.field, elevation: 0 },
   list: { paddingHorizontal: 16, paddingBottom: 40, flexGrow: 1 },
   // <<< WEB-UI

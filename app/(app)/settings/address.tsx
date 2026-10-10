@@ -11,7 +11,7 @@ import { apiErrorMessage } from '../../../src/api/axios';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { partnerApi } from '../../../src/api/partner.api';
 import { AppInput } from '../../../src/components/AppInput';
-import { AppButton } from '../../../src/components/AppButton';
+import { Button, useToast } from '../../../src/components/ui'; // M19: kit button (haptic) + success toast
 import { MapPicker } from '../../../src/components/MapPicker';
 import { Card, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 import { alertApiError } from '../../../src/features/owners/alertApiError';
@@ -46,6 +46,7 @@ export default function AddressScreen() {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { can, refresh } = usePartnerEntitlements();
   const canEdit = can('SETTINGS', 'FULL');
 
@@ -112,7 +113,7 @@ export default function AddressScreen() {
       // problem that has just been fixed.
       void queryClient.invalidateQueries({ queryKey: qk.onboarding.status() });
       refresh();
-      Alert.alert(t('settings.address.savedTitle'), t('settings.address.savedBody'));
+      toast.show({ message: `${t('settings.address.savedTitle')} — ${t('settings.address.savedBody')}`, tone: 'success' });
     },
     // `PUT /partners/me/partner` — the route that refuses an admin-email change
     // with PARTNER_ADMIN_EMAIL_USE_HANDOVER; that one alert offers Team → Owners.
@@ -146,7 +147,7 @@ export default function AddressScreen() {
     save.mutate();
   };
 
-  if (query.isPending) return <Screen c={c} title={t('settings.address.title')}><Loading c={c} /></Screen>;
+  if (query.isPending) return <Screen c={c} title={t('settings.address.title')}><Loading c={c} skeleton={4} /></Screen>;
   if (query.isError) {
     return (
       <Screen c={c} title={t('settings.address.title')}>
@@ -160,7 +161,7 @@ export default function AddressScreen() {
   }
 
   return (
-    <Screen c={c} title={t('settings.address.title')} subtitle={canEdit ? undefined : t('settings.address.viewOnly')}>
+    <Screen c={c} title={t('settings.address.title')} subtitle={canEdit ? undefined : t('settings.address.viewOnly')} rise>
       <Card c={c}>
         <SectionLabel c={c}>{t('settings.address.listingSection')}</SectionLabel>
         <Text style={{ color: c.textSecondary, marginBottom: 4 }}>
@@ -224,7 +225,7 @@ export default function AddressScreen() {
 
       {canEdit && (
         <View style={{ marginTop: 4 }}>
-          <AppButton label={t('settings.address.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} />
+          <Button fullWidth label={t('settings.address.save')} onPress={onSave} loading={save.isPending} disabled={save.isPending} />
         </View>
       )}
     </Screen>

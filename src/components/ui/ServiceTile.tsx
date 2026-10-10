@@ -4,10 +4,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 
-import { motion, radius, type TintName } from '../../theme/tokens';
+import { motion, radius, tileDepth, type TintName } from '../../theme/tokens';
 import { useAppTheme } from '../../theme/useAppTheme';
 import { PressableScale } from '../../theme/motion';
-import { withAlpha } from '../../theme/colorUtils';
 
 /**
  * Service tile (ShopHome template): a 60 px tinted gradient square with the
@@ -41,9 +40,8 @@ export function ServiceTile({
   const tn = tints[tint];
   const showBadge = badge === 'new' || (typeof badge === 'number' && badge > 0);
   const badgeText = badge === 'new' ? t('kit.newBadge') : typeof badge === 'number' && badge > 99 ? '99+' : String(badge);
-  const glow = isDark
-    ? `0px 6px 14px rgba(0, 0, 0, 0.3)`
-    : `inset 0px 1px 0px #FFFFFF, 0px 6px 14px ${withAlpha(tn.icon, 0.12)}`;
+  // UX-ICON: ink-tinted lift in light, tinted hairline in dark (one recipe: tileDepth).
+  const depth = tileDepth(tn, isDark, 'tile');
 
   return (
     <PressableScale
@@ -54,7 +52,7 @@ export function ServiceTile({
       testID={testID}
       style={[styles.tile, style]}
     >
-      <View style={[styles.square, { boxShadow: glow }]}>
+      <View style={[styles.square, depth]}>
         <LinearGradient
           colors={[tn.from, tn.to]}
           start={{ x: 0, y: 0 }}

@@ -4,7 +4,7 @@ import { Text } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
-import { ColorScheme, palette } from '../../../constants/colors';
+import { ColorScheme } from '../../../constants/colors';
 import { formatI18nDate } from '../../../i18n';
 import { Card, Row } from '../../more/ui';
 import { useMyInvites } from '../hooks';
@@ -21,7 +21,7 @@ export function MyInvitationsCard({ c }: { c: ColorScheme }) {
   if (rows.length === 0) return null;
 
   return (
-    <Card c={c} style={[styles.card, { borderColor: palette.brand[300] }]}>
+    <Card c={c} style={[styles.card, { borderColor: c.primary /* M19: theme-aware (was a fixed light green) */ }]}>
       <Text style={[styles.title, { color: c.textPrimary }]}>{t('owners.mine.title', { count: rows.length })}</Text>
       {rows.map((inv, i) => (
         <View key={inv.id}>

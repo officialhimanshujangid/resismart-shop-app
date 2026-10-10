@@ -112,6 +112,9 @@ export interface ScannedProduct {
    * Absent on every other scan.
    */
   isVariantParent?: boolean;
+  /** M20 — beyond the plan's catalogue items: cannot be sold or quoted (M23 refuses it at the till). Absent otherwise. */
+  viewOnly?: boolean;
+  viewOnlyLimit?: number;
   variants?: Array<Omit<ScannedProduct, 'variants' | 'isVariantParent' | 'isActive'> & {
     isActive?: boolean; variantLabel?: string; variantAttributes?: Array<{ name: string; value: string }>;
   }>;

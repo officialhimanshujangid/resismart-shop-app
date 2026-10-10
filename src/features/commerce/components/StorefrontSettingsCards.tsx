@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, Image, Pressable, Share, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, IconButton, Switch, Text, TextInput } from 'react-native-paper';
+import { IconButton, Switch, Text, TextInput } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,7 @@ import {
   type DeliveryFeeMode, type DeliveryProofMode, type DeliverySettings, type DeliveryTaxMode, type FulfilmentSettings,
   type ShareSettings, type SlotDay,
 } from '../storefrontApi';
+import { SkeletonList } from '../../../components/ui';
 
 /**
  * The "Online orders" half of Online shop settings (CONTRACT-commerce §6, §7,
@@ -631,7 +632,7 @@ export function ShareSection({
         <Text style={[styles.note, { color: c.textSecondary }]}>{t('commerce.storefront.share.noCatalog')}</Text>
       ) : null}
       {featureOn && canReadLinks ? (
-        links.isPending ? <ActivityIndicator color={c.primary} /> : links.isError || !data ? (
+        links.isPending ? <SkeletonList rows={2} /> : links.isError || !data ? (
           <Text style={[styles.error, { color: c.error }]}>{apiErrorMessage(links.error, t('commerce.common.loadFailed'))}</Text>
         ) : (
           <View style={styles.shareCard} testID="share-card">

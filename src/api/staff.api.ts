@@ -21,6 +21,8 @@ export interface PartnerStaffRow {
   canTakeBookings: boolean;
   skills: string[];
   isActive: boolean;
+  /** P10S — the business erased their contact details after they left (never undone). */
+  personalDataErasedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,6 +75,8 @@ export interface PartnerAccessRole {
   assignable?: boolean;
   /** P1 role limits (§1.7) — absent key = unlimited. Set only by the owner. */
   limits?: PartnerRoleLimits;
+  /** P9A (Owner Q6): which bookings / jobs the role sees. Absent = ALL. Set only by the owner. */
+  jobScope?: 'ALL' | 'ASSIGNED';
   createdAt: string;
   updatedAt: string;
 }
@@ -99,6 +103,8 @@ export interface CreateRolePayload {
   permissions?: PartnerModuleGrant[];
   /** Owner only (403 PARTNER_ROLE_LIMITS_OWNER_ONLY otherwise). */
   limits?: PartnerRoleLimits;
+  /** P9A Q6 — owner only (403 PARTNER_ROLE_JOB_SCOPE_OWNER_ONLY otherwise). */
+  jobScope?: 'ALL' | 'ASSIGNED';
 }
 
 /** On update `limits` REPLACES; `null` clears them. */
@@ -124,6 +130,14 @@ export const staffApi = {
     apiClient
       .post<ApiEnvelope<PartnerStaffRow>>(`/partners/me/staff/${id}/reactivate`, {})
       .then((r) => unwrap(r.data)),
+
+  /**
+   * P10S — after they have left: erase their phone and email (and their login,
+   * when they use ResiSmart for nothing else). Staff cannot delete their own
+   * account; this is the business's side of that rule. Never undone.
+   */
+  erasePersonalData: (id: string) =>
+    apiClient.post<ApiEnvelope<unknown>>(`/partners/me/staff/${id}/erase-personal-data`, {}).then((r) => r.data),
 };
 
 export const rolesApi = {

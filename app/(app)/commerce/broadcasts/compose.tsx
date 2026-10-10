@@ -21,6 +21,7 @@ import { cleanSegment, offerBenefitText, scheduleProblem, weeklyLeft } from '../
 import { whenText } from '../../../../src/features/commerce/format';
 import { SPEND_TIERS, type BroadcastSegment, type SpendTier } from '../../../../src/features/commerce/types';
 import { CommerceHint, FeatureOff, NoAccess, PickedChip, ProductPickerSheet } from '../../../../src/features/commerce/components/ui';
+import { SkeletonList } from '../../../../src/components/ui';
 
 type When = 'NOW' | 'LATER';
 type HasOrdered = 'ANY' | 'YES' | 'NO';
@@ -385,7 +386,7 @@ export default function ComposeBroadcastScreen() {
       {error ? <Text style={{ color: c.error, fontSize: 13 }} testID="broadcast-error">{error}</Text> : null}
 
       <Sheet visible={pickingOffer} onDismiss={() => setPickingOffer(false)} title={t('commerce.broadcasts.linkOffer')}>
-        {offers.isPending ? <ActivityIndicator color={c.primary} /> : null}
+        {offers.isPending ? <SkeletonList rows={2} /> : null}
         {(offers.data?.data ?? []).filter((o) => o.live).map((o) => (
           <Pressable
             key={o.id}

@@ -87,6 +87,22 @@ export function tapHaptic() {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 }
 
+/**
+ * UX-P (2026-10-10): the "it worked" buzz — a success notification pattern
+ * (stronger than a tap) for a bill issued, a code scanned, a swipe action done.
+ * No-op on web and on phones without an engine.
+ */
+export function successHaptic() {
+  if (Platform.OS === 'web') return;
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+}
+
+/** UX-P: a medium tick, for a swipe row crossing its "let go to act" point. */
+export function thresholdHaptic() {
+  if (Platform.OS === 'web') return;
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+}
+
 export type PressableScaleProps = Omit<PressableProps, 'style'> & {
   style?: StyleProp<ViewStyle>;
   /** 0.97 for buttons (default), 0.93 for tiles. */

@@ -53,12 +53,12 @@ export default function WalletListScreen() {
   }, [list.data]);
 
   if (!access.wallet.canView) {
-    return <Screen title={t('commerce.wallet.title')} c={c}><NoAccess c={c} /></Screen>;
+    return <Screen rise title={t('commerce.wallet.title')} c={c}><NoAccess c={c} /></Screen>;
   }
 
   const hasMore = list.data ? rows.length < list.data.total : false;
   return (
-    <Screen title={t('commerce.wallet.title')} c={c}>
+    <Screen rise title={t('commerce.wallet.title')} c={c}>
       <View style={styles.wrap}>
         <CommerceHint c={c} helpKey="wallet" />
         {!anyOn ? <FeatureOff c={c} canSwitch={access.settings.section.wallet} /> : null}
@@ -96,7 +96,7 @@ export default function WalletListScreen() {
           testID="wallet-search"
         />
 
-        {list.isPending ? <Loading c={c} /> : null}
+        {list.isPending ? <Loading c={c} skeleton={4} /> : null}
         {list.isError ? <ErrorBlock c={c} message={apiErrorMessage(list.error)} onRetry={() => void list.refetch()} /> : null}
         {list.isSuccess && list.data.page === 1 && list.data.data.length === 0 ? (
           <EmptyBlock c={c} icon="wallet-outline" title={t('commerce.wallet.emptyTitle')} body={t('commerce.wallet.emptyBody')} />

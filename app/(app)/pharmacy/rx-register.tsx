@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, useColorScheme, View } from 'react-native';
-import { Text, TextInput } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+// M20 — DS search pill + row stagger.
+import { SearchField } from '../../../src/components/ui';
+import { Rise } from '../../../src/theme/motion';
 import { router, type Href } from 'expo-router';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
-import { radii, themeColors } from '../../../src/constants/colors';
+import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { apiErrorMessage } from '../../../src/api/axios';
 import { DateField } from '../../../src/components/DateField';
@@ -80,14 +83,10 @@ export default function RxRegisterScreen() {
         <View style={styles.date}><DateField label={t('p2.common.to')} value={to} onChangeText={setTo} maximumDate={new Date()} /></View>
       </View>
       {badRange ? <Banner c={c} tone="warn" body={t('p2.pharmacy.register.badRange')} /> : null}
-      <TextInput
-        mode="outlined"
+      <SearchField
         placeholder={t('p2.pharmacy.register.search')}
         value={q}
         onChangeText={(s) => setQ(s.slice(0, 40))}
-        left={<TextInput.Icon icon="magnify" />}
-        outlineStyle={{ borderRadius: radii.field }}
-        style={{ backgroundColor: 'transparent' }}
         testID="rx-search"
       />
       <ChipRow<Sched>
@@ -133,14 +132,19 @@ export default function RxRegisterScreen() {
         keyExtractor={(r) => r.id}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={header}
-        renderItem={({ item }) => <RxEntryRow c={c} row={item} onPress={() => router.push(`/pharmacy/rx/${item.id}` as Href)} />}
+        renderItem={({ item, index }) => {
+          const row = <RxEntryRow c={c} row={item} onPress={() => router.push(`/pharmacy/rx/${item.id}` as Href)} />;
+          return index < 8 ? <Rise index={Math.min(index, 5) + 1} distance={10}>{row}</Rise> : row;
+        }}
+        initialNumToRender={10}
+        windowSize={9}
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         contentContainerStyle={styles.list}
         onRefresh={() => void list.refetch()}
         refreshing={list.isRefetching && !list.isFetchingNextPage}
         ListEmptyComponent={
           badRange ? null
-            : list.isPending ? <Loading c={c} />
+            : list.isPending ? <Loading c={c} skeleton={3} />
               : list.isError ? <ErrorBlock c={c} message={apiErrorMessage(list.error, t('p2.pharmacy.register.loadFailed'))} onRetry={() => list.refetch()} />
                 : <EmptyBlock c={c} icon="notebook-outline" title={t('p2.pharmacy.register.empty')} body={t('p2.pharmacy.register.emptyBody')} />
         }

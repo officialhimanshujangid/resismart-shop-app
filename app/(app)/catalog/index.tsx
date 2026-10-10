@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList, useColorScheme, Pressable } from 'react-native';
-import { Text, Searchbar, ActivityIndicator } from 'react-native-paper';
+import { View, StyleSheet, FlatList, Pressable, useColorScheme } from 'react-native';
+import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,14 +8,19 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
 import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
-import { Hero, GlassStat } from '../../../src/components/Hero';
+import { CatalogueHero } from '../../../src/features/catalog/components/CatalogueHero'; // M20 — DS v1 hero
 import { ErrorBlock } from '../../../src/features/more/ui';
 import { apiErrorMessage } from '../../../src/api/axios';
-import { useProducts, useProductCategories, ProductCard, UsageMeterBar } from '../../../src/features/catalog';
+import { useProducts, useProductCategories, ProductCard, ProductTile, UsageMeterBar } from '../../../src/features/catalog';
 import type { Product } from '../../../src/features/catalog';
 // Commerce C6: print barcode labels for several items at once.
 import { ProductPickerSheet } from '../../../src/features/commerce/components/ui';
 import { LabelsSheet } from '../../../src/features/commerce/components/LabelsSheet';
+// M20 — DS v1 kit (green, light + dark) + motion (reduce-motion aware).
+import { Button, Chip, EmptyState, SearchField, Skeleton, SkeletonGrid, SkeletonList, StatusBadge } from '../../../src/components/ui';
+import { useAppTheme } from '../../../src/theme/useAppTheme';
+import { MIN_TOUCH, radius } from '../../../src/theme/tokens';
+import { Rise } from '../../../src/theme/motion';
 
 /**
  * The catalog list. Gate 3 (`CATALOG_VIEW` READ) got this far —
@@ -41,6 +46,9 @@ export default function CatalogListScreen() {
   const [q, setQ] = useState('');
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  /** UX-P (idea P5): grid of image-first tiles, or the list. View only — same rows, same order. */
+  const [layout, setLayout] = useState<'list' | 'grid'>('list');
+  const grid = layout === 'grid';
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<Product[]>([]);
   /** C6 labels: pick items (sheet 1), then copies / layout (sheet 2). */
@@ -152,33 +160,40 @@ export default function CatalogListScreen() {
           and chips are the list's header (an element, so the search box keeps
           its focus), and the products are no longer squeezed under them. */}
       <FlatList
+        key={layout}
         data={rows}
         keyExtractor={(p) => p._id}
+        numColumns={grid ? 2 : 1}
+        columnWrapperStyle={grid ? styles.gridRow : undefined}
         ListHeaderComponent={
           <View>
-      <Hero
-        isDark={isDark}
-        rounded={false}
+      {/* The server's `total`, not `rows.length`: now that the list pages, the
+          loaded count is "how far you have scrolled". `_one`/`_other`, not an
+          English `-s`: Hindi cannot pluralise by suffixing. */}
+      <CatalogueHero
         eyebrow={t('catalog.list.eyebrow')}
-        // The server's `total`, not `rows.length`: now that the list pages, the
-        // loaded count is "how far you have scrolled", which is not what a shop
-        // wants to read off its own catalogue header.
-        // `_one`/`_other`, not an English `-s`: Hindi cannot pluralise by
-        // suffixing, and CLDR puts BOTH 0 and 1 in its `one` category.
-        headline={{ value: String(total), label: t('catalog.list.product', { count: total }) }}
+        total={total}
+        totalLabel={t('catalog.list.product', { count: total })}
         subtitle={heroSubtitle}
-      >
-        <GlassStat icon="alert-octagon-outline" label={t('catalog.list.statRunningLow')} value={String(lowCount)} />
-        <GlassStat icon="tag-outline" label={t('catalog.list.statCategories')} value={String(activeCategoryCount)} />
-      </Hero>
-
-      <Searchbar
-        placeholder={t('catalog.list.searchPlaceholder')}
-        value={searchInput}
-        onChangeText={setSearchInput}
-        style={[styles.search, { backgroundColor: c.surfaceVariant }]}
-        elevation={0}
+        lowLabel={t('catalog.list.statRunningLow')}
+        lowCount={lowCount}
+        lowActive={lowStockOnly}
+        onLowPress={() => setLowStockOnly((v) => !v)}
+        categoriesLabel={t('catalog.list.statCategories')}
+        categoryCount={activeCategoryCount}
       />
+
+      <Rise index={1} style={styles.searchRow}>
+        <SearchField
+          placeholder={t('catalog.list.searchPlaceholder')}
+          accessibilityLabel={t('catalog.list.searchPlaceholder')}
+          value={searchInput}
+          onChangeText={setSearchInput}
+          style={styles.searchFlex}
+        />
+        {/* UX-P (A ShopKhata catalogue): grid / list switch. */}
+        <ViewToggle value={layout} onChange={setLayout} />
+      </Rise>
 
       <FlatList
         horizontal
@@ -187,60 +202,60 @@ export default function CatalogListScreen() {
         showsHorizontalScrollIndicator={false}
         style={styles.chipList /* >>> WEB-UI — never grows to fill the column on web */}
         contentContainerStyle={styles.chipRow}
-        renderItem={({ item }) => {
-          const active = item._id === categoryId;
-          return (
-            <Pressable
-              onPress={() => setCategoryId(item._id)}
-              style={[styles.chip, { backgroundColor: active ? c.primary : c.surfaceVariant, borderColor: active ? c.primary : c.divider }]}
-            >
-              <Text style={{ color: active ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600' }}>{item.name}</Text>
-            </Pressable>
-          );
-        }}
+        renderItem={({ item }) => (
+          // M20 — DS chips: selected = ink pill (≥ 4.5:1 in light and dark), press scale.
+          <Chip label={item.name} selected={item._id === categoryId} onPress={() => setCategoryId(item._id)} style={styles.chipGap} />
+        )}
         ListFooterComponent={
           <View style={{ flexDirection: 'row' }}>
-            <Pressable
+            <Chip
+              label={t('catalog.list.lowStock')}
+              icon="alert-outline"
+              selected={lowStockOnly}
               onPress={() => setLowStockOnly((v) => !v)}
-              style={[
-                styles.chip,
-                styles.lowStockChip,
-                { backgroundColor: lowStockOnly ? c.warning : c.surfaceVariant, borderColor: lowStockOnly ? c.warning : c.divider },
-              ]}
-            >
-              <MaterialCommunityIcons name="alert-outline" size={13} color={lowStockOnly ? '#fff' : c.textSecondary} />
-              <Text style={{ color: lowStockOnly ? '#fff' : c.textSecondary, fontSize: 12.5, fontWeight: '600', marginLeft: 4 }}>
-                {t('catalog.list.lowStock')}
-              </Text>
-            </Pressable>
+              style={styles.chipGap}
+            />
             {rows.length > 0 ? (
-              <Pressable
+              <Chip
+                label={t('commerce.labels.print')}
+                icon="printer-outline"
                 onPress={() => { setLabelItems([]); setLabelPicking(true); }}
-                accessibilityRole="button"
-                style={[styles.chip, styles.lowStockChip, { backgroundColor: c.surfaceVariant, borderColor: c.divider }]}
+                style={styles.chipGap}
                 testID="catalog-print-labels"
-              >
-                <MaterialCommunityIcons name="printer-outline" size={13} color={c.textSecondary} />
-                <Text style={{ color: c.textSecondary, fontSize: 12.5, fontWeight: '600', marginLeft: 4 }}>
-                  {t('commerce.labels.print')}
-                </Text>
-              </Pressable>
+              />
             ) : null}
           </View>
         }
       />
+      {/* >>> M20 — say it before the partner opens a form that cannot be saved. */}
+      {rows.some((p) => p.viewOnly) ? (
+        <Rise index={2} style={[styles.viewOnlyBanner, { borderColor: c.warning, backgroundColor: c.surface }]} testID="catalog-view-only-banner">
+          <StatusBadge tone="warn" label={t('catalog.viewOnly.badge')} style={styles.viewOnlyBadge} />
+          <Text style={{ color: c.textPrimary, fontSize: 12.5, lineHeight: 18 }}>{t('catalog.viewOnly.banner')}</Text>
+        </Rise>
+      ) : null}
+      {/* <<< M20 */}
           </View>
         }
         // <<< WEB-UI
-        renderItem={({ item }) => (
-          <ProductCard product={item} onPress={() => router.push({ pathname: '/catalog/[id]', params: { id: item._id } })} />
-        )}
+        renderItem={({ item, index }) => {
+          const open = () => router.push({ pathname: '/catalog/[id]', params: { id: item._id } });
+          const card = grid ? <ProductTile product={item} index={index} onPress={open} /> : <ProductCard product={item} onPress={open} />;
+          // A grid cell takes half the row; the first screenful rises in, later pages arrive at once.
+          if (grid) return index < 8 ? <Rise index={Math.min(index, 5) + 2} distance={10} style={styles.gridCell}>{card}</Rise> : <View style={styles.gridCell}>{card}</View>;
+          // M20 — the first screenful rises in on a stagger; later pages never animate row by row.
+          return index < 8 ? <Rise index={Math.min(index, 5) + 2} distance={10}>{card}</Rise> : card;
+        }}
+        // M20 — a long catalogue stays at 60 fps: small first render, modest window.
+        initialNumToRender={10}
+        windowSize={9}
+        removeClippedSubviews
         contentContainerStyle={rows.length === 0 ? styles.emptyGrow : styles.listPad}
         onEndReachedThreshold={0.4}
         onEndReached={loadMore}
         ListFooterComponent={
           productsQuery.isFetching && page > 1 ? (
-            <ActivityIndicator color={c.primary} style={{ marginVertical: 16 }} />
+            <View style={styles.moreSkeleton}><Skeleton height={64} rounded={22} /></View>
           ) : null
         }
         ListEmptyComponent={
@@ -249,15 +264,14 @@ export default function CatalogListScreen() {
           {loadError ? (
             <ErrorBlock c={c} message={loadError} onRetry={() => void productsQuery.refetch()} />
           ) : productsQuery.isLoading ? (
-            <ActivityIndicator color={c.primary} />
+            <View style={styles.listSkeleton}>{grid ? <SkeletonGrid tiles={4} /> : <SkeletonList rows={4} />}</View>
           ) : (
-            <View style={styles.emptyBox}>
-              <MaterialCommunityIcons name="package-variant-closed" size={30} color={c.textDisabled} />
-              <Text style={[styles.emptyTitle, { color: c.textPrimary }]}>{t('catalog.list.emptyTitle')}</Text>
-              <Text style={[styles.emptyBody, { color: c.textSecondary }]}>
-                {t(canManage ? 'catalog.list.emptyManage' : 'catalog.list.emptyRead')}
-              </Text>
-            </View>
+            <EmptyState
+              illustration="catalog"
+              title={t('catalog.list.emptyTitle')}
+              body={t(canManage ? 'catalog.list.emptyManage' : 'catalog.list.emptyRead')}
+              testID="catalog-empty"
+            />
           )}
           </View>
           // <<< WEB-UI
@@ -282,22 +296,10 @@ export default function CatalogListScreen() {
           <View style={styles.meterWrap}>
             <UsageMeterBar cap={cap} c={c} />
           </View>
+          {/* M20 — kit buttons: hug their labels (never stretched), haptic on the primary. */}
           <View style={styles.actionsRow}>
-            <Pressable
-              onPress={() => router.push('/catalog/scan')}
-              style={[styles.scanBtn, { borderColor: c.primary }]}
-            >
-              <MaterialCommunityIcons name="barcode-scan" size={18} color={c.primary} />
-              <Text style={[styles.scanBtnText, { color: c.primary }]}>{t('catalog.list.scan')}</Text>
-            </Pressable>
-            <Pressable
-              onPress={goCreate}
-              disabled={cap.atLimit}
-              style={[styles.createBtn, { backgroundColor: cap.atLimit ? c.textDisabled : c.primary }]}
-            >
-              <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-              <Text style={styles.createBtnText}>{t('catalog.list.addProduct')}</Text>
-            </Pressable>
+            <Button variant="outline" icon="barcode-scan" label={t('catalog.list.scan')} onPress={() => router.push('/catalog/scan')} />
+            <Button icon="plus" label={t('catalog.list.addProduct')} onPress={goCreate} disabled={cap.atLimit} />
           </View>
         </View>
       )}
@@ -305,34 +307,58 @@ export default function CatalogListScreen() {
   );
 }
 
+/** UX-P: the grid / list switch — a soft track with a sliding-feel green fill on the chosen icon. */
+function ViewToggle({ value, onChange }: { value: 'list' | 'grid'; onChange: (v: 'list' | 'grid') => void }) {
+  const { t } = useTranslation();
+  const { ds } = useAppTheme();
+  const opt = (key: 'list' | 'grid', icon: string, label: string) => {
+    const on = value === key;
+    return (
+      <Pressable
+        key={key}
+        onPress={() => onChange(key)}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ selected: on }}
+        testID={`catalog-view-${key}`}
+        style={[styles.toggleBtn, on ? { backgroundColor: ds.primaryFill } : null]}
+      >
+        <MaterialCommunityIcons name={icon as never} size={18} color={on ? ds.onPrimary : ds.muted} />
+      </Pressable>
+    );
+  };
+  return (
+    <View style={[styles.toggle, { backgroundColor: ds.track }]} accessibilityRole="radiogroup">
+      {opt('grid', 'view-grid-outline', t('catalog.list.viewGrid'))}
+      {opt('list', 'format-list-bulleted', t('catalog.list.viewList'))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  toggle: { flexDirection: 'row', borderRadius: radius.pill, padding: 3 },
+  toggleBtn: { width: MIN_TOUCH, height: 38, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
   root: { flex: 1 },
-  search: { marginHorizontal: 14, marginTop: 10, borderRadius: radii.field },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 12 },
+  searchFlex: { flex: 1, minWidth: 0 },
+  gridRow: { gap: 10, paddingHorizontal: 16 },
+  // maxWidth: a lone last tile keeps its half instead of stretching across the row.
+  gridCell: { flex: 1, maxWidth: '49%', marginVertical: 5 },
+  chipGap: { marginRight: 8 },
+  viewOnlyBanner: { marginHorizontal: 16, marginBottom: 6, borderWidth: 1, borderRadius: radii.card, padding: 12, gap: 6 },
+  viewOnlyBadge: { alignSelf: 'flex-start' },
+  moreSkeleton: { marginHorizontal: 16, marginVertical: 8 },
+  listSkeleton: { paddingHorizontal: 16 },
   // >>> WEB-UI
   chipList: { flexGrow: 0, flexShrink: 0 },
   // <<< WEB-UI
   chipRow: { paddingHorizontal: 14, paddingVertical: 10, alignItems: 'center' },
-  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.pill, borderWidth: StyleSheet.hairlineWidth, marginRight: 8 },
-  lowStockChip: { flexDirection: 'row', alignItems: 'center' },
   listPad: { paddingBottom: 12 },
   // >>> WEB-UI — the header is inside the list; only the empty block is centred.
   emptyGrow: { flexGrow: 1 },
   emptyFill: { flexGrow: 1, justifyContent: 'center', paddingVertical: 24 },
   // <<< WEB-UI
-  emptyBox: { alignItems: 'center', gap: 6, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 15, fontWeight: '600', marginTop: 4 },
-  emptyBody: { fontSize: 13, textAlign: 'center' },
   footer: { borderTopWidth: StyleSheet.hairlineWidth, padding: 12, gap: 10 },
   meterWrap: {},
-  actionsRow: { flexDirection: 'row', gap: 10 },
-  scanBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderWidth: 1.5, borderRadius: radii.card, paddingVertical: 12, paddingHorizontal: 16,
-  },
-  scanBtnText: { fontWeight: '600', fontSize: 13.5 },
-  createBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderRadius: radii.card, paddingVertical: 12,
-  },
-  createBtnText: { color: '#fff', fontWeight: '600', fontSize: 13.5 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' },
 });

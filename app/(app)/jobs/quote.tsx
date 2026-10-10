@@ -1,4 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import Animated from 'react-native-reanimated';
+import { useToast } from '../../../src/components/ui'; // M22
+import { useShake } from '../../../src/components/ui/Feedback'; // M22
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { Button, Text, TextInput } from 'react-native-paper';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
@@ -70,6 +74,8 @@ export default function JobQuoteScreen() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+  const { style: shakeStyle, shake } = useShake();
 
   const body = useMemo(() => ({
     lines: wireLines(list.lines),
@@ -81,8 +87,8 @@ export default function JobQuoteScreen() {
 
   const send = async () => {
     if (!bookingId || busy) return;
-    if (!body.lines.length) { setError(t('errors.JOB_QUOTE_EMPTY')); return; }
-    if (list.violation) { setError(t(`errors.${list.violation.code}`, list.violation.params)); return; }
+    if (!body.lines.length) { setError(t('errors.JOB_QUOTE_EMPTY')); shake(); return; }
+    if (list.violation) { setError(t(`errors.${list.violation.code}`, list.violation.params)); shake(); return; }
     const sig = JSON.stringify(body);
     if (!keyRef.current || keyRef.current.sig !== sig) keyRef.current = { sig, key: newIdempotencyKey('job-quote') };
     setBusy(true);
@@ -90,9 +96,13 @@ export default function JobQuoteScreen() {
     try {
       const out = await jobsApi.quote(String(bookingId), body, keyRef.current.key);
       await qc.invalidateQueries({ queryKey: jobKeys.all() });
+      // M22 — success: one buzz and a line with the quote number, then the job.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      toast.show({ tone: 'success', message: t('p2.jobs.quote.sent', { number: out.quote?.number ?? '' }) });
       router.replace(`/jobs/${out.job.id}` as Href);
     } catch (e) {
       setError(apiErrorMessage(e, t('p2.jobs.quote.failed')));
+      shake();
     } finally {
       setBusy(false);
     }
@@ -167,7 +177,7 @@ export default function JobQuoteScreen() {
             style={{ backgroundColor: 'transparent' }}
           />
 
-          {error ? <Banner c={c} tone="error" body={error} testID="job-quote-error" /> : null}
+          {error ? <Animated.View style={shakeStyle}><Banner c={c} tone="error" body={error} testID="job-quote-error" /></Animated.View> : null}
         </ScrollView>
 
         <View style={[styles.bottom, { backgroundColor: c.surface, borderTopColor: c.divider }]}>

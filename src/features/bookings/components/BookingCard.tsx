@@ -232,7 +232,7 @@ export function BookingCard({
       </View>
 
       {booking.customer.contactMasked && booking.customer.maskNote ? (
-        <Text style={[styles.maskNote, { color: c.textDisabled }]}>{booking.customer.maskNote}</Text>
+        <Text style={[styles.maskNote, { color: c.textSecondary }]}>{booking.customer.maskNote}</Text>
       ) : null}
 
       {/* The clock. Drawn on the COMPACT card too — a partner scanning today's

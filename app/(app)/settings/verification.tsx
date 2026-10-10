@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, useColorScheme, View } from 'react-native';
-import { ActivityIndicator, Button, Text } from 'react-native-paper';
+import { ActivityIndicator, Text } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,8 +16,9 @@ import { partnerApi, uploadKycFile, blockerFix, splitBlockers, PartnerKycDoc } f
 // the same rule the rest of this app follows, and what stops a document type the
 // server has retired from still being offered.
 import { PARTNER_DOC_TYPES, PartnerDocType } from '../../../src/types/api-contract.generated';
-import { AppButton } from '../../../src/components/AppButton';
-import { Card, ChipRow, ErrorBlock, Loading, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
+// M19 redesign: kit buttons (haptic primary), grouped document rows with a visible remove hint, rise, skeleton.
+import { Button, GroupRow } from '../../../src/components/ui';
+import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 
 /**
  * The partner's own half of KYC, which this app did not have.
@@ -177,7 +179,7 @@ export default function VerificationScreen() {
    * sent. `Loading` reads the same `onlineManager` and says "No connection"
    * instead.
    */
-  if (statusQuery.isPending) return <Screen c={c} title={t('settings.verification.title')}><Loading c={c} /></Screen>;
+  if (statusQuery.isPending) return <Screen c={c} title={t('settings.verification.title')}><Loading c={c} skeleton={4} /></Screen>;
   if (statusQuery.isError || !onboarding) {
     return (
       <Screen c={c} title={t('settings.verification.title')}>
@@ -236,6 +238,7 @@ export default function VerificationScreen() {
       c={c}
       title={t('settings.verification.title')}
       subtitle={t(`settings.verification.status${vStatus}`, { defaultValue: vStatus })}
+      rise
     >
       {/* --------------------------------------------------- what our team said */}
       {!!rejectionNote && (
@@ -295,14 +298,7 @@ export default function VerificationScreen() {
               <View key={b.code} style={{ marginTop: 8 }}>
                 <Text style={{ color: c.textSecondary }}>• {b.message}</Text>
                 {fix && (
-                  <Button
-                    mode="text"
-                    compact
-                    onPress={() => router.push(fix.href)}
-                    contentStyle={{ justifyContent: 'flex-start' }}
-                  >
-                    {t(fix.labelKey)}
-                  </Button>
+                  <Button variant="ghost" size="sm" icon="arrow-right" label={t(fix.labelKey)} onPress={() => router.push(fix.href)} />
                 )}
               </View>
             );
@@ -327,14 +323,7 @@ export default function VerificationScreen() {
               <View key={b.code} style={{ marginTop: 8 }}>
                 <Text style={{ color: c.textSecondary }}>• {b.message}</Text>
                 {fix && (
-                  <Button
-                    mode="text"
-                    compact
-                    onPress={() => router.push(fix.href)}
-                    contentStyle={{ justifyContent: 'flex-start' }}
-                  >
-                    {t(fix.labelKey)}
-                  </Button>
+                  <Button variant="ghost" size="sm" icon="arrow-right" label={t(fix.labelKey)} onPress={() => router.push(fix.href)} />
                 )}
               </View>
             );
@@ -367,14 +356,18 @@ export default function VerificationScreen() {
             </Text>
           ) : (
             docs.map((d) => (
-              <Row
+              <GroupRow
                 key={d._id}
-                c={c}
                 icon="file-document-outline"
                 title={docLabel(d.type)}
-                subtitle={d.fileName || t('settings.verification.attachedFile')}
+                detail={d.fileName || t('settings.verification.attachedFile')}
                 onPress={docsLocked ? undefined : () => removeDoc(d)}
-                right={removing === d._id ? <ActivityIndicator size="small" /> : undefined}
+                accessibilityHint={docsLocked ? undefined : t('settings.verification.removeConfirm')}
+                trailing={
+                  removing === d._id
+                    ? <ActivityIndicator size="small" color={c.primary} />
+                    : docsLocked ? undefined : <MaterialCommunityIcons name="trash-can-outline" size={20} color={c.error} />
+                }
               />
             ))
           )}
@@ -394,7 +387,9 @@ export default function VerificationScreen() {
                   value={docType}
                   onChange={setDocType}
                 />
-                <AppButton
+                <Button
+                  fullWidth
+                  icon="paperclip"
                   label={t('settings.verification.attach')}
                   onPress={attach}
                   loading={uploading}
@@ -422,13 +417,12 @@ export default function VerificationScreen() {
               : t('settings.verification.cannotSubmit')}
           </Text>
           <Button
-            mode="contained"
+            fullWidth
+            label={t('settings.verification.submit')}
             onPress={submit}
             loading={submitting}
             disabled={!onboarding.canSubmit || submitting}
-          >
-            {t('settings.verification.submit')}
-          </Button>
+          />
         </Card>
       )}
     </Screen>

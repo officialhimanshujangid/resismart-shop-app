@@ -100,7 +100,7 @@ export default function CommerceSettingsScreen() {
 
   if (!access.settings.canView) {
     return (
-      <Screen c={c} title={t('commerce.settings.title')}>
+      <Screen rise c={c} title={t('commerce.settings.title')}>
         <NoAccess c={c} />
       </Screen>
     );
@@ -172,7 +172,7 @@ export default function CommerceSettingsScreen() {
   };
 
   let body: React.ReactNode;
-  if (query.isPending) body = <Loading c={c} />;
+  if (query.isPending) body = <Loading c={c} skeleton={4} />;
   else if (query.isError || !settings) {
     body = <ErrorBlock c={c} message={apiErrorMessage(query.error, t('commerce.common.loadFailed'))} onRetry={() => void query.refetch()} />;
   } else {
@@ -263,7 +263,7 @@ export default function CommerceSettingsScreen() {
   }
 
   return (
-    <Screen
+    <Screen rise
       c={c}
       title={t('commerce.settings.title')}
       scroll={false}

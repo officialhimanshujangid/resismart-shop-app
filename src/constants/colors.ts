@@ -124,6 +124,8 @@ export const Colors = {
   textPrimary: dsLight.ink,
   textSecondary: dsLight.muted,
   textDisabled: dsLight.faint,
+  /** UX-ICON: chevrons / neutral row icons — stronger than `textDisabled` (4.69:1 vs 3.74:1). */
+  iconMuted: dsLight.iconMuted,
   textInverse: dsLight.onPrimary,
 
   // Status (DS §1)
@@ -165,6 +167,7 @@ export const DarkColors = {
   textPrimary: dsDark.ink,
   textSecondary: dsDark.muted,
   textDisabled: dsDark.faint,
+  iconMuted: dsDark.iconMuted,
   textInverse: dsDark.onPrimary,
   success: palette.successLight,
   error: '#F27A8C',

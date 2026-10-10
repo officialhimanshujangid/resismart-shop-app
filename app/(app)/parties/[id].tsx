@@ -16,6 +16,8 @@ import { formatI18nDate } from '../../../src/i18n';
 import { KhataPanel } from '../../../src/features/khata/components/KhataPanel';
 import { SupplierPanel } from '../../../src/features/purchases/components/SupplierPanel';
 import { TwoPane } from '../../../src/features/p1/ui';
+import { Rise, useCountUp } from '../../../src/theme/motion';
+import { StatusBadge } from '../../../src/components/ui';
 
 export default function PartyDetailScreen() {
   const isDark = useColorScheme() === 'dark';
@@ -24,6 +26,8 @@ export default function PartyDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { can, hasModule } = usePartnerEntitlements();
   const canManage = can('CUSTOMERS', 'FULL');
+  // M21: merging moves money between khatas — the same two rights the server asks for.
+  const canMerge = canManage && can('INVOICING_MANAGE', 'FULL');
   const [toast, setToast] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const [recomputing, setRecomputing] = useState(false);
@@ -79,7 +83,7 @@ export default function PartyDetailScreen() {
   };
 
   if (party.isPending) {
-    return <Screen c={c} title={t('parties.detail.screenTitle')}><Loading c={c} /></Screen>;
+    return <Screen c={c} title={t('parties.detail.screenTitle')}><Loading c={c} skeleton={4} /></Screen>;
   }
   if (party.isError || !party.data) {
     return (
@@ -90,6 +94,7 @@ export default function PartyDetailScreen() {
   }
 
   const p = party.data;
+  const merged = Boolean(p.mergedIntoPartyId);
   const balanceLabel = p.outstandingPaise > 0
     ? t('parties.detail.theyOweYou')
     : p.outstandingPaise < 0 ? t('parties.detail.youOweThem') : t('parties.detail.settled');
@@ -102,7 +107,7 @@ export default function PartyDetailScreen() {
             ledger line (an invoice number, a payment note) — data on the record,
             printed back as it came rather than re-labelled here. */}
         <Text style={[styles.entryLabel, { color: c.textPrimary }]} numberOfLines={1}>{item.label}</Text>
-        <Text style={[styles.entryDate, { color: c.textDisabled }]}>
+        <Text style={[styles.entryDate, { color: c.textSecondary }]}>
           {formatI18nDate(item.at, t)}
           {item.reference ? t('parties.detail.entryReference', { reference: item.reference }) : ''}
         </Text>
@@ -113,7 +118,7 @@ export default function PartyDetailScreen() {
             ? t('parties.detail.entryDebit', { amount: formatPaise(item.debitPaise) })
             : t('parties.detail.entryCredit', { amount: formatPaise(item.creditPaise) })}
         </Text>
-        <Text style={[styles.entryBalance, { color: c.textDisabled }]}>{t('parties.detail.entryBalance', { amount: formatPaise(item.balancePaise) })}</Text>
+        <Text style={[styles.entryBalance, { color: c.textSecondary }]}>{t('parties.detail.entryBalance', { amount: formatPaise(item.balancePaise) })}</Text>
       </View>
     </View>
   );
@@ -126,7 +131,7 @@ export default function PartyDetailScreen() {
         ? 'parties.detail.kindBoth'
         : p.kind === 'CUSTOMER' ? 'parties.detail.kindCustomer' : 'parties.detail.kindSupplier')}
       scroll={false}
-      right={canManage ? (
+      right={canManage && !merged ? (
         <IconButton icon="pencil-outline" size={22} onPress={() => router.push({ pathname: '/parties/new', params: { id } })} />
       ) : undefined}
     >
@@ -138,11 +143,24 @@ export default function PartyDetailScreen() {
         ItemSeparatorComponent={() => <View style={[styles.divider, { backgroundColor: c.divider }]} />}
         ListHeaderComponent={
           <View style={{ gap: 12, marginBottom: 12 }}>
+            {merged ? (
+              <Rise index={0}>
+                <Card c={c}>
+                  <StatusBadge tone="info" label={t('parties.merge.mergedBadge')} />
+                  <Text style={{ color: c.textPrimary, marginTop: 8 }}>{t('parties.merge.mergedNotice', { by: p.mergedByName || '—' })}</Text>
+                  {p.mergedInto ? (
+                    <Row c={c} icon="account-arrow-right-outline" title={t('parties.merge.openKept', { name: p.mergedInto.name })}
+                      onPress={() => router.replace({ pathname: '/parties/[id]', params: { id: p.mergedInto!.id } })} />
+                  ) : null}
+                </Card>
+              </Rise>
+            ) : null}
+            <Rise index={1}>
             <Card c={c}>
               <View style={styles.balanceRow}>
                 <View>
                   <Text style={[styles.balanceLabel, { color: c.textSecondary }]}>{balanceLabel}</Text>
-                  <Text style={[styles.balanceValue, { color: balanceColor }]}>{formatPaise(Math.abs(p.outstandingPaise))}</Text>
+                  <BalanceCount paise={Math.abs(p.outstandingPaise)} color={balanceColor} />
                 </View>
                 {p.phone && (
                   <IconButton
@@ -158,9 +176,10 @@ export default function PartyDetailScreen() {
               )}
               {p.gstin && <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('parties.detail.gstin', { gstin: p.gstin })}</Text>}
             </Card>
+            </Rise>
 
             {/* P1 (screens S2, S14, S15): the supplier side and the khata side, side by side on a tablet. */}
-            {hasModule('INVOICING') && (
+            {hasModule('INVOICING') && !merged && (
               <TwoPane
                 left={p.kind !== 'SUPPLIER' ? <KhataPanel c={c} party={p} canManage={canManage} onMessage={setToast} /> : null}
                 right={p.kind !== 'CUSTOMER' && can('PURCHASES_VIEW', 'READ')
@@ -169,7 +188,16 @@ export default function PartyDetailScreen() {
               />
             )}
 
-            {canManage && (
+            {canMerge && !merged && p.isActive && p.kind !== 'SUPPLIER' && (
+              <Row
+                c={c}
+                icon="call-merge"
+                title={t('parties.merge.open')}
+                subtitle={t('parties.merge.rowHint')}
+                onPress={() => router.push({ pathname: '/parties/merge', params: { id, name: p.name } })}
+              />
+            )}
+            {canManage && !merged && (
               <Row
                 c={c}
                 icon="calculator-variant-outline"
@@ -178,7 +206,7 @@ export default function PartyDetailScreen() {
                 onPress={recomputing ? undefined : recompute}
               />
             )}
-            {canManage && (
+            {canManage && !merged && (
               <Row c={c} icon="eye-off-outline" title={t('parties.detail.hideRow')} danger onPress={onHide} />
             )}
 
@@ -186,13 +214,21 @@ export default function PartyDetailScreen() {
           </View>
         }
         ListEmptyComponent={
-          ledger.isPending ? <Loading c={c} /> : (
+          ledger.isPending ? <Loading c={c} skeleton={4} /> : (
             <EmptyBlock c={c} icon="receipt" title={t('parties.detail.emptyTitle')} body={t('parties.detail.emptyBody')} />
           )
         }
       />
       <Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3500}>{toast}</Snackbar>
     </Screen>
+  );
+}
+
+/** M21: the balance counts up once (reduce-motion: shown at once); readers get the exact amount. */
+function BalanceCount({ paise, color }: { paise: number; color: string }) {
+  const shown = useCountUp(paise);
+  return (
+    <Text accessibilityLabel={formatPaise(paise)} style={[styles.balanceValue, { color }]}>{formatPaise(Math.round(shown))}</Text>
   );
 }
 

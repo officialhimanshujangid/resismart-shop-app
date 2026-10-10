@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +9,7 @@ import type { AvailabilityRow } from '../../availability/types';
 import { ChoiceChips, DayStepper } from '../../p2/ui';
 import { istDayOf } from '../../p2/dates';
 import { currentSlot, pickableSlots } from '../logic';
+import { PressableScale, Rise } from '../../../theme/motion'; // M22
 
 /**
  * When: a big "Now" chip (the slot running now, today only), then the day's
@@ -39,7 +40,8 @@ export function SlotPicker({
     <View style={{ gap: 10 }} testID={testID}>
       <DayStepper c={c} day={day} onChange={onDay} min={today} testID="appt-slot-day" />
       {running ? (
-        <Pressable
+        <PressableScale
+          haptic
           onPress={() => onTime(running)}
           accessibilityRole="radio"
           accessibilityState={{ selected: nowOn }}
@@ -51,12 +53,15 @@ export function SlotPicker({
           <Text style={{ color: nowOn ? c.textInverse : c.primary, fontWeight: '700', fontSize: 16 }} numberOfLines={1}>
             {t('p2.appointments.new.nowAt', { time: running })}
           </Text>
-        </Pressable>
+        </PressableScale>
       ) : null}
       {availability === null ? (
         <Text style={{ color: c.warning, fontSize: 13 }}>{t('p2.appointments.new.noSchedule')}</Text>
       ) : slots.length ? (
-        <ChoiceChips c={c} options={slots.map((s) => ({ key: s, label: s }))} value={time ? [time] : []} onChange={(v) => v[0] && onTime(v[0])} testID="appt-slots" />
+        // M22 — the day's slots slide in when the day changes (re-keyed by day).
+        <Rise key={day}>
+          <ChoiceChips c={c} options={slots.map((s) => ({ key: s, label: s }))} value={time ? [time] : []} onChange={(v) => v[0] && onTime(v[0])} testID="appt-slots" />
+        </Rise>
       ) : !running ? (
         <Text style={{ color: c.textSecondary, fontSize: 13 }}>{t('p2.appointments.new.noSlots')}</Text>
       ) : null}

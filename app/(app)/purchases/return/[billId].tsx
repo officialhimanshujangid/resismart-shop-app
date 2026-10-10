@@ -61,15 +61,16 @@ export default function PurchaseReturnScreen() {
   });
 
   const title = t('purchases.return.title');
-  if (bill.isPending) return <Screen c={c} title={title}><Loading c={c} /></Screen>;
+  if (bill.isPending) return <Screen c={c} rise title={title}><Loading c={c} skeleton={3} /></Screen>;
   if (bill.isError || !bill.data) {
-    return <Screen c={c} title={title}><ErrorBlock c={c} message={apiErrorMessage(bill.error, t('purchases.loadFailed'))} onRetry={() => bill.refetch()} /></Screen>;
+    return <Screen c={c} rise title={title}><ErrorBlock c={c} message={apiErrorMessage(bill.error, t('purchases.loadFailed'))} onRetry={() => bill.refetch()} /></Screen>;
   }
   const b = bill.data;
   const valid = chosen.length > 0 && reason.trim().length >= 3;
 
   return (
     <Screen
+      rise
       c={c}
       title={title}
       subtitle={`${b.number ?? ''} · ${b.partySnapshot.name}`}

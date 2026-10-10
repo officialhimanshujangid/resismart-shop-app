@@ -66,6 +66,7 @@ export default function HolidaysScreen() {
   return (
     <Screen
       c={c}
+      rise
       title={t('p2.subscriptions.holidays.title')}
       floating={<Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={4000}>{toast}</Snackbar>}
     >
@@ -76,7 +77,7 @@ export default function HolidaysScreen() {
             onPress={() => { setError(null); key.current = null; setOpen(true); }} testID="holiday-add" />
         </ActionRow>
       ) : null}
-      {holidays.isPending ? <Loading c={c} />
+      {holidays.isPending ? <Loading c={c} skeleton={3} />
         : holidays.isError ? <ErrorBlock c={c} message={apiErrorMessage(holidays.error, t('p2.common.loadFailed'))} onRetry={() => void holidays.refetch()} />
           : (
             <PausesList c={c} pauses={list} today={today} busy={remove.isPending}

@@ -1,6 +1,7 @@
 import '@/lib/web-alert';
-// 1R dark-mode safety: light until the shop restyle is done — see the file.
-import '@/lib/forceLightScheme';
+// Light/dark follows the phone (app.json userInterfaceStyle: automatic). The 1R
+// forced-light import was removed on 2026-10-10 (E-VISUAL-APPS): every shop screen
+// passed the END dark scan — see resismart-backups/audit/END-VISUAL-APPS.md.
 import React, { useEffect, useRef, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import { radii, themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
+import { OnlyMyJobsNote } from '../../../src/features/p1/OnlyMyJobsNote'; // P9A Q6
 import { apiErrorMessage } from '../../../src/api/axios';
 import { EmptyBlock, ErrorBlock, Loading, Screen } from '../../../src/features/more/ui';
 import { PillButton } from '../../../src/features/p1/ui';
@@ -17,6 +18,7 @@ import { mayQuote, STAGE_FILTERS } from '../../../src/features/jobs/logic';
 import type { JobStage } from '../../../src/features/jobs/types';
 import { JobRowItem } from '../../../src/features/jobs/components/JobRowItem';
 import { BookingPickerSheet } from '../../../src/features/jobs/components/BookingPickerSheet';
+import { Rise } from '../../../src/theme/motion'; // M22
 
 /**
  * Jobs: every job this business has quoted, newest activity first. Stage chips
@@ -42,6 +44,7 @@ export default function JobsListScreen() {
 
   const header = (
     <View style={styles.header}>
+      <OnlyMyJobsNote />
       {mayQuote(can) ? (
         <View style={styles.headRow}>
           <PillButton c={c} icon="file-document-edit-outline" label={t('p2.jobs.list.newQuote')} onPress={() => setPicking(true)} testID="jobs-new-quote" />
@@ -80,12 +83,20 @@ export default function JobsListScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={list.isRefetching} onRefresh={() => list.refetch()} />}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (index < 8 ? (
+          // M22 — the first screenful rises in on a stagger; later rows appear at once.
+          <Rise index={Math.min(index, 6)}>
+            <JobRowItem c={c} row={item} onPress={() => router.push(`/jobs/${item.id}` as Href)} />
+          </Rise>
+        ) : (
           <JobRowItem c={c} row={item} onPress={() => router.push(`/jobs/${item.id}` as Href)} />
-        )}
+        ))}
+        initialNumToRender={10}
+        windowSize={9}
+        removeClippedSubviews
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         ListEmptyComponent={
-          list.isPending ? <Loading c={c} />
+          list.isPending ? <Loading c={c} skeleton={5} />
             : list.isError ? <ErrorBlock c={c} message={apiErrorMessage(list.error, t('p2.common.loadFailed'))} onRetry={() => list.refetch()} />
               : <EmptyBlock c={c} icon="hammer-wrench" title={t('p2.jobs.list.empty')} body={t('p2.jobs.list.emptyBody')} />
         }

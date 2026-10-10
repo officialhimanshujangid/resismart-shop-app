@@ -20,6 +20,8 @@ import { previewDocumentTax } from '../../billing/taxPreview';
 // screen already draws — not a second, order-shaped way of saying "that failed".
 import { ErrorBlock } from '../../more/ui';
 import { formatI18nDate } from '../../../i18n';
+import { OrderTimeline } from './OrderTimeline'; // M23
+import { SkeletonList } from '../../../components/ui';
 
 interface OrderDetailModalProps {
   order: PartnerOrder | null;
@@ -128,7 +130,7 @@ export function OrderDetailModal({
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet">
       <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={['top', 'bottom']}>
         <View style={[styles.header, { borderBottomColor: c.divider }]}>
-          <Text style={[styles.headerTitle, { color: c.textPrimary }]}>{order?.code ?? t('orders.detail.fallbackTitle')}</Text>
+          <Text style={[styles.headerTitle, { color: c.textPrimary }, { flexShrink: 1 }]}>{order?.code ?? t('orders.detail.fallbackTitle')}</Text>
           <Pressable onPress={onClose} hitSlop={10}>
             <MaterialCommunityIcons name="close" size={22} color={c.textSecondary} />
           </Pressable>
@@ -136,7 +138,7 @@ export function OrderDetailModal({
 
         {loading ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color={c.primary} />
+            <SkeletonList rows={3} />
           </View>
         ) : !order ? (
           // Reached only while `error` is set — `visible` is false otherwise, so
@@ -149,7 +151,7 @@ export function OrderDetailModal({
             <ScrollView contentContainerStyle={styles.body}>
               <View style={styles.statusRow}>
                 <OrderStatusChip status={order.status} c={c} />
-                <Text style={[styles.deliveryMode, { color: c.textSecondary }]}>
+                <Text style={[styles.deliveryMode, { color: c.textSecondary }, { flexShrink: 1 }]}>
                   {t(order.deliveryMode === 'DELIVERY' ? 'orders.detail.delivery' : 'orders.detail.pickup')}
                   {/* `slotPreference` is the slot the CUSTOMER chose, as the
                       server stored it — data on the order, not copy. */}
@@ -261,24 +263,19 @@ export function OrderDetailModal({
               </Section>
 
               <Section title={t('orders.detail.timeline')} c={c}>
-                {/* `entry`, not `t` — the callback used to shadow the translator. */}
-                {order.timeline.map((entry, idx) => (
-                  <View key={idx} style={styles.timelineRow}>
-                    <View style={[styles.timelineDot, { backgroundColor: c.primary }]} />
-                    <View style={styles.timelineTextCol}>
-                      <Text style={[styles.timelineStatus, { color: c.textPrimary }]}>
-                        {t('orders.detail.timelineEntry', {
-                          status: t(ORDER_STATUS_LABEL_KEYS[entry.status]),
-                          by: entry.byName ? t('orders.detail.timelineBy', { name: entry.byName }) : '',
-                        })}
-                      </Text>
-                      <Text style={[styles.timelineAt, { color: c.textSecondary }]}>
-                        {formatI18nDate(entry.at, t)}
-                      </Text>
-                      {entry.note && <Text style={[styles.timelineNote, { color: c.textSecondary }]}>{entry.note}</Text>}
-                    </View>
-                  </View>
-                ))}
+                {/* M23 (DS v1) — the animated status timeline (rail grows, steps rise in). */}
+                <OrderTimeline
+                  ended={order.status === 'REJECTED' || order.status === 'CANCELLED'}
+                  rows={order.timeline.map((entry, idx) => ({
+                    key: `${entry.status}-${idx}`,
+                    title: t('orders.detail.timelineEntry', {
+                      status: t(ORDER_STATUS_LABEL_KEYS[entry.status]),
+                      by: entry.byName ? t('orders.detail.timelineBy', { name: entry.byName }) : '',
+                    }),
+                    when: formatI18nDate(entry.at, t),
+                    note: entry.note || undefined,
+                  }))}
+                />
                 {order.ended?.reason && (
                   <Text style={[styles.endedReason, { color: c.error }]}>{t('orders.detail.endedReason', { reason: order.ended.reason })}</Text>
                 )}
@@ -298,13 +295,14 @@ export function OrderDetailModal({
                     disabled={pending}
                     style={[
                       styles.footerBtn,
-                      { backgroundColor: verbNeedsReason(verb) ? c.error : c.primary, opacity: pending ? 0.6 : 1 },
+                      // M23 — the FILL greens + inverse text: ≥ 4.5:1 in light and dark (was white on #3FB27B in dark, 2.7:1).
+                      { backgroundColor: verbNeedsReason(verb) ? c.error : c.primaryFill, opacity: pending ? 0.6 : 1 },
                     ]}
                   >
                     {pending ? (
-                      <ActivityIndicator size={14} color="#fff" />
+                      <ActivityIndicator size={14} color={c.textInverse} />
                     ) : (
-                      <Text style={styles.footerBtnLabel}>{t(ORDER_VERB_LABEL_KEYS[verb])}</Text>
+                      <Text style={[styles.footerBtnLabel, { color: c.textInverse }]}>{t(ORDER_VERB_LABEL_KEYS[verb])}</Text>
                     )}
                   </Pressable>
                 ))}
@@ -340,7 +338,7 @@ function Section({ title, c, children }: { title: string; c: ReturnType<typeof t
 function AmountRow({ label, value, c, bold }: { label: string; value: number; c: ReturnType<typeof themeColors>; bold?: boolean }) {
   return (
     <View style={styles.amountLine}>
-      <Text style={[styles.amountLabel, { color: bold ? c.textPrimary : c.textSecondary, fontWeight: bold ? '600' : '500' }]}>
+      <Text style={[styles.amountLabel, { color: bold ? c.textPrimary : c.textSecondary, fontWeight: bold ? '600' : '500' }, { flexShrink: 1 }]}>
         {label}
       </Text>
       <Text style={[styles.amountValue, { color: c.textPrimary, fontWeight: bold ? '600' : '500' }]}>
@@ -388,7 +386,7 @@ const styles = StyleSheet.create({
   endedReason: { fontSize: 12.5, marginTop: 4, fontWeight: '600' },
   footer: { flexDirection: 'row', gap: 8, padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
   footerBtn: { flex: 1, paddingVertical: 12, borderRadius: radii.card, alignItems: 'center', justifyContent: 'center' },
-  footerBtnLabel: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  footerBtnLabel: { fontWeight: '600', fontSize: 13 },
   returnFooter: { padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
   extraActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 2, borderTopWidth: StyleSheet.hairlineWidth },
   returnBtn: {
