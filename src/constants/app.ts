@@ -15,7 +15,7 @@ function isLocalWebPreview(): boolean {
 
 export const API_BASE_URL = isLocalWebPreview()
   ? process.env.EXPO_PUBLIC_LOCAL_API_URL || 'http://localhost:8000/api/v1'
-  : process.env.EXPO_PUBLIC_API_URL || 'https://resismart-backend-67ua.onrender.com/api/v1';
+  : process.env.EXPO_PUBLIC_API_URL || 'https://resismart-backend-95fl.onrender.com/api/v1';
 
 /**
  * The WEB OAuth client id — the audience every Google ID token is checked
