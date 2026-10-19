@@ -75,6 +75,11 @@ import { RefundToChoice, useRefundTo } from '../../../src/features/billing/compo
 import { asksRefundTo, refundToBody } from '../../../src/features/billing/refundTo';
 // <<< MP1-COMPLETE
 import { PillButton } from '../../../src/features/p1/ui';
+// >>> AI-4 P2 — "fill from the supplier bill" on a new purchase bill (Owner console: per partner plan / business, default OFF).
+import { aiPartnerApi, type AiPurchaseDraft, type AiSupplierView } from '../../../src/api/ai-partner.api';
+import { AiPartnerCapture } from '../../../src/features/ai/AiPartnerCapture';
+import { AiPurchaseReview } from '../../../src/features/ai/AiDraftReview';
+// <<< AI-4 P2
 
 /**
  * The two-tap invoice (build spec §4 / PARTNERS_PLAN §12.5): pick a party,
@@ -658,6 +663,66 @@ export default function NewInvoiceScreen() {
     [lines, supplierState, placeOfSupply, gstApplicable],
   );
   const totals = preview.totals;
+
+  // >>> AI-4 P2 — the supplier bill's draft goes INTO this form; the partner checks it and saves as usual.
+  const aiP2On = canPurchases && direction === 'PURCHASE' && docType === 'PURCHASE_INVOICE' && !sourceType;
+  const aiP2 = useQuery({ queryKey: ['ai', 'partner-status'], queryFn: aiPartnerApi.status, enabled: aiP2On, staleTime: 0 });
+  const [aiPurchase, setAiPurchase] = useState<AiPurchaseDraft | null>(null);
+  const [aiLineKeys, setAiLineKeys] = useState<string[]>([]);
+  const [aiUnmatched, setAiUnmatched] = useState<ReadonlySet<number>>(new Set());
+  const aiPickSupplier = useCallback((s: AiSupplierView) => {
+    setPartyMode('SEARCH');
+    setSelectedParty(s as unknown as PartnerPartyRecord);
+    setPartyQuery('');
+  }, []);
+  const applyPurchaseDraft = useCallback((d: AiPurchaseDraft) => {
+    setAiPurchase(d);
+    setAiUnmatched(new Set());
+    if (d.supplier.match.kind !== 'NONE') aiPickSupplier(d.supplier.match.party);
+    else {
+      // Not in the suppliers yet: search with its name, where the partner picks or adds it.
+      setSelectedParty(null);
+      setPartyMode('SEARCH');
+      setPartyQuery(d.supplier.name || '');
+    }
+    setSupplierInvoiceNo(d.billNumber || '');
+    setSupplierInvoiceDate(d.billDate || '');
+    const drafted: EditableLine[] = d.lines.map((l) => ({
+      key: nextLineKey(),
+      ...(l.match.kind !== 'NONE' ? { itemId: l.match.productId } : {}),
+      itemName: l.name,
+      ...(l.hsn ? { hsn: l.hsn } : {}),
+      qty: l.qty,
+      unit: l.unit,
+      ratePaise: l.ratePaise,
+      discountPaise: 0,
+      // Supplier bills print the rate BEFORE tax.
+      taxInclusive: false,
+      taxRatePercent: l.gstRatePercent ?? 0,
+    }));
+    setAiLineKeys(drafted.map((l) => l.key));
+    setLines(drafted);
+  }, [aiPickSupplier]);
+  const aiUnmatch = useCallback((i: number) => {
+    const key = aiLineKeys[i];
+    const line = aiPurchase?.lines[i];
+    if (!key || !line) return;
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, itemId: undefined, itemName: line.newProduct?.name || line.name } : l)));
+    setAiUnmatched((s) => new Set([...s, i]));
+  }, [aiLineKeys, aiPurchase]);
+  const aiAddProduct = useCallback((i: number) => {
+    const line = aiPurchase?.lines[i];
+    const np = line?.newProduct ?? (line ? { name: line.name, hsnCode: line.hsn, unit: line.unit, gstRatePercent: line.gstRatePercent } : null);
+    if (!np) return;
+    // Add product, pre-filled (never a price); saving it comes back here with this bill intact.
+    router.push({ pathname: '/catalog/create', params: {
+      name: np.name.slice(0, 160),
+      ...(np.hsnCode ? { hsn: np.hsnCode } : {}),
+      unit: np.unit,
+      ...(np.gstRatePercent !== null ? { taxRate: String(np.gstRatePercent) } : {}),
+    } });
+  }, [aiPurchase]);
+  // <<< AI-4 P2
   const untaxedLineCount = lines.filter((l) => !(l.taxRatePercent ?? 0)).length;
 
   /**
@@ -990,6 +1055,17 @@ export default function NewInvoiceScreen() {
               }))}
             />
           {/* <<< WEB-UI */}
+
+          {/* >>> AI-4 P2 — fill this purchase bill from the supplier's bill; nothing is saved until Save. */}
+          {aiP2On && aiP2.data?.purchaseDraft ? (
+            <AiPartnerCapture c={c} mode="purchase" status={aiP2.data} onStatus={() => void aiP2.refetch()} onPurchase={applyPurchaseDraft}>
+              {aiPurchase ? (
+                <AiPurchaseReview c={c} draft={aiPurchase} unmatched={aiUnmatched} onPickSupplier={aiPickSupplier}
+                  onUnmatch={aiUnmatch} onAddProduct={aiAddProduct} formTotalPaise={totals.grandPaise} />
+              ) : null}
+            </AiPartnerCapture>
+          ) : null}
+          {/* <<< AI-4 P2 */}
 
           <Card style={styles.card}>
             <Text style={[styles.cardTitle, { color: c.textPrimary }]}>

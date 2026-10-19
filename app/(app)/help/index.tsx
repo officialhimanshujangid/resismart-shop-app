@@ -16,6 +16,7 @@ import { WhatsAppSupport } from '../../../src/features/help/WhatsAppSupport';
 import { Card, EmptyBlock, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 // M19 redesign: kit search pill + grouped topic list (was a Paper Searchbar and a card per row inside a card).
 import { GroupRow, ListGroup, SearchField } from '../../../src/components/ui';
+import { aiApi } from '../../../src/api/ai.api'; // AI-1
 
 /** Below this the server has nothing useful to rank, and an empty `q` is a 400. */
 const MIN_QUERY = 2;
@@ -60,6 +61,14 @@ export default function HelpScreen() {
     enabled: Boolean(from) && !searching,
   });
 
+  // AI-1 — 'Ask AI' only when the server says this business has support chat on.
+  const ai = useQuery({ queryKey: ['ai', 'status'], queryFn: aiApi.status, staleTime: 60_000 });
+  const askRow = ai.data?.features.supportChat ? (
+    <ListGroup>
+      <GroupRow icon="creation" tint="violet" title={t('ai.askAi')} detail={t('ai.askAiHint')} onPress={() => router.push('/help/ask')} />
+    </ListGroup>
+  ) : null;
+
   const modules = useQuery({
     queryKey: qk.helpModules(language),
     queryFn: () => helpApi.modules(language),
@@ -83,7 +92,10 @@ export default function HelpScreen() {
           ) : search.isError ? (
             <ErrorBlock c={c} message={apiErrorMessage(search.error, t('help.couldNotLoad'))} onRetry={() => void search.refetch()} />
           ) : search.data.length === 0 ? (
-            <EmptyBlock c={c} icon="magnify-close" title={t('help.noResultsTitle', { q })} body={t('help.noResultsBody')} />
+            <>
+              <EmptyBlock c={c} icon="magnify-close" title={t('help.noResultsTitle', { q })} body={t('help.noResultsBody')} />
+              {askRow}
+            </>
           ) : (
             search.data.map((hit) => (
               <ArticleCard key={hit.article.id} c={c} article={hit.article} moduleTitle={hit.moduleTitle} />
@@ -110,6 +122,8 @@ export default function HelpScreen() {
               )}
             </>
           ) : null}
+
+          {askRow}
 
           <SectionLabel c={c}>{t('help.topicsSection')}</SectionLabel>
           {modules.isPending ? (

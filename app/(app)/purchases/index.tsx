@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, useColorScheme, View } from 'react-native';
 import { router } from 'expo-router';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors } from '../../../src/constants/colors';
@@ -16,6 +16,7 @@ import { PurchaseDocRow } from '../../../src/features/purchases/components/Purch
 // M20 — row stagger + a skeleton row while the next page loads.
 import { Rise } from '../../../src/theme/motion';
 import { Segmented, Skeleton } from '../../../src/components/ui';
+import { aiPartnerApi } from '../../../src/api/ai-partner.api'; // AI-4 P2
 
 /**
  * Purchases home (screen S3): purchase orders, goods received, supplier bills
@@ -37,6 +38,8 @@ export default function PurchasesHomeScreen() {
   const { can, hasModule } = usePartnerEntitlements();
   const canManage = can('PURCHASES_MANAGE', 'FULL');
   const [tab, setTab] = useState<Tab>('PO');
+  // AI-4 P2 — 'enter a supplier bill from its photo', only when the Owner switched it on for this business.
+  const ai = useQuery({ queryKey: ['ai', 'partner-status'], queryFn: aiPartnerApi.status, enabled: canManage, staleTime: 0 });
 
   const query = useInfiniteQuery({
     queryKey: qk.billing.documents({ purchaseTab: tab }),
@@ -79,6 +82,17 @@ export default function PurchasesHomeScreen() {
             )}
           </ActionRow>
         )}
+        {canManage && tab === 'BILL' && ai.data?.purchaseDraft ? (
+          <ActionRow>
+            <PillButton
+              c={c}
+              tone="outline"
+              icon="creation"
+              label={t('aiPartner.purchase.shortcutApp')}
+              onPress={() => router.push({ pathname: '/billing/new', params: { direction: 'PURCHASE', docType: 'PURCHASE_INVOICE' } })}
+            />
+          </ActionRow>
+        ) : null}
       </Rise>
 
       {query.isPending ? (

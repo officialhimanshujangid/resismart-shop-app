@@ -3074,6 +3074,7 @@
     "WALLET_OFF": "This shop does not offer store credit or points.",
     "REFERRAL_CODE_UNKNOWN": "That referral code does not exist at this shop.",
     "REFERRAL_SELF": "You cannot use your own referral code.",
+    "REFERRAL_SAME_HOME": "This referral code belongs to someone in your home. Use a code from a friend outside your home.",
     "REFERRAL_NOT_FIRST_ORDER": "A referral code can only be used on your first order at this shop.",
     "REFERRAL_OFF": "This shop is not running referrals right now.",
     "STOCK_ALERT_IN_STOCK": "This item is in stock now — you can order it.",
@@ -6247,5 +6248,143 @@
       "soapA11y": "Soap bar",
       "productA11y": "Product picture"
     }
+  },
+  "ai": {
+    "title": "Ask AI",
+    "subtitle": "Answers from ResiSmart partner help",
+    "askAi": "Ask AI",
+    "askAiHint": "Ask in your own words — answers come from our help articles.",
+    "backToHelp": "Back to help",
+    "consent": {
+      "title": "Before you ask the AI helper",
+      "body": "Your question and the needed details (never phone, email or Aadhaar) are sent to Google Gemini to write an answer. Google does not use it to train its AI. AI can be wrong — confirm important things with ResiSmart support.",
+      "pointSaved": "Your chat is not saved on our servers. It stays on this screen until you close it.",
+      "pointStop": "You can stop using AI any time.",
+      "adult": "I am 18+ (18 years or older)",
+      "accept": "I agree, start",
+      "saving": "Saving…",
+      "notNow": "Not now",
+      "failed": "Could not save your choice. Please try again."
+    },
+    "chat": {
+      "introTitle": "Ask anything about using ResiSmart",
+      "intro": "For example: “How do I add a product?” or “ऑर्डर कैसे देखें?”. Answers come only from our help articles.",
+      "aiLabel": "AI answer",
+      "sources": "From these help articles",
+      "related": "These articles may help",
+      "thinking": "Writing an answer",
+      "placeholder": "Type your question",
+      "send": "Send question",
+      "disclaimer": "AI can be wrong — confirm important things with ResiSmart support.",
+      "stop": "Stop using AI"
+    },
+    "errors": {
+      "AI_NOT_AVAILABLE": "The AI helper is not available right now. You can still search help or chat with us on WhatsApp.",
+      "AI_OFF_FOR_SOCIETY": "The AI helper is not switched on for your society or business.",
+      "AI_FEATURE_OFF": "This AI feature is not switched on for your society or business.",
+      "AI_CONTEXT_REQUIRED": "Open your society or business first to use the AI helper.",
+      "AI_CONSENT_REQUIRED": "Please read and accept the AI terms (and confirm you are 18 or older) before asking.",
+      "AI_CONSENT_INVALID": "Tick the box to confirm you are 18 or older, then accept.",
+      "AI_LIMIT_REACHED": "Your society or business has used all its AI questions for this month. You can still search help or chat with us on WhatsApp.",
+      "AI_USER_DAILY_LIMIT": "You have asked the most questions allowed for today. Please try again tomorrow.",
+      "AI_BUDGET_REACHED": "The AI helper is resting for today. Please try again tomorrow, or search help.",
+      "AI_QUESTION_INVALID": "Type a question of up to 500 characters.",
+      "AI_FAILED": "The AI helper could not answer just now. Here are help articles that may help."
+    }
+  },
+  "aiPartner": {
+    "takePhoto": "Take photo",
+    "again": "Another photo",
+    "reading": "Reading the photo…",
+    "photoKept": "The photo is kept in the form.",
+    "byHand": "You can fill the form yourself.",
+    "errors": {
+      "AI_PARTNER_FILE_INVALID": "Choose a clear photo (JPG, PNG or WebP, up to 5 MB). A supplier bill may also be a PDF (up to 8 MB).",
+      "AI_PRODUCT_UNREADABLE": "The AI could not read this product photo. Try a closer, brighter photo of the pack — or fill in the details yourself.",
+      "AI_PRODUCT_NOT_A_PRODUCT": "This does not look like a product you sell. Take a photo of the item or its pack.",
+      "AI_PURCHASE_UNREADABLE": "The AI could not read this supplier bill. Try a clearer photo — or enter the bill yourself.",
+      "AI_PURCHASE_NOT_A_BILL": "This does not look like a supplier bill or invoice. Check the photo, or enter the bill yourself.",
+      "generic": "The AI could not help this time."
+    },
+    "product": {
+      "title": "Fill from a photo",
+      "hint": "Take a photo of the item or its pack. AI suggests the name, description, category, unit and tax — you check them and type your price.",
+      "choose": "Choose photo",
+      "notes": "Note for AI (optional)",
+      "notesPlaceholder": "e.g. 1 kg pack, sold loose",
+      "review": {
+        "checkAll": "AI filled the form below. Check every field before you save — nothing is saved yet.",
+        "priceYours": "The price is empty on purpose: type your selling price (and MRP) yourself.",
+        "similar": "This may already be in your catalogue: {{name}}. Check before adding it again.",
+        "taxVerify": "GST {{gst}} and HSN {{hsn}} are only suggestions — please verify them (ask your accountant if unsure).",
+        "descriptionIn": "Description in:"
+      },
+      "warn": {
+        "PRICE_REMOVED": "A price printed on the pack was not copied — prices are always yours to type.",
+        "CATEGORY_NONE": "None of your categories fit — pick one or leave it empty.",
+        "UNIT_UNSURE": "AI was not sure of the unit — check it.",
+        "NAME_UNCLEAR": "AI could not read the name — type it.",
+        "LOW_CONFIDENCE": "AI was not very sure of this photo — check everything carefully."
+      },
+      "chooseApp": "Choose photo",
+      "fromBill": "Filled from the supplier bill. Type your selling price, check the rest, then save.",
+      "description": "Description (from AI — edit or clear it)"
+    },
+    "purchase": {
+      "title": "Fill from the supplier bill",
+      "hint": "Take a photo of the supplier’s bill (or choose a PDF). AI fills the supplier, bill number, date and items — you check and save.",
+      "choose": "Choose photo or PDF",
+      "shortcutTitle": "Enter a supplier bill from its photo",
+      "shortcutHint": "AI reads the bill and fills a new purchase bill for you to check. Nothing is saved until you press Save.",
+      "shortcutOpen": "Open",
+      "review": {
+        "checkAll": "AI filled the bill below. Check the supplier, every item, quantity, rate and tax before you save — nothing is saved yet, and stock moves only when you save.",
+        "duplicate": "Bill number {{no}} from this supplier is already entered (dated {{date}}). Check it is not the same bill.",
+        "openDuplicate": "Open that bill",
+        "supplierUnknown": "Supplier not readable",
+        "gstin": "GSTIN {{gstin}}",
+        "supplierByGstin": "Matched to your supplier {{name}} by GSTIN.",
+        "supplierByName": "Matched to your supplier {{name}} by name — check it.",
+        "supplierNew": "Not in your suppliers yet. Its name is in the supplier box — save it as a new supplier there, or pick one below.",
+        "isIt": "Is it {{name}}?",
+        "lineNew": "Not in your catalogue — saved as a plain line (no stock) unless you add it as a product.",
+        "lineLikely": "Probably your product “{{name}}” — check it is the same item.",
+        "lineMatched": "Your product “{{name}}”.",
+        "notThis": "Not this product",
+        "addProduct": "Add as product",
+        "askToAdd": "Ask someone who manages the catalogue to add this product.",
+        "afterAdding": "After adding a product (it opens in a new tab), pick it on that line so its stock goes up.",
+        "taxable": "Before tax (bill)",
+        "tax": "Tax (bill)",
+        "billTotal": "Bill total",
+        "totalDiffers": "The bill says {{bill}} but this form adds up to {{form}}. Check quantities, rates and tax.",
+        "supplierNewApp": "Not in your suppliers yet. Its name is in the supplier search above — pick it there or add it as a new supplier.",
+        "afterAddingApp": "After you save a new product you come back here — tap the line and pick that product so its stock goes up."
+      },
+      "warn": {
+        "LOW_CONFIDENCE": "AI was not very sure of this bill — check everything carefully.",
+        "SUPPLIER_UNCLEAR": "AI could not read the supplier — pick or type it.",
+        "SUPPLIER_GSTIN_DIFFERENT": "The GSTIN on the bill is different from the one saved for this supplier.",
+        "GSTIN_INVALID": "The GSTIN on the bill does not look valid — check it.",
+        "BILL_NUMBER_MISSING": "No bill number was read — type it.",
+        "DATE_UNCLEAR": "The bill date was not clear — type it.",
+        "DATE_FUTURE": "The bill date read was in the future, so it was left empty — type it.",
+        "TOTAL_MISSING": "No grand total was read — check the total yourself.",
+        "TOTAL_MISMATCH": "The items and tax on the bill do not add up to its total — check them.",
+        "LINES_MISSING": "No items were read — add them yourself.",
+        "BANK_DETAILS_HIDDEN": "Bank details printed on the bill were hidden and not copied."
+      },
+      "lineWarn": {
+        "QTY_UNCLEAR": "Quantity was not clear — check it.",
+        "RATE_UNCLEAR": "Rate was not clear (or does not match the amount) — check it.",
+        "UNIT_DIFFERS": "The bill’s unit differs from your product’s unit — check the quantity.",
+        "PRODUCT_INACTIVE": "This product is switched off in your catalogue.",
+        "TAX_VERIFY": "GST / HSN from the bill — please verify."
+      },
+      "chooseApp": "Choose photo",
+      "shortcutApp": "From bill photo (AI)"
+    },
+    "cameraDenied": "Allow the camera for ResiSmart Shop in your phone settings, or choose a photo instead.",
+    "pickFailed": "Could not open the photo. Try again."
   }
 }

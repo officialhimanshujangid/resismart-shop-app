@@ -27,6 +27,13 @@ import {
   EMPTY_SHOP_FIELDS, ShopFieldKey, ShopFieldsForm, shopFieldOfError, shopFieldsBody, shopFieldsOn, shopFieldsProblems,
 } from '../../../src/features/catalog/commerceFields';
 // <<< MP1-COMPLETE
+// >>> AI-4 P1 — "fill from a photo" (Owner console: per partner plan / business, default OFF).
+import { useQuery } from '@tanstack/react-query';
+import { useLanguage } from '../../../src/i18n/useLanguage';
+import { aiPartnerApi, type AiProductDraft } from '../../../src/api/ai-partner.api';
+import { AiPartnerCapture } from '../../../src/features/ai/AiPartnerCapture';
+import { AiProductReview } from '../../../src/features/ai/AiDraftReview';
+// <<< AI-4 P1
 
 /**
  * New product. `?barcode=` and `?returnTo=` are the scanner's contract — see
@@ -52,22 +59,26 @@ export default function CreateProductScreen() {
   const { t } = useTranslation();
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
-  const params = useLocalSearchParams<{ barcode?: string; returnTo?: string }>();
+  // AI-4 P2: `name` / `hsn` / `unit` / `taxRate` — a supplier-bill line's "Add as product" (never a price).
+  const params = useLocalSearchParams<{ barcode?: string; returnTo?: string; name?: string; hsn?: string; unit?: string; taxRate?: string }>();
+  const fromBill = !!params.name;
   const { can } = usePartnerEntitlements();
   const { capacity } = usePlanUsage();
   const cap = capacity('max_products');
   const categoriesQuery = useProductCategories();
   const createProduct = useCreateProduct();
 
-  const [name, setName] = useState('');
+  const [name, setName] = useState(params.name ? String(params.name).slice(0, 160) : '');
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState(params.barcode ?? '');
-  const [hsnCode, setHsnCode] = useState('');
-  const [unit, setUnit] = useState<ProductUnit>('PCS');
+  const [hsnCode, setHsnCode] = useState(params.hsn && /^\d{4,8}$/.test(params.hsn) ? params.hsn : '');
+  const [unit, setUnit] = useState<ProductUnit>(
+    params.unit && (PRODUCT_UNITS as readonly string[]).includes(params.unit) ? params.unit as ProductUnit : 'PCS',
+  );
   const [mrp, setMrp] = useState('');
   const [sellPrice, setSellPrice] = useState('');
-  const [taxRate, setTaxRate] = useState('0');
-  const [taxInclusive, setTaxInclusive] = useState(true);
+  const [taxRate, setTaxRate] = useState(params.taxRate && Number.isFinite(Number(params.taxRate)) ? String(Number(params.taxRate)) : '0');
+  const [taxInclusive, setTaxInclusive] = useState(!params.taxRate);
   const [stockQty, setStockQty] = useState('0');
   const [lowStockAt, setLowStockAt] = useState('');
   const [trackStock, setTrackStock] = useState(true);
@@ -87,6 +98,31 @@ export default function CreateProductScreen() {
   const [componentNames, setComponentNames] = useState<Record<string, string>>({});
 
   const canManage = can('CATALOG_MANAGE', 'FULL');
+
+  // >>> AI-4 P1 — the photo's draft goes INTO this form; the partner types the price and saves.
+  const { language } = useLanguage();
+  const aiStatus = useQuery({ queryKey: ['ai', 'partner-status'], queryFn: aiPartnerApi.status, enabled: canManage, staleTime: 0 });
+  const [aiDraft, setAiDraft] = useState<AiProductDraft | null>(null);
+  const [descLang, setDescLang] = useState<'en' | 'hi' | null>(null);
+  /** The AI's description when the online-shop fields are off (sent as `description` only if kept). */
+  const [aiDescription, setAiDescription] = useState('');
+  const putDescription = (text: string) => {
+    if (shopOn) setShopFields((f) => ({ ...f, description: text }));
+    else setAiDescription(text);
+  };
+  const applyAiDraft = ({ photoUrl, draft }: { photoUrl: string; draft: AiProductDraft }) => {
+    setAiDraft(draft);
+    if (draft.name) setName(draft.name);
+    setUnit(draft.unit);
+    if (draft.hsnCode) setHsnCode(draft.hsnCode);
+    if (draft.gstRatePercent !== null) { setTaxRate(String(draft.gstRatePercent)); setTaxInclusive(true); }
+    if (draft.category && (categoriesQuery.data ?? []).some((cat) => cat._id === draft.category!.id)) setCategoryId(draft.category.id);
+    if (photoUrl) setImages((cur) => (cur.includes(photoUrl) ? cur : [photoUrl, ...cur].slice(0, 8)));
+    const lang: 'en' | 'hi' = language === 'hi' ? (draft.description.hi ? 'hi' : 'en') : (draft.description.en ? 'en' : 'hi');
+    if (draft.description[lang]) { putDescription(draft.description[lang]); setDescLang(lang); }
+    // The selling price is left exactly as it was — empty unless the partner typed it.
+  };
+  // <<< AI-4 P1
 
   const handleBarcodeScan = useCallback((outcome: ProductScanOutcome) => {
     if (outcome.status === 'unknown') {
@@ -211,6 +247,8 @@ export default function CreateProductScreen() {
         isActive: true,
         // MP1-COMPLETE — P1: only the boxes filled in (an empty box sends nothing).
         ...(shopOn ? shopFieldsBody(shopFields) : {}),
+        // AI-4 P1 — the AI's description when the online-shop fields are off (only if kept).
+        ...(!shopOn && aiDescription.trim() ? { description: aiDescription.trim().slice(0, 2000) } : {}),
       },
       {
         onSuccess: goBackToOrigin,
@@ -243,6 +281,25 @@ export default function CreateProductScreen() {
       <Rise index={0}>
         <UsageMeterBar cap={cap} c={c} />
       </Rise>
+
+      {/* >>> AI-4 P1 — fill from a photo; nothing is saved until "Save product". */}
+      {aiStatus.data?.productDraft ? (
+        <AiPartnerCapture c={c} mode="product" status={aiStatus.data} onStatus={() => void aiStatus.refetch()}
+          disabled={createProduct.isPending} onProduct={applyAiDraft}
+          onPhotoKept={(url) => setImages((cur) => (cur.includes(url) ? cur : [url, ...cur].slice(0, 8)))}>
+          {aiDraft ? (
+            <AiProductReview c={c} draft={aiDraft} shown={descLang}
+              onDescription={(l) => { if (aiDraft.description[l]) { putDescription(aiDraft.description[l]); setDescLang(l); } }} />
+          ) : null}
+        </AiPartnerCapture>
+      ) : null}
+      {fromBill ? (
+        <Text testID="ai-item-prefill" style={{ color: c.textSecondary, fontSize: 13, marginBottom: 8 }}>{t('aiPartner.product.fromBill')}</Text>
+      ) : null}
+      {!shopOn && aiDescription ? (
+        <AppInput label={t('aiPartner.product.description')} value={aiDescription} onChangeText={setAiDescription} multiline />
+      ) : null}
+      {/* <<< AI-4 P1 */}
 
       <Rise index={1}>
         <AppInput label={t('catalog.form.name')} value={name} onChangeText={setName} error={errors.name} />
