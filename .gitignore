@@ -43,3 +43,8 @@ yarn-error.*
 # Firebase service account keys — admin credentials, never commit
 *-firebase-adminsdk-*.json
 service-account*.json
+
+# Local env (no secrets here, but never commit real values)
+.env
+.env.local
+!.env.example
