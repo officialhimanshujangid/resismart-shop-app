@@ -94,6 +94,23 @@ export interface StorefrontPayloadExtras {
   hoursStated?: boolean;
   opensAt?: string;
   timezone?: string;
+  /** BUG-029/030 — exactly what residents see (the server's one open rule), for the partner's preview. */
+  openState?: ResidentOpenState;
+}
+
+/** BUG-029/030 — `partner-hours.ts#PartnerOpenState` on the wire. */
+export interface ResidentOpenState {
+  status: 'OPEN' | 'CLOSED_NOW' | 'CLOSED_TODAY' | 'HOURS_NOT_SET';
+  reason?: 'HOURS' | 'HOLIDAY' | 'DAY_OFF' | 'WEEKLY_OFF' | 'ORDERS_PAUSED';
+  opensAt?: string;
+}
+
+/** "Residents see: Closed today · Day off · Opens Tue 9:00 AM" — the same words the society app and web draw. */
+export function residentsSeeText(s: ResidentOpenState, t: T, now = new Date()): string {
+  const label = t(`commerce.storefront.open.status.${s.status}`);
+  const why = s.reason && s.reason !== 'HOURS' && s.status !== 'OPEN' ? t(`commerce.storefront.open.reason.${s.reason}`) : '';
+  const when = s.opensAt && s.status !== 'OPEN' ? t('commerce.storefront.open.opensAt', { when: clockText(s.opensAt, t, now) }) : '';
+  return t('commerce.storefront.open.residentsSee', { state: [label, why, when].filter(Boolean).join(' · ') });
 }
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});

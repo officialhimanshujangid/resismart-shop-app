@@ -127,8 +127,8 @@
       "invoice": "Invoice settings",
       "invoiceLocked": "Not included in your current plan",
       "invoiceSub": "Theme, numbering, bank details, thermal printing",
-      "planSection": "Plan & billing",
-      "plan": "Plan & billing",
+      "planSection": "ResiSmart plan",
+      "plan": "ResiSmart plan",
       "planTrialSub": "On trial — see when it ends, and what your plan includes",
       "planSub": "{{plan}} · renewal, usage and invoices",
       "foundSection": "Getting found",
@@ -399,7 +399,7 @@
       }
     },
     "plan": {
-      "title": "Plan & billing",
+      "title": "ResiSmart plan",
       "status": {
         "active": "Active",
         "trialing": "On trial",
@@ -596,7 +596,7 @@
       "successTitle": "Check your inbox",
       "successBodyBefore": "If there is an account for ",
       "successBodyAfter": ", a password reset link is on its way.",
-      "successExpiry": "The link will expire in 1 hour.",
+      "successExpiry": "The link will expire in 1 hour. Nothing arrived? Sign in with a code sent to your mobile number instead.",
       "returnToSignIn": "Return to sign in",
       "email": "Email address",
       "send": "Send reset link",
@@ -2111,7 +2111,8 @@
       "whyLabel": "Why (optional — your team sees this)",
       "day": "Day",
       "time": "Time",
-      "staffWithRole": "{{name}} · {{role}}"
+      "staffWithRole": "{{name}} · {{role}}",
+      "noCodeAtPartner": "The customer is at your place, so no code is needed. Tap below when the work is done."
     },
     "actionFailed": "Could not do that",
     "confirm": {
@@ -2845,6 +2846,7 @@
     "OTP_WRONG": "That code is not correct. Please try again.",
     "OTP_COOLDOWN": "Please wait a minute before asking for another code.",
     "OTP_DAILY_CAP": "Too many codes were asked for this contact today. Please try again later.",
+    "OTP_IP_DAILY_CAP": "Too many codes were asked for from this network today. Please try again later, or switch between Wi-Fi and mobile data.",
     "OTP_UNDELIVERABLE": "We could not send the code right now. Please try again, or try the other option.",
     "OTP_PURPOSE_NOT_ALLOWED": "This kind of code cannot be asked for here.",
     "OTP_SIGN_IN_REQUIRED": "Please sign in first, then verify the new contact.",
@@ -2853,6 +2855,7 @@
     "GOOGLE_TOKEN_INVALID": "Google sign-in did not work. Please try again.",
     "GOOGLE_NO_ACCOUNT": "No ResiSmart account uses this Google address. Sign in with your mobile number instead.",
     "GOOGLE_LINKED_ELSEWHERE": "This account is linked to a different Google account. Please contact your society admin.",
+    "GOOGLE_EMAIL_UNVERIFIED": "This Google address is not confirmed on your account yet. Sign in with the code sent to your mobile number, or once with a code sent to this email. After that, Google sign-in works.",
     "REFRESH_REQUIRED": "Please sign in again.",
     "REFRESH_INVALID": "Your session has expired. Please sign in again.",
     "SESSION_ENDED": "You were signed out of this device. Please sign in again.",
@@ -6126,6 +6129,23 @@
           "en": "Poster (English)",
           "hi": "Poster (Hindi)"
         }
+      },
+      "open": {
+        "status": {
+          "OPEN": "Open now",
+          "CLOSED_NOW": "Closed now",
+          "CLOSED_TODAY": "Closed today",
+          "HOURS_NOT_SET": "Hours not set"
+        },
+        "reason": {
+          "HOURS": "Outside opening hours",
+          "HOLIDAY": "Holiday",
+          "DAY_OFF": "Day off",
+          "WEEKLY_OFF": "Weekly off",
+          "ORDERS_PAUSED": "Orders paused"
+        },
+        "opensAt": "Opens {{when}}",
+        "residentsSee": "Residents see: {{state}}"
       }
     }
   },

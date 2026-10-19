@@ -346,10 +346,17 @@ export function usePartnerEntitlements(options?: UsePartnerEntitlementsOptions):
     staleTime: 60_000,
   });
 
-  const resolved = query.isSuccess ? normalise(query.data) : CLOSED_ENTITLEMENTS;
+  // >>> BUG-043 — a failed RE-read keeps the last good answer. react-query keeps
+  // `data` after a failed refetch but flips `isSuccess` off, which used to read as
+  // "nothing allowed" and emptied the menu. The cache is cleared on every sign-in,
+  // sign-out and business switch (`resetQueryCache`), so `data` is always this
+  // business's. With no good answer at all it still fails closed.
+  const hasAnswer = query.data !== undefined;
+  const resolved = hasAnswer ? normalise(query.data) : CLOSED_ENTITLEMENTS;
   const loading = query.isPending;
-  const ready = query.isSuccess;
-  const failed = query.isError;
+  const ready = hasAnswer;
+  const failed = query.isError && !hasAnswer;
+  // <<< BUG-043 (was: isSuccess / isError)
 
   const can = useCallback(
     (module: PartnerAccessModule, level: 'READ' | 'FULL' = 'FULL'): boolean => {

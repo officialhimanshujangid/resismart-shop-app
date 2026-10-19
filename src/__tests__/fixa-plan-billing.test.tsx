@@ -57,11 +57,11 @@ afterEach(() => { jest.restoreAllMocks(); });
 
 describe('Plan & billing (shop)', () => {
   it('is named "Plan & billing" in both languages, like the web and the society app', () => {
-    expect(en.settings.plan.title).toBe('Plan & billing');
-    expect(en.settings.hub.plan).toBe('Plan & billing');
-    expect(en.settings.hub.planSection).toBe('Plan & billing');
-    expect(hi.settings.plan.title).toBe('प्लान और बिलिंग');
-    expect(hi.settings.hub.plan).toBe('प्लान और बिलिंग');
+    expect(en.settings.plan.title).toBe('ResiSmart plan'); // P2L5b canonical name
+    expect(en.settings.hub.plan).toBe('ResiSmart plan'); // P2L5b canonical name
+    expect(en.settings.hub.planSection).toBe('ResiSmart plan'); // P2L5b canonical name
+    expect(hi.settings.plan.title).toBe('ResiSmart प्लान');
+    expect(hi.settings.hub.plan).toBe('ResiSmart प्लान');
   });
 
   it('a refunded invoice (only) offers its credit note, opened through the tenant route', async () => {

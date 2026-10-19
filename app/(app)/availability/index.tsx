@@ -14,6 +14,7 @@ import { DateField } from '../../../src/components/DateField';
 import { SkeletonList } from '../../../src/components/ui'; // M22 — skeleton, not a lone spinner
 import { PressableScale, Rise } from '../../../src/theme/motion'; // M22
 import { useAssignableStaff } from '../../../src/features/bookings/hooks'; // P9A Q7
+import { residentsSeeText } from '../../../src/features/commerce/storefrontApi'; // BUG-029/030
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   useAvailabilityRows, useRemoveStaffHours, useSaveAvailability, DayCard,
@@ -111,6 +112,8 @@ export default function AvailabilityScreen() {
   const meQuery = useQuery({ queryKey: qk.partner.me(), queryFn: partnerApi.me });
   const [savingAvailableNow, setSavingAvailableNow] = useState(false);
   const availableNow = meQuery.data?.partner.availableNow ?? false;
+  // BUG-029/030 — what residents see now (same server rule); a refusal just hides the line.
+  const openStateQuery = useQuery({ queryKey: ['partner', 'open-state'], queryFn: partnerApi.openState, retry: false });
 
   const setLiveAvailability = async (next: boolean) => {
     setSavingAvailableNow(true);
@@ -120,6 +123,7 @@ export default function AvailabilityScreen() {
         prev ? { ...prev, partner: { ...prev.partner, availableNow: next } } : prev,
       );
       setSnackbar(t(next ? 'availability.live.on' : 'availability.live.off'));
+      void openStateQuery.refetch();
     } catch (e: unknown) {
       setSnackbar(apiErrorMessage(e, t('availability.live.failed')));
     } finally {
@@ -219,6 +223,7 @@ export default function AvailabilityScreen() {
         setDraft(next);
         setBaseline(JSON.stringify(next));
         setSnackbar(t(selected ? 'availability.staff.savedTheirs' : 'availability.screen.saved'));
+        void openStateQuery.refetch(); // BUG-029/030 — a new day off shows at once
       },
       onError: (e: unknown) => setSnackbar(apiErrorMessage(e)),
     });
@@ -312,6 +317,11 @@ export default function AvailabilityScreen() {
             <Text style={[styles.hint, { color: c.textSecondary }]}>
               {t('availability.live.hint')}
             </Text>
+            {openStateQuery.data ? (
+              <Text style={[styles.hint, { color: c.textPrimary }]} testID="availability-residents-see">
+                {residentsSeeText(openStateQuery.data, t)}
+              </Text>
+            ) : null}
           </View>
           </Rise>
         )}

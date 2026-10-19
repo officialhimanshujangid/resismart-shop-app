@@ -96,26 +96,31 @@ export default function InvoiceSettingsScreen() {
   useEffect(() => {
     const s = query.data;
     if (!s) return;
-    setTheme(s.theme);
-    setAccentColor(s.accentColor);
+    // FIX 2026-10-15 (crash): a shop that never filled bank details gets NO
+    // `bankDetails` in the answer (Mongoose drops an empty sub-document from
+    // JSON), and older rows can miss `thermal` too — reading `.name` / `.width`
+    // off undefined crashed the screen on open. Every nested read is guarded.
+    const bank: { name?: string; acNo?: string; ifsc?: string; upiId?: string } = s.bankDetails ?? {};
+    setTheme(s.theme ?? 'CLASSIC');
+    setAccentColor(s.accentColor ?? '');
     setLogoUrl(s.logoUrl || null);
     setSignatureUrl(s.signatureUrl || null);
     setTerms(s.terms ?? '');
     setNotes(s.notes ?? '');
-    setBankName(s.bankDetails.name ?? '');
-    setAcNo(s.bankDetails.acNo ?? '');
-    setIfsc(s.bankDetails.ifsc ?? '');
-    setUpiId(s.bankDetails.upiId ?? '');
-    setShowHsn(s.showHsn);
-    setShowDiscount(s.showDiscount);
-    setShowTaxBreakup(s.showTaxBreakup);
-    setShowUpiQr(s.showUpiQr);
-    setShowSignature(s.showSignature);
+    setBankName(bank.name ?? '');
+    setAcNo(bank.acNo ?? '');
+    setIfsc(bank.ifsc ?? '');
+    setUpiId(bank.upiId ?? '');
+    setShowHsn(s.showHsn !== false);
+    setShowDiscount(s.showDiscount !== false);
+    setShowTaxBreakup(s.showTaxBreakup !== false);
+    setShowUpiQr(s.showUpiQr !== false);
+    setShowSignature(s.showSignature !== false);
     // Absent reads as ON — matches `order-billing.service.ts#loadBillingSettings`'s `!== false`.
     setAutoInvoiceOnDelivery(s.autoInvoiceOnDelivery !== false);
     setAutoReceiptOnCodDelivery(s.autoReceiptOnCodDelivery !== false);
-    setThermalWidth(String(s.thermal.width) as '58' | '80');
-    setThermalCopies(String(s.thermal.copies));
+    setThermalWidth(s.thermal?.width === 58 ? '58' : '80');
+    setThermalCopies(String(s.thermal?.copies ?? 1));
     setBillOfSupplyForExempt(s.billOfSupplyForExempt === true);
     setOverReceiptPercent(String(s.overReceiptPercent ?? 0));
   }, [query.data]);

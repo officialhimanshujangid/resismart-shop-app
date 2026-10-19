@@ -529,6 +529,12 @@ export const partnerApi = {
       .put<ApiEnvelope<{ availableNow: boolean }>>('/partners/me/availability/available-now', { availableNow })
       .then((r) => unwrap(r.data)),
 
+  /** BUG-029/030 — the badge residents see on this business right now (`GET /partners/me/availability/open-state`). */
+  openState: () =>
+    apiClient
+      .get<ApiEnvelope<{ openState: import('../features/commerce/storefrontApi').ResidentOpenState }>>('/partners/me/availability/open-state')
+      .then((r) => unwrap(r.data).openState),
+
   /**
    * The one call the whole app hangs off. Ungated server-side on purpose — it is
    * the request that ASKS what this person may do, so gating it would be

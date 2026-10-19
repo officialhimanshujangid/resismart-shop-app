@@ -17,7 +17,7 @@ import { PausePanel } from './PauseOrdersCard';
 import type { CommerceSettingsPayload } from '../types';
 import {
   DELIVERY_FEE_MODES, DELIVERY_PROOF_MODES, DELIVERY_TAX_MODES, SAC_PATTERN, STOREFRONT_BOUNDS as SB,
-  clockText, extrasOf, feeRowsClash, normaliseWeek, rupeesIn, sameValue, sharePoster, slotWeekProblems,
+  clockText, residentsSeeText, extrasOf, feeRowsClash, normaliseWeek, rupeesIn, sameValue, sharePoster, slotWeekProblems,
   storefrontOf, taxPercentIn, useShareLinks, wholeIn,
   type DeliveryFeeMode, type DeliveryProofMode, type DeliverySettings, type DeliveryTaxMode, type FulfilmentSettings,
   type ShareSettings, type SlotDay,
@@ -146,6 +146,10 @@ export function StorefrontSection({
       <ReadOnly c={c} show={!canEdit} testID="settings-readonly-storefront" />
       <PausePanel c={c} storefront={sf} canPause={canPause} testID="settings-pause-panel" />
       <Text style={[styles.note, { color: c.textSecondary }]} testID="storefront-hours">{hours}</Text>
+      {/* BUG-029/030 — a preview of the badge residents see on the Services card and the shop page (same server rule). */}
+      {extras.openState ? (
+        <Text style={[styles.note, { color: c.textPrimary }]} testID="storefront-residents-see">{residentsSeeText(extras.openState, t)}</Text>
+      ) : null}
       <Row c={c} icon="clock-outline" title={t('commerce.storefront.shopHours')} subtitle={t('commerce.storefront.shopHoursHint')}
         onPress={() => router.push('/availability' as Href)} />
       <SwitchRow

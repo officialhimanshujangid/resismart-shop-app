@@ -315,6 +315,13 @@ export function BookingActionModal({
               />
             )}
 
+            {/* BUG-035 — a visit at the business: say plainly that no code box is coming. */}
+            {verb === 'complete' && booking.mode !== 'AT_CUSTOMER' && (
+              <Text style={[styles.hint, { color: c.textSecondary }]} testID="complete-no-code-hint">
+                {t('bookings.action.noCodeAtPartner')}
+              </Text>
+            )}
+
             {verb === 'complete' && booking.mode === 'AT_CUSTOMER' && (
               <>
                 <Text style={[styles.hint, { color: c.textSecondary }]}>
