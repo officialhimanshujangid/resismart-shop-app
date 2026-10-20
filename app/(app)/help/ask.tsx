@@ -13,6 +13,7 @@ import { Button } from '../../../src/components/ui';
 import { Card, Loading, Screen } from '../../../src/features/more/ui';
 import { PressableScale, Rise, successHaptic, tapHaptic, useMotionOK } from '../../../src/theme/motion';
 import { AI_QUESTION_MAX, aiApi, aiRefusal, type AiSource, type AiTurn } from '../../../src/api/ai.api';
+import { AiReportButton } from '../../../src/features/help/AiReportButton'; // AI-R
 
 /**
  * AI-1 — "Ask AI" (support chat) in the shop app. Same rules and words as the
@@ -25,7 +26,7 @@ import { AI_QUESTION_MAX, aiApi, aiRefusal, type AiSource, type AiTurn } from '.
 
 type Msg =
   | { id: number; kind: 'user'; text: string }
-  | { id: number; kind: 'ai'; text: string; sources: AiSource[]; related: AiSource[] }
+  | { id: number; kind: 'ai'; text: string; sources: AiSource[]; related: AiSource[]; question: string }
   | { id: number; kind: 'error'; text: string; related: AiSource[] };
 
 export default function HelpAskScreen() {
@@ -137,7 +138,7 @@ function Chat({ c, onStopped }: { c: ColorScheme; onStopped: () => void }) {
     setBusy(true);
     try {
       const a = await aiApi.ask(q, history, language);
-      setMsgs((l) => [...l, { id: next(), kind: 'ai', text: a.answer, sources: a.sources, related: a.related }]);
+      setMsgs((l) => [...l, { id: next(), kind: 'ai', text: a.answer, sources: a.sources, related: a.related, question: q }]);
     } catch (e) {
       const r = aiRefusal(e);
       setMsgs((l) => [...l, { id: next(), kind: 'error', text: r.code ? t(`ai.errors.${r.code}`) : r.message || t('ai.errors.AI_FAILED'), related: r.related }]);
@@ -190,6 +191,9 @@ function Chat({ c, onStopped }: { c: ColorScheme; onStopped: () => void }) {
                   <Text style={[styles.body, { color: c.textPrimary }]}>{m.text}</Text>
                   {m.kind === 'ai' && m.sources.length ? <Sources c={c} title={t('ai.chat.sources')} items={m.sources} onOpen={openSource} /> : null}
                   {m.related.length ? <Sources c={c} title={t('ai.chat.related')} items={m.related} onOpen={openSource} /> : null}
+                  {m.kind === 'ai' && m.text.trim() ? (
+                    <AiReportButton feature="SUPPORT_CHAT" question={m.question} answer={m.text} testID={`ai-report-${m.id}`} />
+                  ) : null}
                 </View>
               )}
             </Rise>

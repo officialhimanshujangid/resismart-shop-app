@@ -24,10 +24,17 @@ export type AiTurn = { role: 'user' | 'model'; text: string };
 export const AI_ERROR_CODES = [
   'AI_NOT_AVAILABLE', 'AI_OFF_FOR_SOCIETY', 'AI_FEATURE_OFF', 'AI_CONTEXT_REQUIRED', 'AI_CONSENT_REQUIRED',
   'AI_CONSENT_INVALID', 'AI_LIMIT_REACHED', 'AI_USER_DAILY_LIMIT', 'AI_BUDGET_REACHED', 'AI_QUESTION_INVALID', 'AI_FAILED',
+  'AI_REPORT_INVALID', 'AI_REPORT_LIMIT', // AI-R
 ] as const;
 export type AiErrorCode = typeof AI_ERROR_CODES[number];
 
 export const AI_QUESTION_MAX = 500;
+
+/** AI-R — "Report this answer" (Play AI-content policy). Same verbs and codes as the website and the other apps. */
+export const AI_REPORT_REASONS = ['WRONG', 'HARMFUL', 'OFFENSIVE', 'OTHER'] as const;
+export type AiReportReason = typeof AI_REPORT_REASONS[number];
+export type AiReportFeature = 'SUPPORT_CHAT' | 'ASK_SOCIETY';
+export const AI_REPORT_NOTE_MAX = 300;
 
 export const AI_OFF: AiStatus = {
   available: false, reason: 'AI_NOT_AVAILABLE',
@@ -85,7 +92,23 @@ export const aiApi = {
       related: toSources(b.related),
     };
   },
+  /** AI-R — report one AI answer, with the question that produced it (the server redacts both). */
+  async report(input: { feature: AiReportFeature; question: string; answer: string; reason: AiReportReason; note?: string; lang: string }): Promise<void> {
+    const note = (input.note || '').trim();
+    await apiClient.post('/ai/report', {
+      app: APP,
+      feature: input.feature,
+      question: input.question.trim().slice(0, AI_QUESTION_MAX),
+      answer: input.answer.trim().slice(0, 4000),
+      reason: input.reason,
+      ...(note ? { note: note.slice(0, AI_REPORT_NOTE_MAX) } : {}),
+      lang: input.lang === 'hi' ? 'hi' : 'en',
+    });
+  },
 };
+
+/** AI-R — the named entry point the other clients use too. */
+export const reportAiAnswer = aiApi.report;
 
 /** A refusal's code (when we have words for it), the server's sentence, and the articles it sent. */
 export function aiRefusal(e: unknown): { code: AiErrorCode | null; message: string; related: AiSource[] } {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "RS Partner",
     "slug": "resismart-shop",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "scheme": "resismart-shop",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

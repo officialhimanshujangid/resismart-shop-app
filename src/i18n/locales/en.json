@@ -6290,7 +6290,26 @@
       "AI_USER_DAILY_LIMIT": "You have asked the most questions allowed for today. Please try again tomorrow.",
       "AI_BUDGET_REACHED": "The AI helper is resting for today. Please try again tomorrow, or search help.",
       "AI_QUESTION_INVALID": "Type a question of up to 500 characters.",
-      "AI_FAILED": "The AI helper could not answer just now. Here are help articles that may help."
+      "AI_FAILED": "The AI helper could not answer just now. Here are help articles that may help.",
+      "AI_REPORT_INVALID": "Choose a reason. A note can be up to 300 characters.",
+      "AI_REPORT_LIMIT": "You have sent the most reports allowed for today. Please try again tomorrow."
+    },
+    "report": {
+      "button": "Report",
+      "reported": "Reported",
+      "title": "Report this answer",
+      "subtitle": "Tell us what is wrong. We'll review it.",
+      "reason": {
+        "WRONG": "Wrong or misleading",
+        "HARMFUL": "Harmful or unsafe",
+        "OFFENSIVE": "Offensive",
+        "OTHER": "Something else"
+      },
+      "note": "Add a note (optional)",
+      "send": "Send",
+      "cancel": "Cancel",
+      "sent": "Thanks — we'll review this answer.",
+      "failed": "Could not send the report. Please try again."
     }
   },
   "aiPartner": {

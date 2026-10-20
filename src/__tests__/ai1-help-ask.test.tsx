@@ -71,3 +71,51 @@ it('AI off for the business → its sentence, no chat box', async () => {
   expect(await screen.findByText(t('ai.errors.AI_OFF_FOR_SOCIETY'))).toBeTruthy();
   expect(screen.queryByLabelText(t('ai.chat.placeholder'))).toBeNull();
 });
+
+// AI-R — "Report" under an AI answer (Play AI-content policy).
+describe('report an answer', () => {
+  const answered = (report: unknown) => setRoutes({
+    'GET /ai/status': wrap(ON),
+    'POST /ai/chat': wrap({ known: true, answer: 'Open Catalogue and press Add.', lang: 'en', sources: [], related: [] }),
+    'POST /ai/report': report,
+  });
+  const askAndOpen = async () => {
+    await show();
+    await screen.findByText(t('ai.chat.introTitle'));
+    await act(async () => { fireEvent.changeText(screen.getByLabelText(t('ai.chat.placeholder')), 'add product?'); });
+    await act(async () => { fireEvent.press(screen.getByLabelText(t('ai.chat.send'))); });
+    await screen.findByText('Open Catalogue and press Add.');
+    await act(async () => { fireEvent.press(screen.getByText(t('ai.report.button'))); });
+    await screen.findByText(t('ai.report.subtitle'));
+  };
+
+  it('every reason has en + hi words', () => {
+    for (const r of ['WRONG', 'HARMFUL', 'OFFENSIVE', 'OTHER']) {
+      expect((en as any).ai.report.reason[r]).toBeTruthy();
+      expect((hi as any).ai.report.reason[r]).toMatch(/[ऀ-ॿ]/);
+    }
+  });
+
+  it('pick a reason, send → the question that produced the answer goes with it; then "Reported"', async () => {
+    answered({ success: true });
+    await askAndOpen();
+    await act(async () => { fireEvent.press(screen.getByLabelText(t('ai.report.reason.HARMFUL'))); });
+    await act(async () => { fireEvent.changeText(screen.getByLabelText(t('ai.report.note')), 'unsafe tip'); });
+    await act(async () => { fireEvent.press(screen.getByText(t('ai.report.send'))); });
+    expect(callsTo('POST', '/ai/report')[0].body).toMatchObject({
+      app: 'shop', feature: 'SUPPORT_CHAT', question: 'add product?', answer: 'Open Catalogue and press Add.', reason: 'HARMFUL', note: 'unsafe tip',
+    });
+    expect(await screen.findByText(t('ai.report.reported'))).toBeTruthy();
+    expect(screen.queryByText(t('ai.report.button'))).toBeNull();
+  });
+
+  it('a refusal shows the server words; the chat stays usable', async () => {
+    answered(fail(429, { code: 'AI_REPORT_LIMIT', message: 'server says no' }));
+    await askAndOpen();
+    await act(async () => { fireEvent.press(screen.getByLabelText(t('ai.report.reason.WRONG'))); });
+    await act(async () => { fireEvent.press(screen.getByText(t('ai.report.send'))); });
+    expect(await screen.findByText(t('ai.errors.AI_REPORT_LIMIT'))).toBeTruthy();
+    expect(screen.queryByText(t('ai.report.reported'))).toBeNull();
+    expect(screen.getByLabelText(t('ai.chat.placeholder'))).toBeTruthy();
+  });
+});
