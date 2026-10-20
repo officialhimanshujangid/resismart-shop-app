@@ -6254,6 +6254,7 @@
     "subtitle": "Answers from ResiSmart partner help",
     "askAi": "Ask AI",
     "askAiHint": "Ask in your own words — answers come from our help articles.",
+    "offLine": "ResiSmart has not switched on Ask AI for your business yet. Ask us on WhatsApp to turn it on — meanwhile, search help.",
     "backToHelp": "Back to help",
     "consent": {
       "title": "Before you ask the AI helper",
@@ -6386,5 +6387,10 @@
     },
     "cameraDenied": "Allow the camera for ResiSmart Shop in your phone settings, or choose a photo instead.",
     "pickFailed": "Could not open the photo. Try again."
+  },
+  "attract": {
+    "close": "Close",
+    "tryTitle": "Try something new",
+    "hideCard": "Hide this for 30 days"
   }
 }

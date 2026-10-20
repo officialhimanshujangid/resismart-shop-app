@@ -29,6 +29,33 @@ import { storage } from '../utils/storage';
 import { store } from '../lib/store';
 import { DEVICE_KEYS, SESSION_CACHE_KEYS, STORAGE_KEYS } from '../constants/app';
 import { resetQueryCache } from '../lib/queryClient';
+import { draftStore } from '../features/billing/draftStore'; // W1B (C1)
+
+/**
+ * W1B (C1) — the signed-in person's id, read from the access token's own payload
+ * (`userId`), for stamping offline drafts. Display-free and never trusted for
+ * access — the server checks every request. '' when it cannot be read.
+ */
+export function userIdFromToken(token: string | null | undefined): string {
+  try {
+    const part = String(token ?? '').split('.')[1];
+    if (!part) return '';
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const decode = (globalThis as { atob?: (v: string) => string }).atob;
+    if (typeof decode !== 'function') return '';
+    const payload = JSON.parse(decode(padded)) as { userId?: unknown; sub?: unknown };
+    return String(payload.userId ?? payload.sub ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/** W1B (C1) — open the drafts of exactly this business + person (null = none). */
+function scopeDrafts(token: string | null | undefined, partnerId: string | null | undefined, businesses: number): void {
+  if (!partnerId) { draftStore.setScope(null); return; }
+  draftStore.setScope({ partnerId, userId: userIdFromToken(token) }, { onlyBusiness: businesses === 1 });
+}
 import { resetLanguageSync, startLanguageSync, syncLanguage } from '../i18n/language-sync';
 
 interface AuthState {
@@ -310,6 +337,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user: UserInfo | null,
     ) => {
       const profile = toProfile(context);
+      // W1B (C1) — close the drafts BEFORE the new token is written: no draft of the
+      // business being left may sync with the next business's token.
+      draftStore.setScope(null);
       /**
        * A SIGN-IN THAT CANNOT BE WRITTEN DOWN HAS NOT HAPPENED.
        *
@@ -369,6 +399,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
        * until the next sign-in, and must never cost the sign-in itself.
        */
       void store.setJson(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS, partners);
+      scopeDrafts(token, context.tenantId, partners.length); // W1B (C1)
       setState((s) => ({
         isAuthenticated: true,
         isLoading: false,
@@ -700,6 +731,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /** Everything local that makes this device signed in — shared by both sign-outs. */
   const endLocalSession = useCallback(async () => {
+    draftStore.setScope(null); // W1B (C1) — nobody's drafts are open once signed out (they stay parked on the device)
     await clearSession(false); // we are the ones ending it — no need to be told
     resetQueryCache();
     // `clearSession` only wipes the four SecureStore keys. The cached shop list
@@ -796,10 +828,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const ctx = active as ResolvedContext;
       const profile = toProfile(ctx);
       const partners = (available as ResolvedContext[]).filter(isPartnerContext);
+      draftStore.setScope(null); // W1B (C1) — the business changed under us: close the old one's drafts at once
       resetQueryCache();
       setAvailableContexts(partners);
       void store.setJson(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS, partners);
       void storage.get(STORAGE_KEYS.ACCESS_TOKEN).then((token) => {
+        scopeDrafts(token, ctx.tenantId, partners.length); // W1B (C1)
         setState((s) => (s.isAuthenticated ? { ...s, token: token ?? s.token, profile } : s));
       });
       // Said, not silent: the business on screen changed under the partner's
@@ -850,6 +884,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
            */
           const cached = await store.getJson<ResolvedContext[]>(SESSION_CACHE_KEYS.AVAILABLE_CONTEXTS);
           if (Array.isArray(cached)) setAvailableContexts(cached.filter(isPartnerContext));
+          // W1B (C1) — a cached list of unknown length never adopts pre-W1B drafts (0 ≠ 1).
+          scopeDrafts(token, profile.tenantId, Array.isArray(cached) ? cached.filter(isPartnerContext).length : 0);
           setState({ isAuthenticated: true, isLoading: false, token, profile, user });
           // Re-assert the language on every launch of a signed-in phone. This is
           // the retry: a switch made with no signal, or one whose PATCH died in
@@ -879,6 +915,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // No business left on a still-valid login (handed over / removed /
       // archived): the sign-in screen says so instead of a silent bounce.
       if (reason === 'no-access') setSessionNotice('ACCESS_ENDED');
+      draftStore.setScope(null); // W1B (C1)
       resetQueryCache();
       // Same reasoning as `logout` — the AsyncStorage copy is not covered by the
       // interceptor's `clearSession`.

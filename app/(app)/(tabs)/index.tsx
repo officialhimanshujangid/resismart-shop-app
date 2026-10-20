@@ -25,6 +25,7 @@ import { radius, typeScale, type StatusTone, type TintName } from '../../../src/
 import { useAppTheme } from '../../../src/theme/useAppTheme';
 import { PressableScale, Rise, useCountUp } from '../../../src/theme/motion';
 import { HelpButton } from '../../../src/features/help/HelpButton';
+import { AskAiHeaderButton } from '../../../src/features/help/AskAiHeaderButton'; // N14
 import { P2TodayShortcuts } from '../../../src/features/p2/P2Shortcuts';
 // >>> SHORTCUTS — the grid replaces the P1 pill row (`features/p1/TodayShortcuts`): its three
 // actions (Add expense, Khata, Close the day) are tiles in it, gated like their screens.
@@ -35,6 +36,7 @@ import { useCommerceAccess } from '../../../src/features/commerce/access';
 import { homeBannerOf } from '../../../src/features/society/logic';
 import { HomeSocietyBanner } from '../../../src/features/society/components/HomeSocietyBanner';
 import { AnnouncementBanner } from '../../../src/components/AnnouncementBanner'; // >>> OC6 <<<
+import { ShopPromoBanner, ShopPromoSlot } from '../../../src/components/AttractShop'; // W2E
 import { useMyReach } from '../../../src/features/society/hooks';
 import { useMyRent } from '../../../src/features/rent/hooks';
 import { rentAccess } from '../../../src/features/rent/logic';
@@ -479,7 +481,13 @@ export default function TodayScreen() {
           eyebrow={`${t('tabs.today')} · ${today}`}
           title={businessName}
           avatarText={initialsOf(businessName)}
-          right={<HelpButton c={c} variant="glass" />}
+          // N14: Ask AI (only when this business's support chat is on) before the Help "?".
+          right={(
+            <View style={styles.heroRight}>
+              <AskAiHeaderButton />
+              <HelpButton c={c} variant="glass" />
+            </View>
+          )}
           illustration={({ width, height }) => (
             <Storefront width={width} height={height} signText={businessName.toUpperCase()} />
           )}
@@ -602,6 +610,9 @@ export default function TodayScreen() {
           {/* >>> OC6 */}
           <AnnouncementBanner />
           {/* <<< OC6 */}
+          {/* W2E (N9 / N4) — the Owner's banner / strip / popup for shops, and Home's one promo slot (card or "Create a deal"). */}
+          <ShopPromoBanner />
+          <ShopPromoSlot />
 
           {banner ? (
             <Rise index={1}>
@@ -972,5 +983,6 @@ const styles = StyleSheet.create({
   stockRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28 },
   stockName: { ...typeScale.detail, fontWeight: '600', flex: 1 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  heroRight: { flexDirection: 'row', alignItems: 'center', gap: 8 }, // N14
   compactState: { paddingVertical: 20 },
 });

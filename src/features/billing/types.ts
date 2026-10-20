@@ -512,6 +512,14 @@ export interface InvoiceDraft {
   id: string;
   idempotencyKey: string;
   createdAt: string;
+  /**
+   * W1B (C1) — the business and the signed-in person this draft was queued under.
+   * A draft is listed and synced ONLY while that same business + person is active,
+   * so it can never be uploaded into another business's books. Absent on a draft
+   * queued before W1B (see `draftStore.setScope`).
+   */
+  partnerId?: string;
+  userId?: string;
   type: BillingScreenDocumentType;
   partyId?: string;
   partySnapshot: DocumentPartySnapshot;

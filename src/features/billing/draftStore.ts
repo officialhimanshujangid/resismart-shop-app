@@ -31,8 +31,27 @@ import { AddDraftInput, InvoiceDraft } from './types';
  * matter how many billing screens are on the stack.
  */
 
+/** EVERY draft on this device (all businesses, all people) — what is written to disk. */
 let drafts: InvoiceDraft[] = [];
 let loaded = false;
+
+/**
+ * W1B (C1, Owner context-isolation policy 10-20) — WHOSE drafts are open.
+ *
+ * Drafts used to be one device-wide list: a bill queued offline in business A was
+ * listed on business B's Drafts screen and the sync loop POSTed it with B's token, so
+ * A's bill landed in B's books — and it survived a sign-out, so the next person on a
+ * shared counter phone saw (and synced) it too. Now every draft is stamped with the
+ * business + person it was queued under, and only drafts of the ACTIVE business +
+ * person are listed or synced. The others stay on the device, parked, untouched —
+ * an unsynced bill is never thrown away — and come back when that business is open
+ * again. `null` (signed out, or mid-switch) lists and syncs nothing.
+ */
+type DraftScope = { partnerId: string; userId: string };
+let scope: DraftScope | null = null;
+const inScope = (d: InvoiceDraft): boolean =>
+  !!scope && d.partnerId === scope.partnerId && (!d.userId || !scope.userId || d.userId === scope.userId);
+const visible = (): InvoiceDraft[] => drafts.filter(inScope);
 let online = true;
 let syncing = false;
 let initialized = false;
@@ -59,10 +78,10 @@ const listeners = new Set<() => void>();
  * snapshot is a cached object, replaced only inside `emit()`, i.e. only when
  * something in the four fields it holds actually changed.
  */
-let snapshot = { drafts, loaded, online, syncing };
+let snapshot = { drafts: visible(), loaded, online, syncing };
 
 function emit(): void {
-  snapshot = { drafts, loaded, online, syncing };
+  snapshot = { drafts: visible(), loaded, online, syncing };
   for (const listener of listeners) listener();
 }
 
@@ -88,6 +107,8 @@ function currentDraft(id: string, fallback: InvoiceDraft): InvoiceDraft {
 }
 
 async function syncDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
+  // W1B (C1) — only the open business's own drafts ever reach the server.
+  if (!inScope(currentDraft(draft.id, draft))) return currentDraft(draft.id, draft);
   if (inFlight.has(draft.id)) return currentDraft(draft.id, draft);
   inFlight.add(draft.id);
 
@@ -156,6 +177,12 @@ async function syncDraft(draft: InvoiceDraft): Promise<InvoiceDraft> {
      * rides a different derived key: re-using `-issue` with a new body would be
      * refused as a key reused for another request.
      */
+    // W1B (C1) — the business changed while `create` was in flight: the next call would
+    // carry the NEW business's token. Leave it queued; it issues when its business is open.
+    if (!inScope(currentDraft(draft.id, draft))) {
+      patchDraft(draft.id, { status: 'PENDING' });
+      return currentDraft(draft.id, draft);
+    }
     const override = currentDraft(draft.id, draft).overrideCreditLimit === true;
     // MP1-COMPLETE — P2: the draft's own `refundTo` (fixed when it was queued), so every
     // retry sends the same body under the same derived key.
@@ -225,7 +252,7 @@ async function syncPending(): Promise<void> {
   syncing = true;
   emit();
   try {
-    const pending = drafts.filter((d) => d.status === 'PENDING' || d.status === 'FAILED');
+    const pending = visible().filter((d) => d.status === 'PENDING' || d.status === 'FAILED');
     for (const draft of pending) {
       // Sequential, not parallel: each `create` charges one unit of
       // `max_invoices_month`. Two of these firing at once, one unit under the
@@ -252,7 +279,7 @@ function ensureInitialized(): void {
   void loadDrafts().then((stored) => {
     drafts = stored;
     loaded = true;
-    emit();
+    if (!adoptLegacyDrafts()) emit(); // W1B (C1)
     void syncPending();
   });
 
@@ -285,6 +312,8 @@ async function addDraft(input: AddDraftInput): Promise<InvoiceDraft> {
     id: idempotencyKey,
     idempotencyKey,
     createdAt: new Date().toISOString(),
+    // W1B (C1) — stamped with the business + person billing right now.
+    ...(scope ? { partnerId: scope.partnerId, ...(scope.userId ? { userId: scope.userId } : {}) } : {}),
     type: input.type,
     partyId: input.partyId,
     partySnapshot: input.partySnapshot,
@@ -322,7 +351,7 @@ async function addDraft(input: AddDraftInput): Promise<InvoiceDraft> {
  * success). `id` stays, so the Drafts screen keeps one row.
  */
 async function confirmDuplicateAndRetry(id: string): Promise<InvoiceDraft | undefined> {
-  const draft = drafts.find((d) => d.id === id);
+  const draft = visible().find((d) => d.id === id);
   if (!draft) return undefined;
   patchDraft(id, {
     confirmDuplicateSupplierNo: true,
@@ -334,25 +363,50 @@ async function confirmDuplicateAndRetry(id: string): Promise<InvoiceDraft | unde
 
 /** Re-issue past a BLOCK credit limit — offered only when the role may (`mayOverrideCredit`). */
 async function overrideCreditAndRetry(id: string): Promise<InvoiceDraft | undefined> {
-  const draft = drafts.find((d) => d.id === id);
+  const draft = visible().find((d) => d.id === id);
   if (!draft) return undefined;
   patchDraft(id, { overrideCreditLimit: true, status: 'PENDING' });
   return syncDraft(currentDraft(id, draft));
 }
 
 async function discardDraft(id: string): Promise<void> {
-  setDrafts(drafts.filter((d) => d.id !== id));
+  // W1B (C1) — only a draft of the open business can be discarded from here.
+  setDrafts(drafts.filter((d) => !(d.id === id && inScope(d))));
 }
 
 async function retryDraft(id: string): Promise<InvoiceDraft | undefined> {
-  const draft = drafts.find((d) => d.id === id);
+  const draft = visible().find((d) => d.id === id);
   if (!draft) return undefined;
   return syncDraft(draft);
+}
+
+/**
+ * W1B (C1) — called by `AuthContext`: `null` FIRST, before a sign-in / switch writes the
+ * new token and on every sign-out; then the new business + person once the session is
+ * written. `onlyBusiness`: the person has exactly one business — then a draft queued
+ * before W1B (no business on it) can only be theirs and joins it; with more than one it
+ * stays parked rather than guess (a wrong guess is the very bug this fixes).
+ */
+let adoptLegacy = false;
+/** Pre-W1B drafts (no business on them) join the open business — only when it is the person's only one. */
+function adoptLegacyDrafts(): boolean {
+  const s2 = scope;
+  if (!s2 || !adoptLegacy || !loaded || !drafts.some((d) => !d.partnerId)) return false;
+  setDrafts(drafts.map((d) => (d.partnerId ? d : { ...d, partnerId: s2.partnerId, ...(s2.userId ? { userId: s2.userId } : {}) })));
+  return true;
+}
+
+function setScope(next: DraftScope | null, opts: { onlyBusiness?: boolean } = {}): void {
+  scope = next && next.partnerId ? next : null;
+  adoptLegacy = !!scope && opts.onlyBusiness === true;
+  if (!adoptLegacyDrafts()) emit();
+  if (scope && loaded) void syncPending();
 }
 
 export const draftStore = {
   ensureInitialized,
   setQueryClient,
+  setScope,
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

@@ -14,13 +14,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://resismart-backend-95fl.onrender.com/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://api.resismart.in/api/v1"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://resismart-backend-95fl.onrender.com/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://api.resismart.in/api/v1"
       }
     }
   },

@@ -87,3 +87,13 @@ afterEach(async () => {
   await (i18next.default ?? i18next).changeLanguage('en');
   jest.clearAllMocks();
 });
+
+/**
+ * W1B (C1) — a signed-in partner session always has its drafts scoped to the open
+ * business + person (`AuthContext` → `draftStore.setScope`). Screens rendered here have
+ * no AuthContext session, so the same scope is set for every test: a draft queued by a
+ * screen belongs to "the business on screen", exactly as on a phone.
+ */
+beforeEach(() => {
+  require('../../features/billing/draftStore').draftStore.setScope({ partnerId: 'test-business', userId: 'test-user' });
+});
