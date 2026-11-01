@@ -12,7 +12,7 @@ import * as Notifications from 'expo-notifications';
 import { callsTo, mockApi } from './setup/mockApi';
 import { renderScreen } from './setup/harness';
 import { usePushRegistration } from '../hooks/usePushRegistration';
-import { pushScopeKey } from '../lib/appIdentity';
+import { pushScopeKey, storedScopeKey } from '../lib/appIdentity'; // SY
 import { store } from '../lib/store';
 import { DEVICE_KEYS } from '../constants/app';
 
@@ -54,7 +54,7 @@ describe('NOTIFY-ROUTE: an old shop-app install re-registers once', () => {
     expect(post[1]).toEqual(expect.objectContaining({ token: TOKEN }));
     expect((post[2] as { headers: Record<string, string> }).headers['X-ResiSmart-App']).toBe('shop');
     await flush();
-    expect(await store.get(DEVICE_KEYS.PUSH_TOKEN_SCOPE)).toBe(pushScopeKey(PARTNER));
+    expect(storedScopeKey(await store.get(DEVICE_KEYS.PUSH_TOKEN_SCOPE))).toBe(pushScopeKey(PARTNER)); // SY: stored with its day stamp
     first.unmount();
 
     await renderScreen(<Host />);

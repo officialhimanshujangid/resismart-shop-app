@@ -182,7 +182,13 @@ export function commerceDestination(path: string): NotificationDestination | und
     return { href: '/commerce/settings' as Href };
   }
   // C2 `partnerDeliveryAssigned` → `/dashboard/partner/my-deliveries?id=…`.
-  if (path === '/dashboard/partner/my-deliveries') return { href: '/commerce/deliveries' as Href };
+  // LF: the web page is `/dashboard/partner/orders/my-deliveries` (the old path is kept for pushes already sent).
+  if (path === '/dashboard/partner/my-deliveries' || path === '/dashboard/partner/orders/my-deliveries') return { href: '/commerce/deliveries' as Href };
+  // LF (link audit #8): partner notices whose web page has an app screen too.
+  if (path === '/dashboard/partner/reach') return { href: '/settings/reach' as Href };
+  if (path === '/dashboard/partner-settings') return { href: '/settings' as Href };
+  if (path === '/dashboard/partner/availability') return { href: '/availability' as Href };
+  if (path === '/dashboard/partner/staff') return { href: '/staff' as Href };
   return undefined;
 }
 

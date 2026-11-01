@@ -144,8 +144,11 @@ export const moneyApi = {
   accounts: () => apiClient.get<ApiEnvelope<MoneyAccount[]>>('/partners/me/money/accounts').then((r) => unwrap(r.data)),
   createAccount: (body: { kind: 'CASH' | 'BANK'; name: string; openingBalancePaise?: number; isDefault?: boolean; bankLast4?: string; upiId?: string }) =>
     apiClient.post<ApiEnvelope<MoneyAccount>>('/partners/me/money/accounts', body).then((r) => unwrap(r.data)),
-  updateAccount: (id: string, body: { name?: string; isDefault?: true; isActive?: boolean }) =>
+  updateAccount: (id: string, body: { name?: string; isDefault?: true; isActive?: boolean; bankLast4?: string | null; upiId?: string | null }) =>
     apiClient.put<ApiEnvelope<MoneyAccount>>(`/partners/me/money/accounts/${id}`, body).then((r) => unwrap(r.data)),
+  /** FPB P5: delete an account with no entries (MONEY_ACCOUNT_IN_USE / _IS_DEFAULT refuse otherwise), as the web. */
+  deleteAccount: (id: string) =>
+    apiClient.delete<ApiEnvelope<unknown>>(`/partners/me/money/accounts/${id}`).then((r) => unwrap(r.data)),
 
   categories: () => apiClient.get<ApiEnvelope<ExpenseCategory[]>>('/partners/me/money/expense-categories').then((r) => unwrap(r.data)),
   createCategory: (name: string) =>

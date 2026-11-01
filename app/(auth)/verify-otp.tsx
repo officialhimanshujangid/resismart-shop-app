@@ -84,6 +84,7 @@ interface DeliveryView {
   deliveredVia: OtpDeliveredVia | null;
   alternatives: OtpAltVia[];
   whatsappAvailable: boolean | null;
+  whatsappStart?: string; // WA-START
 }
 
 const asString = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -117,6 +118,7 @@ export default function VerifyOtpScreen() {
     alternatives?: string;
     whatsappAvailable?: string;
     email?: string;
+    whatsappStart?: string; // WA-START
   }>();
   const isNewAccount = params.reason === 'new-account';
   const emailIdentity = asString(params.email);
@@ -154,6 +156,7 @@ export default function VerifyOtpScreen() {
     deliveredVia: asDeliveredVia(params.deliveredVia),
     alternatives: asAlternatives(params.alternatives),
     whatsappAvailable: asTriState(params.whatsappAvailable),
+    whatsappStart: asString(params.whatsappStart) || undefined,
   };
   const [snack, setSnack] = useState<{ visible: boolean; message: string; error: boolean }>({
     visible: false,
@@ -246,6 +249,7 @@ export default function VerifyOtpScreen() {
           deliveredVia: result.delivery.deliveredVia,
           alternatives: result.delivery.alternatives,
           whatsappAvailable: result.delivery.whatsappAvailable,
+          whatsappStart: result.delivery.whatsappStart,
         });
         // The old code is dead the moment a new one is minted, so clearing the
         // boxes is not politeness — it stops a half-typed old code being
@@ -384,6 +388,7 @@ export default function VerifyOtpScreen() {
             deliveredVia={delivery.deliveredVia}
             alternatives={delivery.alternatives}
             whatsappAvailable={delivery.whatsappAvailable}
+            whatsappStart={delivery.whatsappStart}
             sending={sending}
             onRetry={(via) => void send(via, identifier)}
             onUseEmail={

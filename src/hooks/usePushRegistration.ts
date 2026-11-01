@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useState } from 'react'; // SY: + useState
+import { AppState, Platform } from 'react-native'; // SY: + AppState
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
@@ -8,7 +8,7 @@ import { notificationApi } from '../api/notification.api';
 import { store } from '../lib/store';
 import { DEVICE_KEYS, PUSH_CHANNEL_URGENT, PUSH_CHANNEL_DEFAULT } from '../constants/app';
 import { qk } from '../lib/queryKeys';
-import { pushScopeKey } from '../lib/appIdentity'; // NOTIFY-ROUTE
+import { pushScopeKey, pushRegistrationDue, pushRegistrationFresh, stampPushScope } from '../lib/appIdentity'; // NOTIFY-ROUTE · SY
 import i18n from '../i18n';
 import { useLanguage } from '../i18n/useLanguage';
 
@@ -150,6 +150,23 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
     void ensureAndroidChannels().catch((error) => console.warn('[push] channels skipped:', error));
   }, [language]);
 
+  // >>> SY (M4) — at most once a day, on coming back to the foreground, the
+  // registration below runs again (the server may have deleted this token: a
+  // post ended, the device cap, pruning). Cheap: one local read per wake.
+  const [pushTick, setPushTick] = useState(0);
+  useEffect(() => {
+    if (!enabled || !partnerId) return;
+    if (Constants.appOwnership === 'expo' || Platform.OS === 'web') return;
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') return;
+      void store.get(DEVICE_KEYS.PUSH_TOKEN_SCOPE).then((stored) => {
+        if (pushRegistrationDue(stored)) setPushTick((n) => n + 1);
+      }).catch(() => undefined);
+    });
+    return () => sub.remove();
+  }, [enabled, partnerId]);
+  // <<< SY
+
   useEffect(() => {
     if (!enabled || !partnerId) return;
     if (Constants.appOwnership === 'expo') return; // push was removed from Expo Go on SDK 53+
@@ -194,7 +211,7 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
         // NOTIFY-ROUTE: a versioned key, so a token registered before the server
         // stored which app it belongs to is re-registered once, named.
         const scopeKey = pushScopeKey(partnerId);
-        if (storedToken === token && storedScope === scopeKey) return;
+        if (pushRegistrationFresh(storedToken, storedScope, token, scopeKey)) return; // SY: + version + daily
 
         await notificationApi.registerDevice({
           platform: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
@@ -204,7 +221,7 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
         if (cancelled) return;
 
         await store.set(DEVICE_KEYS.PUSH_TOKEN, token);
-        await store.set(DEVICE_KEYS.PUSH_TOKEN_SCOPE, scopeKey); // NOTIFY-ROUTE
+        await store.set(DEVICE_KEYS.PUSH_TOKEN_SCOPE, stampPushScope(scopeKey)); // NOTIFY-ROUTE · SY: + when
       } catch (error) {
         // Never fatal. Push is an extra way to hear about a booking; the app has
         // to keep working for a partner who denied the permission, is on a
@@ -216,7 +233,7 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
     return () => {
       cancelled = true;
     };
-  }, [enabled, partnerId]);
+  }, [enabled, partnerId, pushTick]); // SY: + pushTick (daily foreground re-register)
 
   /**
    * A push that ARRIVES while the app is open means the server has data we do

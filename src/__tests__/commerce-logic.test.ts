@@ -292,6 +292,11 @@ describe('notifications: the four new kinds and the commerce links', () => {
   });
   it('route by the web partner pages\' links', () => {
     expect(notificationDestination({ link: '/dashboard/partner/my-deliveries?id=o1', kind: 'DELIVERY_ASSIGNED' })?.href).toBe('/commerce/deliveries');
+    expect(notificationDestination({ link: '/dashboard/partner/orders/my-deliveries?id=o1', kind: 'DELIVERY_ASSIGNED' })?.href).toBe('/commerce/deliveries'); // LF
+    expect(notificationDestination({ link: '/dashboard/partner/reach' })?.href).toBe('/settings/reach'); // LF
+    expect(notificationDestination({ link: '/dashboard/partner-settings' })?.href).toBe('/settings'); // LF
+    expect(notificationDestination({ link: '/dashboard/partner/availability' })?.href).toBe('/availability'); // LF
+    expect(notificationDestination({ link: '/dashboard/partner/staff' })?.href).toBe('/staff'); // LF
     expect(notificationDestination({ link: '/dashboard/partner/offers/abc123' })?.href).toBe('/commerce/offers/abc123');
     expect(notificationDestination({ link: '/dashboard/partner/wallet/p9' })?.href).toBe('/commerce/wallet/p9');
     expect(notificationDestination({ link: '/dashboard/partner/broadcasts' })?.href).toBe('/commerce/broadcasts');

@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react'; // FX1: + useMemo
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '../../src/context/AuthContext';
+import { isPartnerContext } from '../../src/api/auth.api'; // FX1
 import {
   usePushRegistration,
   useLiveEvents,
@@ -42,7 +43,7 @@ import { categoryModulesOf, type P2Module } from '../../src/features/p2/modules'
  * client in process memory.
  */
 export default function AppLayout() {
-  const { isAuthenticated, profile } = useAuth();
+  const { isAuthenticated, profile, availableContexts, switchToContext } = useAuth(); // FX1: + contexts, switch
   const isDark = useColorScheme() === 'dark';
   const c = themeColors(isDark);
   const queryClient = useQueryClient();
@@ -73,7 +74,13 @@ export default function AppLayout() {
     (m: P2Module) => categoryModulesOf(entitlements).includes(m),
     [entitlements],
   );
-  useNotificationTaps({ enabled: isAuthenticated, hasModule, ready, hasCategoryModule });
+  // FX1 — a tap on another shop's push switches to that shop first (partner contexts only).
+  const workspace = useMemo(() => ({
+    active: profile ? { tenantId: profile.tenantId, tenantType: String(profile.tenantType), role: profile.role } : null,
+    contexts: availableContexts.filter(isPartnerContext),
+    switchTo: switchToContext,
+  }), [profile, availableContexts, switchToContext]);
+  useNotificationTaps({ enabled: isAuthenticated, hasModule, ready, hasCategoryModule, workspace });
 
   /**
    * Start the offline-draft engine for the whole signed-in session.

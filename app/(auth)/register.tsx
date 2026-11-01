@@ -284,6 +284,7 @@ export default function RegisterScreen() {
         deliveredVia: otp.delivery.deliveredVia,
         alternatives: otp.delivery.alternatives.join(','),
         whatsappAvailable: otp.delivery.whatsappAvailable ? '1' : '0',
+        whatsappStart: otp.delivery.whatsappStart ?? '', // WA-START
         // Both contacts were OTP-verified into the same identity on step 1, so
         // the inbox is a real way in if neither WhatsApp nor SMS arrives.
         email: d.email.trim(),
@@ -646,6 +647,7 @@ interface PhoneDelivery {
   deliveredVia: OtpDeliveredVia | null;
   alternatives: OtpAltVia[];
   whatsappAvailable: boolean | null;
+  whatsappStart?: string; // WA-START
 }
 
 /**
@@ -836,6 +838,7 @@ function StepIdentity({
         deliveredVia: data.deliveredVia,
         alternatives: data.alternatives,
         whatsappAvailable: data.whatsappAvailable,
+        whatsappStart: data.whatsappStart,
       });
       // Same reason as the email leg: a switch to the other transport mints a
       // new code, so whatever was half-typed for the old one has to go.
@@ -850,6 +853,7 @@ function StepIdentity({
           deliveredVia: null,
           alternatives: failed.alternatives,
           whatsappAvailable: failed.whatsappAvailable,
+          whatsappStart: failed.whatsappStart,
         });
         return false;
       }
@@ -1037,6 +1041,7 @@ function StepIdentity({
               deliveredVia={phoneDelivery?.deliveredVia ?? null}
               alternatives={phoneDelivery?.alternatives ?? []}
               whatsappAvailable={phoneDelivery?.whatsappAvailable ?? null}
+              whatsappStart={phoneDelivery?.whatsappStart}
               sending={sendingPhone}
               onRetry={(via) => void sendPhoneCode(via)}
             />
@@ -1112,6 +1117,7 @@ function StepIdentity({
             deliveredVia={phoneDelivery?.deliveredVia ?? null}
             alternatives={phoneDelivery?.alternatives ?? []}
             whatsappAvailable={phoneDelivery?.whatsappAvailable ?? null}
+              whatsappStart={phoneDelivery?.whatsappStart}
             sending={sendingPhone}
             onRetry={(via) => void sendPhoneCode(via)}
           />

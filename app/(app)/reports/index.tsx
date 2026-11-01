@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { themeColors, radii } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
 import {
-  reportsApi, exportReport, PartnerReportKey, ReportQuery, isP2ReportKey,
+  reportsApi, exportReport, PartnerReportKey, ReportQuery, isP2ReportKey, isC5ReportKey, isSnapshotReportKey,
   RegisterReport, ItemWiseReport, GrossProfitReport, PartyWiseReport, AgeingReport,
 } from '../../../src/api/reports.api';
 import {
@@ -23,6 +23,7 @@ import { HelpButton } from '../../../src/features/help/HelpButton';
 import { Card, ChipRow, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
 import { MiniBars, DonutRing, ProgressBar } from '../../../src/components/charts';
 import { P2ReportSummary } from '../../../src/features/p2/components/P2ReportSummary';
+import { C5ReportSummary } from '../../../src/features/p2/components/C5ReportSummary'; // FPB P2
 
 /**
  * `sales`/`purchase`/`items`/`parties`/`outstanding`/`profit` are read on
@@ -70,10 +71,16 @@ const REPORT_TABS: { key: ReportTabKey; labelKey: string }[] = [
   { key: 'subscription-collections', labelKey: 'reports.tab.subscription-collections' },
   { key: 'appointment-utilisation', labelKey: 'reports.tab.appointment-utilisation' },
   { key: 'job-conversion', labelKey: 'reports.tab.job-conversion' },
+  // FPB P2 — commerce C5 reports (web parity), shown only once GET /reports has listed them.
+  { key: 'sales-by-staff', labelKey: 'reports.tab.sales-by-staff' },
+  { key: 'dead-stock', labelKey: 'reports.tab.dead-stock' },
+  { key: 'offer-performance', labelKey: 'reports.tab.offer-performance' },
 ];
 
 /** P2 report keys: never offered on a guess, only when the server's index names them. */
-const P2_REPORT_KEYS = new Set<string>(['near-expiry-value', 'subscription-collections', 'appointment-utilisation', 'job-conversion']);
+const P2_REPORT_KEYS = new Set<string>(['near-expiry-value', 'subscription-collections', 'appointment-utilisation', 'job-conversion',
+  // FPB P2: the C5 reports follow the same rule (listed only while a commerce feature is on).
+  'sales-by-staff', 'dead-stock', 'offer-performance']);
 
 /**
  * The three period presets. `id` is this screen's own React key and the label
@@ -137,7 +144,9 @@ export default function ReportsScreen() {
     || (P2_REPORT_KEYS.has(tab.key) ? !!allowedKeys?.has(tab.key) : (!allowedKeys || allowedKeys.has(tab.key))));
 
   const isInsights = key === 'insights';
-  const query: ReportQuery = key === 'outstanding' ? { asOf } : { from: range.from, to: range.to };
+  // FPB P2: dead stock is a snapshot "as of now" — no period on the wire (as the web).
+  const snapshot = isSnapshotReportKey(key);
+  const query: ReportQuery = snapshot ? {} : key === 'outstanding' ? { asOf } : { from: range.from, to: range.to };
   // `!isInsights` narrows `key` to `PartnerReportKey` for `EXPORT_ONLY.has`, below.
   const exportOnly = !isInsights && EXPORT_ONLY.has(key);
 
@@ -152,6 +161,7 @@ export default function ReportsScreen() {
       if (key === 'outstanding') return reportsApi.outstanding(query);
       // P2 business-type reports: read on screen (summary) and exportable.
       if (isP2ReportKey(key)) return reportsApi.p2(key, query);
+      if (isC5ReportKey(key)) return reportsApi.c5(key, query); // FPB P2
       return null;
     },
     enabled: !exportOnly && !isInsights,
@@ -218,7 +228,9 @@ export default function ReportsScreen() {
           The picker can only emit the format that works, which is why there is
           no validation here to write: the invalid states stopped existing.
         */}
-        {key === 'outstanding' ? (
+        {snapshot ? (
+          <Text testID="reports-snapshot-note" style={{ color: c.textSecondary, fontSize: 13 }}>{t('reports.c5.snapshotNote')}</Text>
+        ) : key === 'outstanding' ? (
           <DateField label={t('reports.page.asOf')} value={asOf} onChangeText={setAsOf} mode="date" />
         ) : (
           <View style={{ gap: 8 }}>
@@ -293,6 +305,8 @@ export default function ReportsScreen() {
           // `isInsights` (checked above) has already excluded `'insights'`.
           isP2ReportKey(key)
             ? <P2ReportSummary c={c} reportKey={key} data={data.data} />
+            : isC5ReportKey(key)
+            ? <C5ReportSummary c={c} reportKey={key} data={data.data} />
             : <ReportBody c={c} reportKey={key as PartnerReportKey} data={data.data} />
         )}
 

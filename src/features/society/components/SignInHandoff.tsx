@@ -63,7 +63,7 @@ export function SignInHandoff({ result }: { result: SocietyInviteAcceptResult })
         setError(r.error ?? t('auth.login.codeFailed'));
         return;
       }
-      const { message, deliveredVia, alternatives, whatsappAvailable } = r.delivery;
+      const { message, deliveredVia, alternatives, whatsappAvailable, whatsappStart } = r.delivery;
       router.push({
         pathname: '/(auth)/verify-otp',
         params: {
@@ -72,6 +72,7 @@ export function SignInHandoff({ result }: { result: SocietyInviteAcceptResult })
           deliveredVia,
           alternatives: alternatives.join(','),
           whatsappAvailable: whatsappAvailable ? '1' : '0',
+          whatsappStart: whatsappStart ?? '', // WA-START
         },
       });
     } finally {

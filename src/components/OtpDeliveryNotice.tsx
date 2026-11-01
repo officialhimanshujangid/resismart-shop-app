@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -161,6 +161,8 @@ interface OtpDeliveryNoticeProps {
    * a step that verifies a PHONE has no business offering an inbox.
    */
   onUseEmail?: () => void;
+  /** WA-START — wa.me link: the user messages us and the code comes back on WhatsApp. */
+  whatsappStart?: string;
 }
 
 export function OtpDeliveryNotice({
@@ -173,6 +175,7 @@ export function OtpDeliveryNotice({
   sending,
   onRetry,
   onUseEmail,
+  whatsappStart,
 }: OtpDeliveryNoticeProps) {
   const { t } = useTranslation();
   // The note is worth printing only where WhatsApp was the rung we would have
@@ -256,6 +259,19 @@ export function OtpDeliveryNotice({
           onPress={onUseEmail}
         />
       ) : null}
+
+      {whatsappStart && deliveredVia !== 'email' ? (
+        <View style={styles.waStart}>
+          <AppButton
+            label={t('auth.otpNotice.waStart')}
+            icon="whatsapp"
+            mode="outlined"
+            disabled={!!sending}
+            onPress={() => { void Linking.openURL(whatsappStart).catch(() => undefined); }}
+          />
+          <Text style={[styles.line, { color: c.textSecondary }]}>{t('auth.otpNotice.waStartHint')}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -289,4 +305,5 @@ const styles = StyleSheet.create({
   // it, and there is no `numberOfLines` — two rungs at a 1.3× font scale on a
   // 360dp screen each take two lines and both stay fully readable.
   altLabel: { flex: 1, fontSize: 15, fontWeight: '600', lineHeight: 21 },
+  waStart: { gap: 2, marginTop: 4 }, // WA-START
 });

@@ -29,6 +29,39 @@ export function appIdentityHeaders(): Record<string, string> {
  */
 export const PUSH_ROUTING_VERSION = 'app-v1';
 export function pushScopeKey(partnerId: string): string {
-  return `${partnerId}#${SHOP_APP_NAME}-${PUSH_ROUTING_VERSION}`;
+  return `${partnerId}#${SHOP_APP_NAME}-${PUSH_ROUTING_VERSION}@${SHOP_APP_VERSION}`; // SY (B1): + the app version
 }
 // <<< NOTIFY-ROUTE
+// >>> SY (B1 + M4) — the app VERSION is part of the key, so an updated build
+// (same Expo token) re-registers once and the server stores its new
+// `appVersion` (a 1.2.0 → 1.3.0 Staff-app update must count as the Staff app).
+// The stored value also carries WHEN it was registered: on the app coming to the
+// foreground a registration older than a day is sent again, so a token the
+// server deleted (a post ended, the device cap, pruning) comes back by itself.
+export const PUSH_REREGISTER_MS = 24 * 60 * 60 * 1000;
+/** What is stored beside the token: `<scope key>|<registered at, ms>`. */
+export function stampPushScope(scopeKey: string, now: number = Date.now()): string {
+  return `${scopeKey}|${now}`;
+}
+/** The scope key part of a stored value (a value from before SY has no stamp). */
+export function storedScopeKey(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  const i = stored.lastIndexOf('|');
+  return i < 0 ? stored : stored.slice(0, i);
+}
+/** True when the stored registration is older than a day (or carries no stamp). */
+export function pushRegistrationDue(stored: string | null | undefined, now: number = Date.now()): boolean {
+  if (!stored) return true;
+  const i = stored.lastIndexOf('|');
+  if (i < 0) return true;
+  const at = Number(stored.slice(i + 1));
+  return !Number.isFinite(at) || at > now + 60_000 || now - at >= PUSH_REREGISTER_MS;
+}
+/** Skip the POST only when the token, the scope key (app + version) AND the day all still match. */
+export function pushRegistrationFresh(
+  storedToken: string | null | undefined, stored: string | null | undefined, token: string, scopeKey: string, now: number = Date.now(),
+): boolean {
+  return storedToken === token && storedScopeKey(stored) === scopeKey && !pushRegistrationDue(stored, now);
+}
+// <<< SY
+

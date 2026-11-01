@@ -24,7 +24,7 @@ import { store } from '../lib/store';
 import LoginScreen from '../../app/(auth)/login';
 import ChangePasswordScreen from '../../app/(app)/account/change-password';
 import DevicesScreen from '../../app/(app)/account/devices';
-import { calls, callsTo, fail, setRoutes } from './setup/mockApi';
+import { calls, callsTo, fail, mockApi, setRoutes } from './setup/mockApi';
 import { renderScreen } from './setup/harness';
 import en from '../i18n/locales/en.json';
 import hi from '../i18n/locales/hi.json';
@@ -122,6 +122,9 @@ describe('Login screen', () => {
       password: 'wrong-password',
       deviceName: expect.stringContaining('ResiSmart Business'),
     });
+    // A6 — the sign-in call names the app, so the sign-in alert goes to the shop app only.
+    const post = mockApi.post.mock.calls.find((c) => c[0] === '/auth/login') as unknown[];
+    expect((post[2] as { headers: Record<string, string> }).headers['X-ResiSmart-App']).toBe('shop');
     // Still there after the failure — the way in for a passwordless account.
     expect(screen.getByRole('button', { name: named(en.auth.login.otpButton) })).toBeTruthy();
   });

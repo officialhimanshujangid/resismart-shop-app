@@ -273,7 +273,7 @@ export default function LoginScreen() {
         showSnack(result.error ?? t('auth.login.codeFailed'), true);
         return;
       }
-      const { message, deliveredVia, alternatives, whatsappAvailable } = result.delivery;
+      const { message, deliveredVia, alternatives, whatsappAvailable, whatsappStart } = result.delivery;
       router.push({
         pathname: '/(auth)/verify-otp',
         params: {
@@ -284,6 +284,7 @@ export default function LoginScreen() {
           // encoded here and decoded there. `verify-otp` documents the shape.
           alternatives: alternatives.join(','),
           whatsappAvailable: whatsappAvailable ? '1' : '0',
+          whatsappStart: whatsappStart ?? '', // WA-START
         },
       });
     } finally {

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 
 import { apiClient, apiErrorMessage, StoredProfile } from './axios';
+import { appIdentityHeaders } from '../lib/appIdentity'; // A6
 import { TenantType, UserRole } from '../types/api-contract.generated';
 import type { Translate } from '../features/services/duration';
 
@@ -174,6 +175,8 @@ export interface OtpDelivery {
   deliveredVia: OtpDeliveredVia;
   alternatives: OtpAltVia[];
   whatsappAvailable: boolean;
+  /** WA-START — wa.me link: the user messages us and the code comes back on WhatsApp. */
+  whatsappStart?: string;
 }
 
 /**
@@ -203,6 +206,7 @@ export interface OtpDeliveryFailure {
   deliveredVia: null;
   alternatives: OtpAltVia[];
   whatsappAvailable: boolean;
+  whatsappStart?: string; // WA-START
 }
 
 /**
@@ -240,6 +244,7 @@ export function otpDeliveryFailure(error: unknown, t: Translate): OtpDeliveryFai
     deliveredVia: null,
     alternatives: body.alternatives,
     whatsappAvailable: body.whatsappAvailable === true,
+    ...(typeof body.whatsappStart === 'string' ? { whatsappStart: body.whatsappStart } : {}), // WA-START
   };
 }
 
@@ -271,6 +276,14 @@ export interface ForgotPasswordRequest {
   email: string;
 }
 
+
+/**
+ * A6 — the sign-in calls name this app (`X-ResiSmart-App: shop`) so the
+ * "new sign-in" alert goes to the SHOP app (+ web) only, not to the society
+ * or Staff app of the same person (backend A4 `auth.controller` signInApp).
+ */
+export const signIn = () => ({ headers: appIdentityHeaders() });
+
 export const authApi = {
   /**
    * Password login. `identifier`, NOT `email` — `auth.validator.ts`'s
@@ -283,7 +296,7 @@ export const authApi = {
    * screen therefore always offers the one-time-code option.
    */
   login: (identifier: string, password: string) =>
-    apiClient.post<LoginResponse>('/auth/login', { identifier, password, deviceName: deviceLabel() }),
+    apiClient.post<LoginResponse>('/auth/login', { identifier, password, deviceName: deviceLabel() }, signIn()),
 
   /**
    * Passwordless sign-in, step 1. Deliberately vague about whether the account
@@ -295,7 +308,7 @@ export const authApi = {
    * code screen cannot silently land back on the rung that just failed.
    */
   loginOtpRequest: (identifier: string, via: OtpVia = 'auto') =>
-    apiClient.post<LoginOtpRequestResponse>('/auth/login/otp/request', { identifier, via }),
+    apiClient.post<LoginOtpRequestResponse>('/auth/login/otp/request', { identifier, via }, signIn()),
 
   /**
    * Google sign-in. Returns the same session shape as the password and OTP
@@ -303,7 +316,7 @@ export const authApi = {
    * proved — so the caller consumes it identically.
    */
   loginGoogle: (idToken: string) =>
-    apiClient.post<LoginResponse>('/auth/login/google', { idToken, deviceName: deviceLabel() }),
+    apiClient.post<LoginResponse>('/auth/login/google', { idToken, deviceName: deviceLabel() }, signIn()),
 
   /**
    * Google standing in for the emailed code during partner registration.
@@ -317,7 +330,7 @@ export const authApi = {
 
   /** Passwordless sign-in, step 2 — issues the session. */
   loginOtpVerify: (identifier: string, code: string) =>
-    apiClient.post<LoginResponse>('/auth/login/otp/verify', { identifier, code, deviceName: deviceLabel() }),
+    apiClient.post<LoginResponse>('/auth/login/otp/verify', { identifier, code, deviceName: deviceLabel() }, signIn()),
 
   /**
    * M01 audit — #46 "Restore my account": spends the ticket a pending-deletion
@@ -326,7 +339,7 @@ export const authApi = {
    * MFA_SIGN_IN_AGAIN (the account IS restored in that last case).
    */
   restoreAccount: (restoreTicket: string) =>
-    apiClient.post<LoginResponse>('/auth/account/restore', { restoreTicket, deviceName: deviceLabel() }),
+    apiClient.post<LoginResponse>('/auth/account/restore', { restoreTicket, deviceName: deviceLabel() }, signIn()),
 
   /**
    * Switch context, and the only way to do it. Also how a session is renewed —

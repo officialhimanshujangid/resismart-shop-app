@@ -63,6 +63,15 @@ export default function CatalogLayout() {
           // The shop-wide stock ledger (contract §5) lives one tap from the list.
           headerRight: () => (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {/* FPB P5 — the aisles (categories) screen, as the web's Aisles tab. */}
+              <IconButton
+                icon="folder-outline"
+                size={22}
+                onPress={() => router.push('/catalog/aisles')}
+                accessibilityLabel={t('catalog.aisles.title')}
+                style={{ margin: 0 }}
+                testID="catalog-open-aisles"
+              />
               <IconButton
                 icon="history"
                 size={22}
@@ -82,6 +91,7 @@ export default function CatalogLayout() {
       <Stack.Screen name="scan" options={{ title: t('catalog.nav.scan'), headerShown: false }} />
       <Stack.Screen name="history/[id]" options={{ title: t('stockHistory.navProduct') }} />
       <Stack.Screen name="movements" options={{ title: t('stockHistory.navShop') }} />
+      <Stack.Screen name="aisles" options={{ title: t('catalog.aisles.title'), headerRight: () => <HelpButton c={c} /> }} />
     </Stack>
   );
 }

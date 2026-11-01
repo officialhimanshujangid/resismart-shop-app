@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
+import { workspaceForPush, type WorkspaceCtx } from '../lib/push-workspace'; // FX1
 
 import { notificationDestination } from '../api/notification.api';
 import { PartnerModule } from '../types/api-contract.generated';
@@ -63,9 +64,21 @@ export interface NotificationTapsInput {
    * RULE direction), so a P2 alert on a phone that cannot answer lands on the inbox.
    */
   hasCategoryModule?: (module: P2Module) => boolean;
+  /**
+   * FX1 — the business this session is in, the businesses this app lists, and
+   * the switch: a tap on a push of ANOTHER of the person's shops (the server
+   * rings every shop now) moves there before anything opens. Absent = no switch.
+   */
+  workspace?: {
+    active: { tenantId: string; tenantType: string; role?: string } | null;
+    contexts: readonly WorkspaceCtx[];
+    switchTo: (contextId: string) => Promise<void>;
+  };
 }
 
-export function useNotificationTaps({ enabled, hasModule, ready, hasCategoryModule }: NotificationTapsInput): void {
+export function useNotificationTaps({ enabled, hasModule, ready, hasCategoryModule, workspace }: NotificationTapsInput): void {
+  const ws = useRef(workspace); // FX1 — read at tap time, never re-subscribing
+  ws.current = workspace;
   /** Response identifiers already acted on, so one tap navigates once. */
   const handled = useRef<Set<string>>(new Set());
   /** A tap that arrived before the entitlement answer did. At most one is worth keeping. */
@@ -109,6 +122,19 @@ export function useNotificationTaps({ enabled, hasModule, ready, hasCategoryModu
         return;
       }
       handled.current.add(id);
+
+      // >>> FX1 — another of this person's shops: switch first, then open.
+      const w = ws.current;
+      const switchTo = w ? workspaceForPush(data, w.active, w.contexts) : null;
+      if (w && switchTo) {
+        void w.switchTo(switchTo).catch(() => undefined).then(() => {
+          // The new business's entitlements load afterwards: a module-gated screen
+          // lands on its inbox (the row is there); an ungated one opens directly.
+          router.push(dest && !dest.requires && !dest.requiresCategory ? dest.href : '/notifications');
+        });
+        return;
+      }
+      // <<< FX1
 
       if (!dest) {
         // Nothing specific to open — the inbox is still better than the screen

@@ -33,11 +33,20 @@ export const PARTNER_REPORT_KEYS = [
   // P2 (B5): listed by GET /reports only when the business-type module is on and
   // the viewer holds its grant; export-only here (PDF / Excel).
   'near-expiry-value', 'subscription-collections', 'appointment-utilisation', 'job-conversion',
+  // FPB P2 (2026-10-31): the three commerce C5 reports the web already had — listed by GET /reports
+  // only while a commerce feature is on (offer performance: OFFERS on + OFFERS_VIEW; dead stock: STOCK_VIEW).
+  'sales-by-staff', 'dead-stock', 'offer-performance',
 ] as const;
 export type PartnerReportKey = typeof PARTNER_REPORT_KEYS[number];
 export const P2_REPORT_KEYS = ['near-expiry-value', 'subscription-collections', 'appointment-utilisation', 'job-conversion'] as const;
 export type P2ReportKey = typeof P2_REPORT_KEYS[number];
 export const isP2ReportKey = (k: string): k is P2ReportKey => (P2_REPORT_KEYS as readonly string[]).includes(k);
+/** FPB P2: commerce C5 reports — read on screen (C5ReportSummary) and exportable, as on the web. */
+export const C5_REPORT_KEYS = ['sales-by-staff', 'dead-stock', 'offer-performance'] as const;
+export type C5ReportKey = typeof C5_REPORT_KEYS[number];
+export const isC5ReportKey = (k: string): k is C5ReportKey => (C5_REPORT_KEYS as readonly string[]).includes(k);
+/** Dead stock is a snapshot "as of now": no period on the wire (the web sends none either). */
+export const isSnapshotReportKey = (k: string): boolean => k === 'dead-stock';
 
 export interface ReportListEntry {
   key: PartnerReportKey;
@@ -237,6 +246,12 @@ export const reportsApi = {
 
   /** P2 (B5): one business-type report as JSON (es.body.data), drawn by P2ReportSummary. */
   p2: (key: P2ReportKey, query: ReportQuery) =>
+    apiClient
+      .get<ApiEnvelope<Record<string, unknown>>>(`/partners/me/reports/${key}`, { params: query })
+      .then((r) => unwrap(r.data)),
+
+  /** FPB P2: one commerce C5 report as JSON, drawn by C5ReportSummary. */
+  c5: (key: C5ReportKey, query: ReportQuery) =>
     apiClient
       .get<ApiEnvelope<Record<string, unknown>>>(`/partners/me/reports/${key}`, { params: query })
       .then((r) => unwrap(r.data)),

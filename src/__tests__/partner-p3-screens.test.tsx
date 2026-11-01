@@ -100,7 +100,8 @@ describe('Society invitation link', () => {
     await waitFor(() => expect(mockAuth.requestLoginOtp).toHaveBeenCalledWith('9812345678'));
     expect(router.push).toHaveBeenCalledWith({
       pathname: '/(auth)/verify-otp',
-      params: { identifier: '9812345678', message: 'Code sent on WhatsApp', deliveredVia: 'whatsapp', alternatives: 'sms', whatsappAvailable: '1' },
+      params: { identifier: '9812345678', message: 'Code sent on WhatsApp', deliveredVia: 'whatsapp', alternatives: 'sms', whatsappAvailable: '1',
+        whatsappStart: '' /* WA-START: always passed; '' when the server sent no start link */ },
     });
   });
 

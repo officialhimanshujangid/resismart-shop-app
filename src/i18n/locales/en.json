@@ -560,6 +560,8 @@
     },
     "otpNotice": {
       "altWhatsapp": "Send it on WhatsApp instead",
+      "waStart": "Get code on WhatsApp",
+      "waStartHint": "WhatsApp opens with a message ready. Just tap Send, and your code comes back on WhatsApp in a few seconds.",
       "altSms": "Send it by SMS instead",
       "sendingWhatsapp": "Sending a code on WhatsApp…",
       "sendingSms": "Sending a code by SMS…",
@@ -1565,6 +1567,30 @@
       "badge": "View only",
       "banner": "Items marked View only are beyond the catalogue items your plan covers. Customers do not see them and they cannot be edited, but you can still take them off sale. To open them again, archive items you no longer sell or pick a bigger plan.",
       "detail": "This item is beyond the catalogue items your plan covers, so customers do not see it and it cannot be edited. You can still take it off sale. Archive other items or pick a bigger plan to open it again."
+    },
+    "aisles": {
+      "title": "Aisles",
+      "intro": "Aisles group your products on the shop page and in the product list. Hiding an aisle keeps its products; show it again any time.",
+      "add": "Add aisle",
+      "edit": "Edit aisle",
+      "name": "Aisle name",
+      "sortOrder": "Shelf order",
+      "sortHint": "Smaller numbers come first.",
+      "order": "Shelf order {{n}}",
+      "hidden": "Hidden",
+      "hide": "Hide aisle",
+      "unhide": "Show aisle",
+      "hideTitle": "Hide “{{name}}”?",
+      "hideMessage": "The aisle is hidden from the shop and the pickers. Its products stay; you can show it again.",
+      "hideConfirm": "Hide",
+      "hideDone": "Aisle hidden.",
+      "hideFailed": "The aisle could not be hidden.",
+      "unhidden": "{{name}} is showing again.",
+      "unhideFailed": "The aisle could not be shown.",
+      "saved": "Aisle saved.",
+      "saveFailed": "The aisle could not be saved.",
+      "loadFailed": "Could not load the aisles.",
+      "empty": "No aisles yet."
     }
   },
   "components": {
@@ -1678,7 +1704,10 @@
       "near-expiry-value": "Near-expiry value",
       "subscription-collections": "Subscription collections",
       "appointment-utilisation": "Appointment use",
-      "job-conversion": "Job quotes won"
+      "job-conversion": "Job quotes won",
+      "sales-by-staff": "Sales by staff",
+      "dead-stock": "Dead & slow stock",
+      "offer-performance": "Offer performance"
     },
     "page": {
       "eyebrow": "Business",
@@ -1783,6 +1812,46 @@
       "invoiced": "Billed",
       "openPipeline": "Jobs still open",
       "exportHint": "The full tables are in the PDF and Excel download above."
+    },
+    "c5": {
+      "total": "Total",
+      "snapshotNote": "Items as of today — no period to pick.",
+      "staff": {
+        "bills": "Counter bills",
+        "billed": "Billed",
+        "accepted": "Orders accepted",
+        "delivered": "Orders delivered",
+        "table": "By staff",
+        "unnamed": "Staff",
+        "note": "Counter bills are issued tax invoices raised at the counter; orders count the accept and deliver steps each person took.",
+        "empty": "No staff sales in this period.",
+        "line": "{{bills}} bills · {{accepted}} accepted · {{delivered}} delivered"
+      },
+      "dead": {
+        "class": {
+          "DEAD": "Dead",
+          "SLOW": "Slow",
+          "NEW": "New"
+        },
+        "note": "Dead: in stock, nothing sold for 90 days. Slow: fewer than 2 sold in 30 days. New: added in the last 90 days and not sold yet.",
+        "asOf": "Items as at {{date}}",
+        "items": "Items",
+        "never": "never",
+        "empty": "No dead, slow or new stock.",
+        "line": "In stock {{qty}} · last sold {{last}}"
+      },
+      "offers": {
+        "used": "Used",
+        "discount": "Discount given",
+        "sales": "Sales with offer",
+        "messagesSent": "Messages sent",
+        "table": "Offers",
+        "empty": "No offers in this period.",
+        "line": "Used {{used}} · given back {{reversed}} · {{customers}} customers · {{online}} online · {{counter}} counter · discount {{discount}}",
+        "messages": "Offer messages",
+        "reached": "Customers reached",
+        "fromMessages": "Orders placed from a message"
+      }
     }
   },
   "orders": {
@@ -3903,6 +3972,31 @@
     "picker": {
       "label": "Paid into / from",
       "default": "Usual account"
+    },
+    "accounts": {
+      "title": "Cash & bank accounts",
+      "rowSub": "Rename, default, switch off, delete",
+      "intro": "Your cash drawer and bank accounts. Tap one to rename it, make it the default, switch it off or delete it.",
+      "introReadOnly": "Your cash drawer and bank accounts. Only someone with full settings permission can change them.",
+      "denied": "You do not have permission to see the accounts.",
+      "empty": "No accounts yet. Add one from Money.",
+      "edit": "Edit account",
+      "makeDefault": "Make default",
+      "madeDefault": "{{name}} is now the default account.",
+      "switchOff": "Switch off",
+      "switchOn": "Switch on",
+      "switchedOff": "Account switched off.",
+      "switchedOn": "Account switched on.",
+      "delete": "Delete",
+      "keep": "Keep",
+      "deleteTitle": "Delete this account?",
+      "deleteMessage": "“{{name}}” will be removed. An account with entries cannot be deleted — switch it off instead.",
+      "deleted": "Account deleted.",
+      "saved": "Account saved.",
+      "failed": "The account could not be changed.",
+      "last4": "Last 4 digits of the account",
+      "upiId": "UPI ID",
+      "last4Bad": "Give exactly 4 digits."
     }
   },
   "society": {

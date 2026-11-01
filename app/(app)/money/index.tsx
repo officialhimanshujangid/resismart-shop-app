@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useColorScheme, View } from 'react-native';
 import { Button, Dialog, Portal, Snackbar, TextInput } from 'react-native-paper';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
@@ -76,6 +76,8 @@ export default function MoneyHomeScreen() {
 
   const right = (
     <Card c={c} style={{ padding: 0, overflow: 'hidden' }}>
+      {/* FPB P5 — manage the accounts (rename, default, on/off, delete), as the web's Accounts page. `as Href`: a new route; the typed-routes file regenerates on the next dev start. */}
+      {canAccounts && <Row c={c} icon="bank-outline" title={t('money.accounts.title')} subtitle={t('money.accounts.rowSub')} onPress={() => router.push('/money/accounts' as Href)} />}
       {canAccounts && <Row c={c} icon="book-open-variant" title={t('money.cashBook')} subtitle={t('money.cashBookSub')} onPress={() => router.push('/money/cash-book')} />}
       {canAccounts && <Row c={c} icon="calendar-check-outline" title={t('money.dayClose')} subtitle={t('money.dayCloseSub')} onPress={() => router.push('/money/day-close')} />}
       {(can('EXPENSES_VIEW', 'READ') || canAddExpense) && <Row c={c} icon="receipt" title={t('money.expenses')} subtitle={t('money.expensesSub')} onPress={() => router.push('/money/expenses')} />}
