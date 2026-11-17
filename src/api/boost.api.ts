@@ -61,6 +61,8 @@ export interface PartnerBoostView {
   purchasedAt: string;
   /** GST split of a PAID boost (tax-inclusive price); `null` for free or older boosts. */
   tax?: BoostTax | null;
+  /** PAY-B P1-01 — the paid boost's numbered tax invoice (PDF: `/billing/invoices/:id/download`). */
+  invoiceId?: string | null;
 }
 
 export interface MyBoostsResponse {

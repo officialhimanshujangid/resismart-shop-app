@@ -28,7 +28,7 @@ export function UsageMeterBar({ cap, c }: { cap: CapacityView; c: ColorScheme })
   if (cap.limit === null) {
     return (
       <View style={[styles.box, { backgroundColor: c.surfaceVariant }]}>
-        <Text style={[styles.text, { color: c.textSecondary }]}>{t('planItems.unlimited', { used: cap.used })}</Text>
+        <Text style={[styles.text, { color: c.textSecondary }]}>{t('planItems.unlimited', { count: cap.used }) /* 11-06: "1 catalogue item" */}</Text>
       </View>
     );
   }

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, useColorScheme, View } from 'react-native';
 import { Snackbar, Text, TextInput } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useMoneyName } from '@/features/money/names';
 
 import { radii, themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -12,6 +13,7 @@ import { formatPaise, parseRupeesToPaise } from '../../../src/lib/money';
 import { formatI18nDate } from '../../../src/i18n';
 import { DateField } from '../../../src/components/DateField';
 import { moneyApi, MoneyTransfer } from '../../../src/features/money/api';
+import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { Card, ChipRow, EmptyBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
 import { ActionRow, Banner, PillButton, TwoPane } from '../../../src/features/p1/ui';
 import { ReasonDialog } from '../../../src/features/p1/ReasonDialog';
@@ -23,6 +25,7 @@ import { isoOfDay, todayYmd } from '../../../src/features/p1/dates';
  */
 export default function TransfersScreen() {
   const { t } = useTranslation();
+  const nm = useMoneyName(); // PAR-032
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
   const { can } = usePartnerEntitlements();
@@ -44,12 +47,19 @@ export default function TransfersScreen() {
   const [toast, setToast] = useState<string | null>(null);
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: qk.money.all() });
+  // QA-217: one key per transfer, so a double tap or a retry after a lost answer moves the money once.
+  // A changed field is a new transfer; a saved one clears the key.
+  const intentKey = useRef<string | null>(null);
+  useEffect(() => { intentKey.current = null; }, [fromId, toId, amount, day, note]);
   const create = useMutation({
-    mutationFn: () => moneyApi.createTransfer({
-      date: isoOfDay(day) as string, fromAccountId: fromId, toAccountId: toId,
-      amountPaise: parseRupeesToPaise(amount) ?? 0, note: note.trim() || undefined,
-    }),
-    onSuccess: () => { setAmount(''); setNote(''); setError(null); invalidate(); setToast(t('money.transfer.saved')); },
+    mutationFn: () => {
+      if (!intentKey.current) intentKey.current = newIdempotencyKey('xfer');
+      return moneyApi.createTransfer({
+        date: isoOfDay(day) as string, fromAccountId: fromId, toAccountId: toId,
+        amountPaise: parseRupeesToPaise(amount) ?? 0, note: note.trim() || undefined,
+      }, intentKey.current);
+    },
+    onSuccess: () => { intentKey.current = null; setAmount(''); setNote(''); setError(null); invalidate(); setToast(t('money.transfer.saved')); },
     onError: (e) => setError(apiErrorMessage(e, t('money.transfer.failed'))),
   });
   const cancel = useMutation({
@@ -66,7 +76,7 @@ export default function TransfersScreen() {
     create.mutate();
   };
 
-  const accountChips = active.map((a) => ({ key: a._id, label: a.name }));
+  const accountChips = active.map((a) => ({ key: a._id, label: nm(a.name) }));
   const form = canMove ? (
     <Card c={c}>
       <Text style={[styles.title, { color: c.textPrimary }]}>{t('money.moveMoney')}</Text>

@@ -3,6 +3,8 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { workspaceForPush, type WorkspaceCtx } from '../lib/push-workspace'; // FX1
+import * as Linking from 'expo-linking'; // PARITY (PAY-E)
+import { payUrlFromPush } from '../lib/pay-url'; // PARITY (PAY-E)
 
 import { notificationDestination } from '../api/notification.api';
 import { PartnerModule } from '../types/api-contract.generated';
@@ -122,6 +124,13 @@ export function useNotificationTaps({ enabled, hasModule, ready, hasCategoryModu
         return;
       }
       handled.current.add(id);
+
+      // PARITY (PAY-E) — a bill-ready / reminder push carries the bill's pay link: open it directly.
+      const payUrl = payUrlFromPush(data);
+      if (payUrl) {
+        void Linking.openURL(payUrl).catch(() => router.push('/notifications'));
+        return;
+      }
 
       // >>> FX1 — another of this person's shops: switch first, then open.
       const w = ws.current;

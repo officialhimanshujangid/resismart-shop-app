@@ -104,7 +104,14 @@ export async function shareDocumentPdf(id: string, label: string): Promise<void>
  * PENDING invoice, not a fault — the caller renders the server's own sentence.
  */
 export async function sharePlatformInvoicePdf(id: string, label: string): Promise<void> {
-  const url = await platformBillingApi.invoiceDownloadUrl(id);
+  // PAY-B P1-12 — a missing PDF is rebuilt on download; a failed rebuild says "try again" (en + hi).
+  let url: string;
+  try {
+    url = await platformBillingApi.invoiceDownloadUrl(id);
+  } catch (e: unknown) {
+    if ((e as { response?: { data?: { code?: string } } })?.response?.data?.code === 'INVOICE_PDF_RETRY') throw new Error(t('billing.share.pdfRetry'));
+    throw e;
+  }
 
   const INVOICE_DIR = invoiceDir();
   if (!INVOICE_DIR.exists) INVOICE_DIR.create({ intermediates: true, idempotent: true });

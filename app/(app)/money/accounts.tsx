@@ -4,6 +4,7 @@ import { Button, Dialog, Portal, Snackbar, Text, TextInput } from 'react-native-
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useMoneyName } from '@/features/money/names';
 
 import { radii, themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -25,6 +26,7 @@ import { ActionRow, PillButton } from '../../../src/features/p1/ui';
  */
 export default function MoneyAccountsScreen() {
   const { t } = useTranslation();
+  const nm = useMoneyName(); // PAR-032
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
   const { can } = usePartnerEntitlements();
@@ -61,7 +63,7 @@ export default function MoneyAccountsScreen() {
   const last4Bad = last4.trim() !== '' && !/^\d{4}$/.test(last4.trim());
   const askDelete = (a: MoneyAccount) => Alert.alert(
     t('money.accounts.deleteTitle'),
-    t('money.accounts.deleteMessage', { name: a.name }),
+    t('money.accounts.deleteMessage', { name: nm(a.name) }),
     [
       { text: t('money.accounts.keep'), style: 'cancel' },
       { text: t('money.accounts.delete'), style: 'destructive', onPress: () => remove.mutate(a._id) },

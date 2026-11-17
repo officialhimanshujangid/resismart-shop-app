@@ -399,6 +399,23 @@
       }
     },
     "plan": {
+      "contact": {
+        "title": "Who gets billing emails",
+        "help": "Invoices, receipts, refund notes and payment reminders from ResiSmart go to every admin. Add one more address — for example your accountant — if they should get a copy too.",
+        "ccLabel": "Billing email (copy)",
+        "ccHint": "Optional. One address. Leave empty to send only to the admins.",
+        "ccPlaceholder": "accounts@example.com",
+        "save": "Save",
+        "clear": "Remove",
+        "saved": "Billing email saved. It gets a copy of every billing mail from now on.",
+        "cleared": "Billing email removed. Billing mail now goes to the admins only.",
+        "invalid": "Enter a valid email address, like accounts@example.com — or leave it empty.",
+        "saveFailed": "Could not save the billing email. Please try again.",
+        "goesTo_one": "Now sent to {{count}} address:",
+        "goesTo_other": "Now sent to {{count}} addresses:"
+      },
+      "inclGst": "incl. GST {{amount}}",
+      "tdsLine": "TDS deducted {{amount}} (sec {{section}})",
       "title": "ResiSmart plan",
       "status": {
         "active": "Active",
@@ -492,7 +509,14 @@
         "REFUNDED": "Refunded"
       }
     },
-    "pausedReadOnly": "Your business is paused by ResiSmart, so you can look at these settings but not change them."
+    "pausedReadOnly": "Your business is paused by ResiSmart, so you can look at these settings but not change them.",
+    "whatYouDo": {
+      "title": "What you do",
+      "note": "Selling opens your catalogue and orders, services open bookings, both opens all of it. Nothing you already use is switched off.",
+      "RETAIL": "Sell products",
+      "SERVICE": "Offer services",
+      "BOTH": "Both"
+    }
   },
   "modules": {
     "BOOKINGS": {
@@ -517,7 +541,7 @@
     }
   },
   "blockerFix": {
-    "NOT_VERIFIED": "Send your documents in",
+    "NOT_VERIFIED": "Check your documents",
     "NO_LOCATION": "Set your address and pin",
     "NO_SERVICE_MODES": "Say where you work",
     "NO_AVAILABILITY": "Set your working hours",
@@ -1004,7 +1028,7 @@
       "cancelledTitle": "Cancelled",
       "convertedInto": "Converted into a new document.",
       "viewIt": "View it",
-      "noPartyForPayment": "This bill has no linked customer, so a payment cannot be attributed to anyone yet. Raise it against a searched party (not walk-in) to be able to record what they paid.",
+      "noPartyForPayment": "This walk-in bill has no customer, so money cannot be recorded on it — money is always recorded against a customer. For a walk-in sale: on a new bill choose \"Existing party\" and pick the customer (add a new one under Parties first). Then press Take payment if you see it, or issue the bill and then record the payment. To fix this bill: press Cancel document, then make it again that way.",
       "draftNotice": "This document has not been issued yet — it has no number and cannot be shared or printed.",
       "discard": "Discard",
       "issueNow": "Issue now",
@@ -1031,12 +1055,17 @@
         "WHATSAPP": "WhatsApp",
         "EMAIL": "Email",
         "SMS": "SMS"
-      }
+      },
+      "noPartyGo": "Make a new bill",
+      "noPartyForRefund": "This document has no customer, so the money paid back cannot be recorded on it — money is always recorded against a customer. To fix it: press \"Cancel document\", make it again with \"Existing party\" and the customer, issue it and then record the refund."
     },
     "share": {
+      "pdfRetry": "The invoice PDF is being prepared. Please try again in a minute.",
       "sharingUnavailable": "Sharing is not available on this device.",
       "dialogTitle": "Share {{label}}"
-    }
+    },
+    "payOnWeb": "Pay on web",
+    "payOnWebHelp": "Plans are bought on the website. Tap to open your billing page."
   },
   "payments": {
     "mode": {
@@ -1132,6 +1161,7 @@
       "saveFailed": "Could not save changes",
       "nameRequired": "A party needs a name.",
       "phoneRequired": "A walk-in needs a phone number to be found again later.",
+      "phoneInvalid": "That does not look like a phone number. Use at least 10 digits.",
       "emailInvalid": "That does not look like an email address.",
       "amountInvalid": "Enter a valid amount, e.g. 1500.00",
       "limitTitle": "You have reached your plan's limit of {{limit}} {{noun}}.",
@@ -1311,7 +1341,7 @@
     },
     "roles": {
       "title": "Roles",
-      "subtitle": "Gate 3 — what a role may see and change",
+      "subtitle": "What a role may see and change",
       "levelNONE": "None",
       "levelREAD": "View",
       "levelFULL": "Manage",
@@ -1501,7 +1531,7 @@
       "notTracked": "Not tracked"
     },
     "meter": {
-      "comingSoon": "Product limits — coming soon",
+      "comingSoon": "Product limits are not counted on your plan.",
       "notIncluded": "The catalog is not included in your current plan.",
       "unlimited": "{{used}} products · unlimited on your plan",
       "ofLimit": "{{used}} of {{limit}} {{noun}}",
@@ -1741,7 +1771,7 @@
     },
     "insights": {
       "totalSales": "Total sales",
-      "orders": "Orders",
+      "orders": "Online orders",
       "bookings": "Bookings",
       "averageOrderValue": "Average order value",
       "grossMargin": "Gross margin",
@@ -1901,7 +1931,7 @@
       "itemMeta": "{{qty}} {{unit}} × {{rate}}",
       "itemTaxLine": "+ {{tax}} tax → {{total}}",
       "subtotal": "Subtotal",
-      "discount": "Discount",
+      "discount": "Discount already taken off",
       "tax": "Tax",
       "deliveryFee": "Delivery",
       "total": "Total",
@@ -1981,7 +2011,7 @@
       "price": "{{price}}"
     },
     "meter": {
-      "comingSoon": "Service limits — coming soon",
+      "comingSoon": "Service limits are not counted on your plan.",
       "notIncluded": "The price list is not included in your current plan.",
       "unlimited": "{{used}} services · unlimited on your plan",
       "ofLimit": "{{used}} of {{limit}} {{noun}}",
@@ -2498,6 +2528,10 @@
       "appliedBody": "Your boost is live."
     },
     "screen": {
+      "invoice": "Tax invoice",
+      "invoiceFailedTitle": "Could not open the invoice",
+      "invoiceFailedBody": "The invoice could not be opened. Try again.",
+      "inclGst": "incl. GST {{amount}}",
       "loadFailed": "Could not load promotion.",
       "packagesLabel": "Packages",
       "historyLabel": "History",
@@ -2776,7 +2810,7 @@
     "PARTY_HAS_OUTSTANDING": "{{name}} still has an outstanding balance of {{outstandingPaise}} paise. Settle it, or clear it from the ledger, before hiding this party.",
     "STAFF_NOT_FOUND": "That staff member could not be found.",
     "STAFF_ALREADY_LEFT": "They have already left.",
-    "STAFF_ALREADY_ON_LIST": "They are already on the staff list.",
+    "STAFF_ALREADY_ON_LIST": "They are already on the staff list. Open their row to change their job or role.",
     "STAFF_LOGIN_GONE": "Their login no longer exists. Invite them again.",
     "STAFF_PHONE_UNREADABLE": "That phone number could not be read. Give a valid number or an email address.",
     "STAFF_LOGIN_NOT_CREATED": "Could not create a login for them.",
@@ -2943,6 +2977,7 @@
     "SOCIETY_NAME_TAKEN": "A society with this name is already on ResiSmart. Add your area or city to the name.",
     "SIGNUP_NOT_AVAILABLE": "We cannot complete this sign-up right now. Please contact ResiSmart support for help.",
     "SOCIETY_SUSPENDED": "Your society has been suspended on ResiSmart for now, so it cannot be opened. Your society office has been told. Please contact them or ResiSmart support.",
+    "BUILDING_SUSPENDED": "This building has been paused on ResiSmart for now, so it cannot be opened. The building office has been told. Please contact them or ResiSmart support.",
     "PARTNER_ADMIN_EMAIL_USE_HANDOVER": "The admin email decides who owns this business, so it cannot be changed here. To add an owner or hand the business over, send an owner invitation from Team → Owners.",
     "PARTNER_OWNER_ONLY": "Only an owner of this business can do this.",
     "PARTNER_INVITE_CONTACT_REQUIRED": "Give the phone number or email address of the person you are inviting.",
@@ -3098,6 +3133,7 @@
     "JOB_QUOTE_EMPTY": "Add at least one line to the quote.",
     "JOB_QUOTE_NOT_PENDING": "This quote is {{statusText}} and can no longer be answered.",
     "JOB_QUOTE_EXPIRED": "This quote has expired. Ask the business for a new one.",
+    "JOB_QUOTE_CUSTOMER_MUST_APPROVE": "This customer uses the app, so they must approve the quote themselves.",
     "JOB_QUOTE_REQUIRED_BEFORE_VISIT": "The customer has not approved a quote yet, so the work cannot start.",
     "JOB_VISIT_NOT_ALLOWED": "A visit cannot be added while the job is {{stage}}.",
     "JOB_NOT_COMPLETED": "Complete the visit with the customer's code before raising the bill.",
@@ -3626,7 +3662,7 @@
       "noCategories": "No categories yet — count the whole shop.",
       "blind": "Blind count",
       "blindHint": "Counters do not see the system quantity.",
-      "blindNote": "Blind count: count what you see; the system quantity is hidden.",
+      "blindNote": "Blind count: counters do not see the system quantity. Managers do.",
       "uncounted": "Products not counted",
       "uncountedIgnore": "Leave as they are",
       "uncountedZero": "Treat as zero",
@@ -3862,8 +3898,8 @@
     "pnlExpenses": "Expenses",
     "pnlNet": "Net profit",
     "pnlExpenseSection": "Expenses by category",
-    "pnlUncosted_one": "{{count}} item had no cost price, so its cost is estimated: {{list}}",
-    "pnlUncosted_other": "{{count}} items had no cost price, so their cost is estimated: {{list}}",
+    "pnlUncosted_one": "{{count}} item had no cost price, so its cost is counted as zero: {{list}}",
+    "pnlUncosted_other": "{{count}} items had no cost price, so their cost is counted as zero: {{list}}",
     "systemCategory": {
       "RENT": "Rent",
       "ELECTRICITY": "Electricity",
@@ -3997,6 +4033,10 @@
       "last4": "Last 4 digits of the account",
       "upiId": "UPI ID",
       "last4Bad": "Give exactly 4 digits."
+    },
+    "defaultAccount": {
+      "CASH_IN_SHOP": "Cash in shop",
+      "BANK_ACCOUNT": "Bank account"
     }
   },
   "society": {
@@ -4810,6 +4850,7 @@
         "sendQuote": "Send quote",
         "addVisit": "Add visit",
         "raiseBill": "Raise the bill",
+        "recordYes": "Customer said yes",
         "close": "Close job",
         "refreshGate": "Refresh gate pass"
       },
@@ -4831,6 +4872,11 @@
         "closedWhy": "Closed: {{reason}}",
         "noQuotes": "No quote sent yet.",
         "quoteMeta": "Valid until {{until}} · Sent by {{by}}",
+        "recordYesTitle": "Record the customer's yes?",
+        "recordYesBody": "Save that the customer accepted {{number}}. Your name and the time are recorded.",
+        "recordYesDone": "Customer's yes recorded.",
+        "recordYesFailed": "The yes could not be recorded.",
+        "yesRecordedBy": "Yes recorded by {{name}}",
         "declinedWhy": "Customer said: {{reason}}",
         "noVisits": "No visits yet.",
         "draftBill": "Draft bill",
@@ -5160,7 +5206,7 @@
           "TOO_MANY": "At most 10 items.",
           "NAME": "Every item needs a name.",
           "UNIT": "Every item needs a unit, like L or pc.",
-          "QTY": "Type a quantity between 0 and 1000.",
+          "QTY": "Type a quantity above 0, up to 1000.",
           "RATE": "Type the rate in rupees."
         },
         "created": "Subscription started"
@@ -5178,6 +5224,7 @@
         "running": "Making the bills…",
         "runTitle": "Make the bills?",
         "runBody": "Bills for {{month}} are made for every subscription that has none yet. A bill already made is not made again.",
+        "runBodyRunning": "{{month}} is not over yet: days still due are billed as if delivered. Make the bill only if you mean to.",
         "runFailed": "Could not make the bills. Try again.",
         "summaryTitle_one": "{{count}} subscription done",
         "summaryTitle_other": "{{count}} subscriptions done",
@@ -5204,7 +5251,7 @@
           "TOO_MANY": "At most 10 items.",
           "NAME": "Every item needs a name.",
           "UNIT": "Every item needs a unit, like L or pc.",
-          "QTY": "Type a quantity between 0 and 1000.",
+          "QTY": "Type a quantity above 0, up to 1000.",
           "RATE": "Type the rate in rupees."
         }
       },
@@ -5338,7 +5385,7 @@
       "takePayment": "Take payment {{amount}}",
       "issueBill": "Issue bill {{amount}}",
       "issueOnlyHint": "The bill is issued now; record the payment as usual.",
-      "pickCustomerForSplit": "Pick the customer on the bill to split the payment or use points. A walk-in bill is issued and paid as usual."
+      "pickCustomerForSplit": "Pick the customer on the bill to take the money here or use points. A walk-in bill is only issued; money cannot be recorded on it."
     },
     "wallet": {
       "title": "Store credit & points",
@@ -6117,6 +6164,7 @@
         "backAt": "Back at {{time}}",
         "untilResume": "Until you resume",
         "openBody": "Customers can place orders now.",
+        "openBodyHidden": "Orders are on. Customers can order once residents can find you.",
         "noteShown": "Customers see: \"{{note}}\"",
         "resume": "Resume",
         "pause": "Pause orders",
@@ -6163,7 +6211,7 @@
         },
         "taxHint": {
           "PRINCIPAL_SUPPLY": "When you deliver your own goods, the charge takes the GST rate of the main item on the bill. No GST if your shop does not charge GST.",
-          "FIXED_RATE": "The charge is billed as a separate service at your rate (usually 18%, SAC 996813). Ask your CA if unsure."
+          "FIXED_RATE": "The charge is billed as a separate service at your rate (usually 18%, SAC 996813)."
         },
         "rate": "GST rate",
         "sac": "SAC code",
@@ -6249,7 +6297,8 @@
     "oneFactorNote": "Every feature is on every plan. Your plan sets one number: how many catalogue items you can have.",
     "countsNote": "Catalogue items are your active products and services. A product with variants counts as one item. Archived items do not count.",
     "ofLimit": "{{used}} of {{limit}} catalogue items",
-    "unlimited": "{{used}} catalogue items · unlimited on your plan",
+    "unlimited_one": "{{count}} catalogue item · unlimited on your plan",
+    "unlimited_other": "{{count}} catalogue items · unlimited on your plan",
     "overBy": "{{n}} of your items are beyond the {{limit}} catalogue items your plan covers, so they are view-only and hidden from customers. Archive other items to open them again.",
     "archiveHint": "Archive items you no longer sell."
   },
@@ -6287,7 +6336,7 @@
     "loading": "Loading your places…",
     "failed": "Could not load your places.",
     "empty": "You are not linked to any society or flat.",
-    "count": "You are linked to {{n}} places.",
+    "count": "Places you are linked to: {{n}}.",
     "hint": "Leaving one place keeps all the others, on this login and on your other logins. This is usually what you want.",
     "otherLoginBadge": "Through your other login",
     "businessNoteShop": "A business — to leave it, hand it over under Settings → Owners & handover.",
@@ -6430,7 +6479,7 @@
         "checkAll": "AI filled the form below. Check every field before you save — nothing is saved yet.",
         "priceYours": "The price is empty on purpose: type your selling price (and MRP) yourself.",
         "similar": "This may already be in your catalogue: {{name}}. Check before adding it again.",
-        "taxVerify": "GST {{gst}} and HSN {{hsn}} are only suggestions — please verify them (ask your accountant if unsure).",
+        "taxVerify": "GST {{gst}} and HSN {{hsn}} are suggestions — change them if they do not fit this product.",
         "descriptionIn": "Description in:"
       },
       "warn": {

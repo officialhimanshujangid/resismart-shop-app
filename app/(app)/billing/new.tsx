@@ -1610,7 +1610,7 @@ export default function NewInvoiceScreen() {
           testID="bill-primary"
         >
           {checkoutOn
-            ? t('commerce.counter.checkoutAmount', { amount: formatPaise(totals.grandPaise) })
+            ? t(selectedParty || jobParams.partyId ? 'commerce.counter.checkoutAmount' : 'commerce.counter.issueBill', { amount: formatPaise(totals.grandPaise) })
             : docType === 'TAX_INVOICE'
               ? t('billing.new.issueInvoice', { amount: formatPaise(totals.grandPaise) })
               : t('billing.new.saveAndIssue')}

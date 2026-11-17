@@ -4,6 +4,7 @@ import { Snackbar, Switch, Text, TextInput } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useMoneyName } from '@/features/money/names';
 
 import { radii, themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -25,6 +26,7 @@ import { isoOfDay, todayYmd } from '../../../src/features/p1/dates';
  */
 export default function ExpenseQuickAddScreen() {
   const { t } = useTranslation();
+  const nm = useMoneyName(); // PAR-032
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
   const { can } = usePartnerEntitlements();
@@ -96,7 +98,7 @@ export default function ExpenseQuickAddScreen() {
                 testID={`expense-cat-${cat._id}`}
               >
                 <Text style={{ color: on ? c.textInverse : c.textPrimary, fontWeight: '600', fontSize: 14 }}>
-                  {cat.systemKey ? t(`money.systemCategory.${cat.systemKey}`, { defaultValue: cat.name }) : cat.name}
+                  {nm(cat.name)}
                 </Text>
               </Pressable>
             );
@@ -127,7 +129,7 @@ export default function ExpenseQuickAddScreen() {
       />
       <Text style={[styles.label, { color: c.textSecondary }]}>{t('money.expense.paidBy')}</Text>
       <ChipRow c={c} value={f.mode} options={EXPENSE_MODES.map((m) => ({ key: m, label: t(`money.mode.${m}`) }))} onChange={(mode) => set({ mode })} />
-      {account ? <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('money.expense.fromAccount', { name: account.name })}</Text> : null}
+      {account ? <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('money.expense.fromAccount', { name: nm(account.name) })}</Text> : null}
       <DateField label={t('money.expense.date')} value={f.day} onChangeText={(day) => set({ day })} mode="date" maximumDate={new Date()} />
 
       <View style={styles.switchRow}>

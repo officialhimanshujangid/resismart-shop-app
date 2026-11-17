@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { useMoneyName } from '../names';
 
 import { ColorScheme, radii } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
@@ -11,6 +12,7 @@ import type { MoneyAccount } from '../api';
 /** One cash drawer or bank account with its balance; tapping opens its book. */
 export function AccountCard({ c, account, onPress }: { c: ColorScheme; account: MoneyAccount; onPress?: () => void }) {
   const { t } = useTranslation();
+  const nm = useMoneyName(); // PAR-032
   return (
     <Pressable
       onPress={onPress}
@@ -23,7 +25,7 @@ export function AccountCard({ c, account, onPress }: { c: ColorScheme; account: 
         <MaterialCommunityIcons name={account.kind === 'CASH' ? 'cash' : 'bank-outline'} size={22} color={c.primary} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{account.name}</Text>
+        <Text style={[styles.name, { color: c.textPrimary }]} numberOfLines={1}>{nm(account.name)}</Text>
         <Text style={[styles.meta, { color: c.textSecondary }]} numberOfLines={1}>
           {t(account.kind === 'CASH' ? 'money.kind.CASH' : 'money.kind.BANK')}
           {account.bankLast4 ? ` ··${account.bankLast4}` : ''}

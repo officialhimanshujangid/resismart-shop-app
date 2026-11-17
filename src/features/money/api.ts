@@ -166,8 +166,9 @@ export const moneyApi = {
 
   transfers: (query: { page?: number; limit?: number } = {}) =>
     apiClient.get<PageOf<MoneyTransfer>>('/partners/me/money/transfers', { params: query }).then((r) => r.data),
-  createTransfer: (body: { date: string; fromAccountId: string; toAccountId: string; amountPaise: number; note?: string }) =>
-    apiClient.post<ApiEnvelope<MoneyTransfer>>('/partners/me/money/transfers', body).then((r) => unwrap(r.data)),
+  /** Idempotent on the server; QA-217 — the screen now sends one key per transfer. */
+  createTransfer: (body: { date: string; fromAccountId: string; toAccountId: string; amountPaise: number; note?: string }, idempotencyKey?: string) =>
+    apiClient.post<ApiEnvelope<MoneyTransfer>>('/partners/me/money/transfers', body, idempotencyKey ? withIdempotency(idempotencyKey) : undefined).then((r) => unwrap(r.data)),
   cancelTransfer: (id: string, reason: string) =>
     apiClient.post<ApiEnvelope<MoneyTransfer>>(`/partners/me/money/transfers/${id}/cancel`, { reason }).then((r) => unwrap(r.data)),
 

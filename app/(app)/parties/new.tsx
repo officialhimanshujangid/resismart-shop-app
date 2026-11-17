@@ -6,7 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../src/constants/colors';
-import { usePlanUsage } from '../../../src/hooks';
+import { usePartnerEntitlements, usePlanUsage } from '../../../src/hooks';
+import { NoAccess } from '../../../src/features/commerce/components/ui';
 import { qk } from '../../../src/lib/queryKeys';
 import { partiesApi, PartyKind } from '../../../src/api/parties.api';
 import { parseRupeesToPaise, paiseToInput } from '../../../src/lib/money';
@@ -38,6 +39,7 @@ export default function PartyFormScreen() {
   const editing = Boolean(params.id);
   const queryClient = useQueryClient();
   const { capacity } = usePlanUsage();
+  const { can, ready } = usePartnerEntitlements();
   const cap = capacity('max_customers');
 
   const existing = useQuery({
@@ -149,6 +151,7 @@ export default function PartyFormScreen() {
     const next: Record<string, string> = {};
     if (!name.trim()) next.name = t('parties.form.nameRequired');
     if (isWalkIn && !phone.trim() && !editing) next.phone = t('parties.form.phoneRequired');
+    else if (phone.trim() && phone.replace(/\D/g, '').length < 10) next.phone = t('parties.form.phoneInvalid');
     if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) next.email = t('parties.form.emailInvalid');
     if (!editing) {
       const paise = parseRupeesToPaise(openingBalance || '0');
@@ -180,6 +183,11 @@ export default function PartyFormScreen() {
   };
 
   const saving = createMutation.isPending || updateMutation.isPending;
+
+  // Same rule as the server: customers need CUSTOMERS, suppliers CUSTOMERS or PURCHASES_MANAGE.
+  if (ready && !can('CUSTOMERS', 'FULL') && !can('PURCHASES_MANAGE', 'FULL')) {
+    return <Screen c={c} rise title={t(editing ? 'parties.form.editTitle' : 'parties.form.addTitle')}><NoAccess c={c} /></Screen>;
+  }
 
   return (
     <Screen c={c} rise title={t(editing ? 'parties.form.editTitle' : 'parties.form.addTitle')}>

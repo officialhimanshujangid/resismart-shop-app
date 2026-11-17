@@ -244,13 +244,13 @@ export function OrderDetailModal({
                 */}
                 <AmountRow
                   label={t(order.amounts.taxPaise > 0 ? 'orders.detail.taxableValue' : 'orders.detail.subtotal')}
-                  value={order.amounts.subPaise}
+                  value={order.amounts.subPaise - (order.amounts.deliveryTaxablePaise ?? 0)}
                   c={c}
                 />
-                {order.amounts.discountPaise > 0 && <AmountRow label={t('orders.detail.discount')} value={-order.amounts.discountPaise} c={c} />}
-                {order.amounts.taxPaise > 0 && <AmountRow label={t('orders.detail.tax')} value={order.amounts.taxPaise} c={c} />}
+                {order.amounts.taxPaise > 0 &&<AmountRow label={t('orders.detail.tax')} value={order.amounts.taxPaise - (order.amounts.deliveryTaxPaise ?? 0)} c={c} />}
                 {order.amounts.deliveryPaise > 0 && <AmountRow label={t('orders.detail.deliveryFee')} value={order.amounts.deliveryPaise} c={c} />}
                 <AmountRow label={t('orders.detail.total')} value={order.amounts.totalPaise} c={c} bold />
+                {order.amounts.discountPaise > 0 && <AmountRow label={t('orders.detail.discount')} value={order.amounts.discountPaise} c={c} />}
                 <Text style={[styles.paymentLine, { color: c.textSecondary }]}>
                   {/* `payment.status` is the SERVER's own payment state and has no
                       label table on this side — printed back as it came, the same

@@ -33,7 +33,7 @@ export const todayProductsApi = {
   lowStock: () =>
     apiClient
       .get<{ success: boolean } & PagedRows<TodayProductRow>>('/partners/me/products', {
-        params: { lowStock: 'true', limit: 100 },
+        params: { lowStock: 'true', isActive: 'true', limit: 100 },
       })
       .then((r) => r.data),
 };

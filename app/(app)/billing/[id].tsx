@@ -716,9 +716,18 @@ export default function DocumentDetailScreen() {
 
         {missingPartyForPayment && (
           <Card tone="alt" style={styles.card}>
-            <Text style={{ color: c.textSecondary, fontSize: 13 }}>
-              {t('billing.detail.noPartyForPayment')}
+            <Text style={{ color: c.textSecondary, fontSize: 13 }} testID="walkin-pay-guide">
+              {t(behaviour.settlement === 'OUT' ? 'billing.detail.noPartyForRefund' : 'billing.detail.noPartyForPayment')}
             </Text>
+            {behaviour.settlement !== 'OUT' && <Button
+              mode="text"
+              compact
+              onPress={() => router.push('/(app)/billing/new')}
+              style={{ alignSelf: 'flex-start' }}
+              testID="walkin-pay-go"
+            >
+              {t('billing.detail.noPartyGo')}
+            </Button>}
           </Card>
         )}
 

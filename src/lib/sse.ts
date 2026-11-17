@@ -1,6 +1,7 @@
 import { API_BASE_URL, STORAGE_KEYS } from '../constants/app';
 import { storage } from '../utils/storage';
 import { appIdentityHeaders } from './appIdentity';
+import { clearGetMemo } from '../api/axios'; // API-DIET (Owner 11-04)
 
 /**
  * A minimal Server-Sent Events client for React Native.
@@ -138,7 +139,8 @@ export function openEventStream(options: SseOptions): SseConnection {
           consumed = boundary + 2;
           for (const frame of chunk.split('\n\n')) {
             const parsed = parseFrame(frame);
-            if (parsed) options.onEvent(parsed);
+            // API-DIET — the server changed; a refetch must not get the GET memo's older answer.
+            if (parsed) { clearGetMemo(); options.onEvent(parsed); }
           }
         }
       }

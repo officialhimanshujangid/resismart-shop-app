@@ -4,6 +4,7 @@ import { Text } from 'react-native-paper';
 import { useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useMoneyName } from '@/features/money/names';
 
 import { radii, themeColors } from '../../../src/constants/colors';
 import { qk } from '../../../src/lib/queryKeys';
@@ -25,6 +26,7 @@ import { isoEndOfDay, isoOfDay, monthStartYmd, todayYmd } from '../../../src/fea
  */
 export default function CashBookScreen() {
   const { t } = useTranslation();
+  const nm = useMoneyName(); // PAR-032
   const c = themeColors(useColorScheme() === 'dark');
   const wide = useIsWide();
   const params = useLocalSearchParams<{ accountId?: string }>();
@@ -64,7 +66,7 @@ export default function CashBookScreen() {
   return (
     <Screen c={c} title={t('money.cashBook')} subtitle={book.data?.account?.name} scroll={false}>
       <View style={styles.controls}>
-        <ChipRow c={c} value={shown} options={(accounts.data ?? []).map((a) => ({ key: a._id, label: a.name }))} onChange={setAccountId} />
+        <ChipRow c={c} value={shown} options={(accounts.data ?? []).map((a) => ({ key: a._id, label: nm(a.name) }))} onChange={setAccountId} />
         <View style={[styles.dates, wide && { flexDirection: 'row' }]}>
           <View style={styles.dateCell}><DateField label={t('money.book.from')} value={from} onChangeText={setFrom} mode="date" maximumDate={new Date()} /></View>
           <View style={styles.dateCell}><DateField label={t('money.book.to')} value={to} onChangeText={setTo} mode="date" maximumDate={new Date()} /></View>

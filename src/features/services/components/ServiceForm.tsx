@@ -168,7 +168,8 @@ export function ServiceForm({
     onSubmit({
       name: draft.name.trim(),
       description: draft.description.trim() || undefined,
-      categoryId: draft.categoryId || null,
+      // A new service sends nothing here (`null` is the edit-only clear signal, as on the website).
+      categoryId: draft.categoryId || (initial ? null : undefined),
       pricePaise: pricePaise || 0,
       priceType: draft.priceType,
       durationMin: draft.durationMin,

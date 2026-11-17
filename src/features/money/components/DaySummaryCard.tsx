@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
+import { useMoneyName } from '../names';
 
 import { ColorScheme } from '../../../constants/colors';
 import { formatPaise } from '../../../lib/money';
@@ -16,6 +17,7 @@ import type { DaySummary } from '../api';
  */
 export function DaySummaryCard({ c, s }: { c: ColorScheme; s: DaySummary }) {
   const { t } = useTranslation();
+  const nm = useMoneyName(); // PAR-032
   const salesLabel = (row: DaySummary['sales'][number]) => {
     if (row.printAs && row.printAs.startsWith('BILL_OF_SUPPLY')) return t(BILL_OF_SUPPLY_LABEL_KEY);
     const type = (row.type ?? row.printAs) as PartnerDocumentType | undefined;
@@ -45,7 +47,7 @@ export function DaySummaryCard({ c, s }: { c: ColorScheme; s: DaySummary }) {
         <Text style={[styles.title, { color: c.textPrimary }]}>{t('money.day.moneySection')}</Text>
         {s.collections.map((col) => line(t('money.day.collected', { mode: t(`money.mode.${col.mode}`, { defaultValue: col.mode }) }), col.amountPaise, c.success))}
         {line(t('money.day.paidOut'), s.paymentsOutPaise, c.error)}
-        {s.expenses.map((e) => line(e.categoryName, e.amountPaise, c.error))}
+        {s.expenses.map((e) => line(nm(e.categoryName), e.amountPaise, c.error))}
       </Card>
       <Card c={c}>
         <Text style={[styles.title, { color: c.textPrimary }]}>{t('money.day.drawerSection')}</Text>

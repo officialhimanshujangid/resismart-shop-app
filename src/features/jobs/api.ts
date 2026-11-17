@@ -53,6 +53,10 @@ export const jobsApi = {
     apiClient.post<ApiEnvelope<JobInvoiceResult>>(`${BASE}/${id}/invoice`, body, withIdempotency(key))
       .then((r) => unwrap(r.data)),
 
+  /** QA-169: walk-in customers only. 409 JOB_QUOTE_CUSTOMER_MUST_APPROVE · JOB_QUOTE_NOT_PENDING; 410 JOB_QUOTE_EXPIRED. */
+  recordYes: (id: string, quoteId: string) =>
+    apiClient.post<ApiEnvelope<JobDetail>>(`${BASE}/${id}/quotes/${quoteId}/record-yes`).then((r) => unwrap(r.data)),
+
   /** 409 JOB_ALREADY_CLOSED. */
   close: (id: string, reason: string) =>
     apiClient.post<ApiEnvelope<JobCloseResult>>(`${BASE}/${id}/close`, { reason })

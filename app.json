@@ -18,6 +18,7 @@
       "bundleIdentifier": "com.resismart.shop"
     },
     "android": {
+      "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundColor": "#0A4020",

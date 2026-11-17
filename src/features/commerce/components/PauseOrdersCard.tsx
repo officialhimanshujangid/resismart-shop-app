@@ -31,8 +31,8 @@ export function useCanPauseOrders(): boolean {
 
 /** The state line + Pause / Resume. Used on Today and in Online shop settings. */
 export function PausePanel({
-  c, storefront, canPause, big, testID,
-}: { c: ColorScheme; storefront: StorefrontSettings; canPause: boolean; big?: boolean; testID?: string }) {
+  c, storefront, canPause, big, testID, hidden,
+}: { c: ColorScheme; storefront: StorefrontSettings; canPause: boolean; big?: boolean; testID?: string; hidden?: boolean }) {
   const { t } = useTranslation();
   const pause = usePauseOrders();
   const [sheet, setSheet] = useState(false);
@@ -61,7 +61,8 @@ export function PausePanel({
           <Text style={[styles.sub, { color: c.textSecondary }]}>
             {paused
               ? (back ? t('commerce.storefront.pause.backAt', { time: back }) : t('commerce.storefront.pause.untilResume'))
-              : t('commerce.storefront.pause.openBody')}
+              // QA 11-04 — "customers can order now" was false under "Residents cannot find you yet".
+              : t(hidden ? 'commerce.storefront.pause.openBodyHidden' : 'commerce.storefront.pause.openBody')}
           </Text>
           {paused && storefront.pauseNote ? (
             <Text style={[styles.sub, { color: c.textSecondary }]} numberOfLines={3}>
@@ -140,7 +141,7 @@ export function PauseSheet({ c, visible, onDismiss }: { c: ColorScheme; visible:
  * Today's big Pause orders card. Drawn only for someone who may pause and may
  * read the settings; nothing at all otherwise (Today stays as it was).
  */
-export function PauseOrdersCard({ c }: { c: ColorScheme }) {
+export function PauseOrdersCard({ c, hidden }: { c: ColorScheme; hidden?: boolean }) {
   const access = useCommerceAccess();
   const canPause = useCanPauseOrders();
   const visible = canPause && access.settings.canView;
@@ -152,7 +153,7 @@ export function PauseOrdersCard({ c }: { c: ColorScheme }) {
   return (
     <Rise index={2}>
       <Card testID="pause-orders-card">
-        <PausePanel c={c} storefront={storefrontOf(query.data)} canPause big />
+        <PausePanel c={c} storefront={storefrontOf(query.data)} canPause big hidden={hidden} />
       </Card>
     </Rise>
   );

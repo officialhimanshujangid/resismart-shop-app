@@ -14,6 +14,7 @@ import { partiesApi } from '../../../src/api/parties.api';
 import { newIdempotencyKey } from '../../../src/lib/idempotency';
 import { Screen, SectionLabel } from '../../../src/features/more/ui';
 import { Banner } from '../../../src/features/p1/ui';
+import { NoAccess } from '../../../src/features/commerce/components/ui';
 import { ChoiceChips, PartyPicker, PickedParty } from '../../../src/features/p2/ui';
 import { istToday } from '../../../src/features/p2/dates';
 import {
@@ -39,7 +40,7 @@ export default function BookNowScreen() {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
   const qc = useQueryClient();
-  const { can } = usePartnerEntitlements();
+  const { can, ready } = usePartnerEntitlements();
   const params = useLocalSearchParams<{ staffId?: string; day?: string }>();
   const [party, setParty] = useState<PickedParty | null>(null);
   const [serviceId, setServiceId] = useState<string>();
@@ -102,6 +103,11 @@ export default function BookNowScreen() {
     ...bookableStaff(staff.data).map((s) => ({ key: s.id, label: s.name })),
   ];
   const packages = packagesForService(summary.data?.activePackages, serviceId);
+
+  // A role that may only look gets the plain "not part of your role" card, not a form with a dead button.
+  if (ready && !can('BOOKINGS_MANAGE', 'FULL')) {
+    return <Screen c={c} rise title={t('p2.appointments.bookNow')}><NoAccess c={c} /></Screen>;
+  }
 
   return (
     <Screen c={c} rise title={t('p2.appointments.bookNow')} subtitle={t('p2.appointments.new.subtitle')}>

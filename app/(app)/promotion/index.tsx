@@ -22,6 +22,7 @@ import { HelpButton } from '../../../src/features/help/HelpButton';
 import { Card, EmptyBlock, ErrorBlock, Loading, SectionLabel } from '../../../src/features/more/ui';
 import { useMyReach } from '../../../src/features/society/hooks';
 import { isSocietyPartner } from '../../../src/features/society/logic';
+import { sharePlatformInvoicePdf } from '../../../src/features/billing/pdf'; // PAY-B P1-01
 
 /**
  * Buy and track a boost — the ONE place in this app where a LOCKED module has
@@ -192,6 +193,20 @@ function PromotionBody({
   // E-VISUAL-APPS: the coral notice pair follows the theme (fixed light pink + coral-600 was a pale slab with 2.6:1 text in dark).
   const warnPair = useColorScheme() === 'dark' ? statusFor(true).danger : { fg: palette.coral[600], bg: palette.coral.soft };
   const { t } = useTranslation();
+  // >>> PAY-B P1-01 — share a paid boost's tax invoice PDF (same path as the plan receipts).
+  const [openingInvoice, setOpeningInvoice] = useState<string | null>(null);
+  const openInvoice = async (b: PartnerBoostView) => {
+    if (!b.invoiceId || openingInvoice) return;
+    setOpeningInvoice(b.id);
+    try {
+      await sharePlatformInvoicePdf(b.invoiceId, b.package.label);
+    } catch (e: unknown) {
+      Alert.alert(t('promotion.screen.invoiceFailedTitle'), apiErrorMessage(e, t('promotion.screen.invoiceFailedBody')));
+    } finally {
+      setOpeningInvoice(null);
+    }
+  };
+  // <<< PAY-B
   const hasFree = pkgData.packages.some((p) => p.pricePaise === 0);
   /**
    * The packages this build may offer. With `IN_APP_PLAN_PURCHASES` off that
@@ -386,7 +401,16 @@ function PromotionBody({
                   {t('promotion.screen.historyLine', { date: formatI18nDate(b.purchasedAt, t), status: b.status })}
                 </Text>
               </View>
-              <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(b.amountPaise)}</Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ color: c.textPrimary, fontWeight: '600', fontSize: 13 }}>{formatPaise(b.amountPaise)}</Text>
+                {/* PAY-B P1-01 — the paid boost's numbered tax invoice (drawn on first open). */}
+                {b.invoiceId ? (
+                  <Button compact mode="text" disabled={openingInvoice !== null} loading={openingInvoice === b.id}
+                    onPress={() => void openInvoice(b)} accessibilityLabel={t('promotion.screen.invoice')}>
+                    {t('promotion.screen.invoice')}
+                  </Button>
+                ) : null}
+              </View>
             </View>
           ))}
         </Card>

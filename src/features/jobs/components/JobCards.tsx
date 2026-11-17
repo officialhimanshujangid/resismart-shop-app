@@ -67,6 +67,9 @@ export function QuotesCard({ c, quotes }: { c: ColorScheme; quotes: JobQuoteView
                     until: shortDay(istDayOf(q.validUntil), t), by: q.sentByName,
                   })}
                 </Text>
+                {q.yesRecordedByName ? (
+                  <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('p2.jobs.detail.yesRecordedBy', { name: q.yesRecordedByName })}</Text>
+                ) : null}
                 {q.declineReason ? (
                   <Text style={{ color: c.textSecondary, fontSize: 12 }}>{t('p2.jobs.detail.declinedWhy', { reason: q.declineReason })}</Text>
                 ) : null}

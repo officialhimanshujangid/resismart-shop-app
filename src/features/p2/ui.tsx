@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator as RNActivityIndicator, Pressable, ScrollView, StyleSheet, useColorScheme, View,
 } from 'react-native';
@@ -122,9 +122,15 @@ export function Sheet({
 }) {
   const { t } = useTranslation();
   const c = themeColors(useColorScheme() === 'dark');
+  // QA-209: the second click of a double click on the button that opened the
+  // sheet landed on the backdrop and closed it again. Ignore backdrop taps for
+  // a short moment after opening; the close button always works.
+  const openedAt = useRef(0);
+  useEffect(() => { if (visible) openedAt.current = Date.now(); }, [visible]);
+  const onBackdrop = () => { if (Date.now() - openedAt.current < 500) return; onDismiss(); };
   return (
     <Portal>
-      <Modal visible={visible} onDismiss={onDismiss} contentContainerStyle={[styles.sheet, { backgroundColor: c.surface }]}>
+      <Modal visible={visible} onDismiss={onBackdrop} contentContainerStyle={[styles.sheet, { backgroundColor: c.surface }]}>
         <View testID={testID} style={{ maxHeight: '100%' }}>
           <View style={styles.sheetHead}>
             <Text style={[styles.sheetTitle, { color: c.textPrimary }]} numberOfLines={2}>{title}</Text>

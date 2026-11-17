@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, IN_APP_PLAN_PURCHASES, STORAGE_KEYS } from '../constants/app';
 import { storage } from '../utils/storage';
+import { resolveWebFormData } from './web-formdata'; // 11-06: web uploads send real files
 /**
  * The i18next SINGLETON, not `useTranslation` — this file is not a component
  * and `apiErrorMessage` is called from 114 places, most of them inside a
@@ -267,7 +268,7 @@ function classifyRefreshFailure(e: unknown): RefreshFailureKind {
   // away while they also belonged to a suspended society). The same "nothing to open" — ends the
   // session like NO_ACTIVE_ACCESS, rather than leaving a session that can only 403. A shop's own
   // PARTNER token is never refused with it (the per-request check is for SOCIETY tokens only).
-  if (res.status === 403 && res.data?.code === 'SOCIETY_SUSPENDED') return 'no-access';
+  if (res.status === 403 && (res.data?.code === 'SOCIETY_SUSPENDED' || res.data?.code === 'BUILDING_SUSPENDED')) return 'no-access';
   // <<< MP3LEFT
   // 429 lands here on purpose. `/auth/refresh-token` sits behind an IP-keyed
   // limiter of 20 per 15 minutes, and behind carrier NAT or one shop's wifi a
@@ -583,6 +584,7 @@ apiClient.interceptors.request.use(
     if (config.timeout === REQUEST_TIMEOUT_MS && mightBeCold()) {
       config.timeout = COLD_START_TIMEOUT_MS;
     }
+    if (config.data instanceof FormData) await resolveWebFormData(config.data); // no-op on phones
     return config;
   },
   (error) => Promise.reject(error)
@@ -598,6 +600,9 @@ apiClient.interceptors.response.use(
     // never got a response leaves the question open.
     if (error.response) lastResponseAt = Date.now();
     const originalRequest = error.config as RetriableRequest | undefined;
+    // API-DIET (Owner 11-04) — a failed `POST /batch` is never refreshed or retried:
+    // each GET in it is asked again on its own and meets the code below then.
+    if (originalRequest?.url === BATCH_URL) return Promise.reject(error);
     const status = error.response?.status;
     const code = (error.response?.data as ApiErrorBody | undefined)?.code;
     /**
@@ -626,6 +631,108 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// >>> API-DIET (Owner 11-04) — same as the society app's `lib/api.ts`: identical GETs
+// share one request (and its answer for 4 s; any write empties that), and the
+// GETs a screen fires in the same moment go as ONE `POST /batch` (backend
+// `routes/batch.routes.ts`). Only OK answers come from the batch; anything else
+// is asked again on its own, so refresh / suspension / plan handling see exactly
+// the request they always saw. A server without `/batch` switches it off.
+// The token is read from secure storage like the request interceptor reads it
+// (async, no in-memory copy that a sign-in / refresh could leave stale).
+const GET_MEMO_MS = 4000;
+const BATCH_URL = '/batch'; // the response interceptor leaves its own failure alone (above)
+const getMemo = new Map<string, { at: number; p: Promise<any> }>();
+export const clearGetMemo = () => getMemo.clear();
+const rawGet = apiClient.get.bind(apiClient);
+const rawPost = apiClient.post.bind(apiClient);
+const BATCH_WINDOW_MS = 12;
+const BATCH_MAX = 20;
+type Queued = { path: string; url: string; config: any; resolve: (v: any) => void; reject: (e: unknown) => void };
+let batchQueue: Queued[] = [];
+let batchTimer: ReturnType<typeof setTimeout> | null = null;
+let batchOff = false;
+const batchPathOf = (url: string, config: any, token: string | null): string | null => {
+  if (batchOff || !token) return null;
+  if (config && (config.headers || config.signal || config.baseURL || config.timeout || config.validateStatus)) return null;
+  let full: string;
+  try { full = apiClient.getUri({ url, params: config?.params }); } catch { return null; }
+  if (!full.startsWith(API_BASE_URL)) return null;
+  const path = full.slice(API_BASE_URL.length);
+  return path.startsWith('/') && !/\/stream(\?|$)/.test(path) ? path : null;
+};
+const alone = (q: Queued) => rawGet(q.url, q.config).then(q.resolve, q.reject);
+const sendBatch = (items: Queued[], retried = false) => {
+  if (items.length === 1) { alone(items[0]); return; }
+  rawPost(BATCH_URL, { requests: items.map((q) => ({ path: q.path })) })
+    .then((res: any) => {
+      const answers: Array<{ status: number; body: unknown }> = res?.data?.responses || [];
+      const signedOut: Queued[] = [];
+      items.forEach((q, i) => {
+        const a = answers[i];
+        if (a && a.status >= 200 && a.status < 300) {
+          q.resolve({ data: a.body, status: a.status, statusText: 'OK', headers: {}, config: q.config || {}, request: null });
+        } else if (a && a.status === 401 && !retried) {
+          signedOut.push(q);
+        } else {
+          alone(q);
+        }
+      });
+      // QA 11-05 — an expired token answers 401 for EVERY item; asking each alone
+      // made each fail, refresh and retry (~30 requests on one screen). Now ONE is
+      // asked alone — its 401 runs the normal session refresh — and the rest go
+      // back as one batch on the new token. If that one still fails, the rest are
+      // asked alone as before, so every screen keeps its own error handling.
+      if (signedOut.length) {
+        const [first, ...rest] = signedOut;
+        rawGet(first.url, first.config).then(
+          (v: any) => { first.resolve(v); if (rest.length) sendBatch(rest, true); },
+          (e: unknown) => { first.reject(e); rest.forEach(alone); },
+        );
+      }
+    })
+    .catch((e: any) => {
+      if (e?.response?.status === 404 || e?.response?.status === 405) batchOff = true;
+      items.forEach(alone);
+    });
+};
+const flushBatch = () => {
+  batchTimer = null;
+  const items = batchQueue.splice(0, batchQueue.length);
+  for (let i = 0; i < items.length; i += BATCH_MAX) sendBatch(items.slice(i, i + BATCH_MAX));
+};
+const batchedGet = (url: string, config: any, token: string | null): Promise<any> => {
+  const path = batchPathOf(url, config, token);
+  if (!path) return rawGet(url, config);
+  return new Promise((resolve, reject) => {
+    batchQueue.push({ path, url, config, resolve, reject });
+    if (!batchTimer) batchTimer = setTimeout(flushBatch, BATCH_WINDOW_MS);
+  });
+};
+apiClient.get = ((url: string, config?: any) => {
+  if (config?.fresh || (config?.responseType && config.responseType !== 'json') || /\/stream(\?|$)/.test(url)) {
+    return rawGet(url, config);
+  }
+  return storage.get(STORAGE_KEYS.ACCESS_TOKEN).then((token) => {
+    const key = [url, JSON.stringify(config?.params ?? null), token ?? ''].join('|');
+    const hit = getMemo.get(key);
+    if (hit && Date.now() - hit.at < GET_MEMO_MS) return hit.p;
+    // A settled refusal (403/404/409 …) is the answer for the window too. A 401
+    // (refresh), a 429 and anything with no answer (network, 5xx) are asked again.
+    const p = batchedGet(url, config, token).catch((e: any) => {
+      const s = e?.response?.status;
+      if (!(s >= 400 && s < 500 && s !== 401 && s !== 429)) getMemo.delete(key);
+      throw e;
+    });
+    getMemo.set(key, { at: Date.now(), p });
+    return p;
+  });
+}) as typeof apiClient.get;
+for (const m of ['post', 'put', 'patch', 'delete'] as const) {
+  const raw = (apiClient as any)[m].bind(apiClient);
+  (apiClient as any)[m] = (...args: unknown[]) => { getMemo.clear(); return raw(...args).finally(() => getMemo.clear()); };
+}
+// <<< API-DIET
 
 /**
  * The envelope the partner controllers answer in. Not every one of them uses it

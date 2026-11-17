@@ -938,8 +938,11 @@ function StepIdentity({
   // <<< OWNER-0310
 
   const canSend =
-    name.trim().length >= 2 && phone.trim().length >= 7 && /.+@.+\..+/.test(email)
+    name.trim().length >= 2 && phone.replace(/\D/g, '').length >= 10 && /.+@.+\..+/.test(email)
     && password.length >= MIN_PASSWORD && confirmPassword === password; // SITE-SYNC: confirmed
+  // Say why the button is grey: only once something has been typed.
+  const phoneBad = phone.trim() !== '' && phone.replace(/\D/g, '').length < 10;
+  const emailBad = email.trim() !== '' && !/.+@.+\..+/.test(email);
 
   /**
    * Both codes are genuinely out. DERIVED, never set by hand — the old boolean
@@ -971,6 +974,7 @@ function StepIdentity({
         leftIcon="phone-outline"
         autoCapitalize="none"
         disabled={!!tokens.phone}
+        error={phoneBad ? t('parties.form.phoneInvalid') : undefined}
       />
       <AppInput
         label={t('auth.register.email')}
@@ -980,6 +984,7 @@ function StepIdentity({
         autoCapitalize="none"
         leftIcon="email-outline"
         disabled={!!tokens.email}
+        error={emailBad ? t('auth.forgot.emailInvalid') : undefined}
       />
       {/* <<< OWNER-0310 */}
       <AppInput

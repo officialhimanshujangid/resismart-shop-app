@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 
 import { themeColors, radii } from '../../../constants/colors';
 import { AppInput } from '../../../components/AppInput';
-import { apiErrorMessage } from '../../../api/axios';
+import { apiErrorCode, apiErrorMessage } from '../../../api/axios';
 import { formatI18nDate } from '../../../i18n';
 import { qk } from '../../../lib/queryKeys';
 import { Card, ErrorBlock, Loading } from '../../more/ui';
@@ -78,7 +78,7 @@ export function InviteAcceptFlow({
 
   if (preview.isPending) return <Loading c={c} skeleton={2} />;
   if (preview.isError) {
-    return <ErrorBlock c={c} message={apiErrorMessage(preview.error, t('owners.accept.loadFailed'))} onRetry={() => void preview.refetch()} />;
+    return <ErrorBlock c={c} message={apiErrorMessage(preview.error, t('owners.accept.loadFailed'))} onRetry={apiErrorCode(preview.error) === 'PARTNER_INVITE_NOT_FOUND' ? undefined : () => void preview.refetch()} />;
   }
   const inv = preview.data;
   const business = inv.partner?.name ?? t('more.yourBusiness');

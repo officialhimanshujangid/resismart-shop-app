@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useColorScheme, View } from 'react-native';
+import { Alert, useColorScheme, View } from 'react-native';
 import { Snackbar } from 'react-native-paper';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -84,8 +84,29 @@ export default function JobDetailScreen() {
     }
   };
 
-  const actions = (acts.sendQuote || acts.addVisit || acts.raiseBill || acts.close) ? (
+  // QA-169: a walk-in has no login to approve from, so the shop records their yes.
+  const yesQuote = d.job.isWalkIn && can('JOBS_QUOTE', 'FULL') ? [...d.quotes].reverse().find((x) => x.status === 'SENT') : undefined;
+  const recordYes = () => {
+    if (!yesQuote) return;
+    Alert.alert(t('p2.jobs.detail.recordYesTitle'), t('p2.jobs.detail.recordYesBody', { number: yesQuote.number }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('p2.jobs.actions.recordYes'),
+        onPress: () => {
+          setError(null);
+          jobsApi.recordYes(jobId, yesQuote.id)
+            .then(() => { setToast(t('p2.jobs.detail.recordYesDone')); return refresh(); })
+            .catch((e) => setError(apiErrorMessage(e, t('p2.jobs.detail.recordYesFailed'))));
+        },
+      },
+    ]);
+  };
+
+  const actions = (yesQuote || acts.sendQuote || acts.addVisit || acts.raiseBill || acts.close) ? (
     <ActionRow>
+      {yesQuote ? (
+        <PillButton c={c} icon="check-circle-outline" label={t('p2.jobs.actions.recordYes')} onPress={recordYes} testID="job-record-yes" />
+      ) : null}
       {acts.sendQuote ? (
         <PillButton
           c={c}

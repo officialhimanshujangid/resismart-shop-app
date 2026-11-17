@@ -115,6 +115,10 @@ export interface TenantInvoice {
   pricingSnapshot?: { line: string | null } | null;
   /** FIXA — the issued GST credit note for a refund on this invoice (its PDF: `creditNoteDownloadUrl`). */
   creditNoteNumber?: string;
+  /** PAY-B — the GST inside this GST-inclusive invoice (frozen split), and any TDS kept back. */
+  gstPaise?: number | null;
+  tdsPaise?: number | null;
+  tdsSection?: string | null;
 }
 
 export const platformBillingApi = {

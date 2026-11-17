@@ -78,7 +78,7 @@ export default function BillsScreen() {
 
   const confirmRun = () => Alert.alert(
     t('p2.subscriptions.bills.runTitle'),
-    t('p2.subscriptions.bills.runBody', { month: monthLabel(period, t) }),
+    t(period === periodOf(today) ? 'p2.subscriptions.bills.runBodyRunning' : 'p2.subscriptions.bills.runBody', { month: monthLabel(period, t) }),
     [{ text: t('common.cancel'), style: 'cancel' }, { text: t('p2.subscriptions.bills.run'), onPress: () => run.mutate() }],
   );
 

@@ -513,6 +513,8 @@ export const partnerApi = {
     longitude?: number;
     serviceModes?: PartnerServiceMode[];
     serviceRadiusKm?: number;
+    /** 11-06 — what the business does; the server adds the new kind's modules. */
+    kind?: PartnerKind;
   }) =>
     apiClient.put<{ message: string; partner: MyPartner }>('/partners/me/partner', body).then((r) => r.data),
 

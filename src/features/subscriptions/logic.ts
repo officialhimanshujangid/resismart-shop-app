@@ -234,7 +234,8 @@ export function draftToLines(
     if (!d.itemName.trim()) return { lines: null, problem: 'NAME' };
     if (!d.unit.trim()) return { lines: null, problem: 'UNIT' };
     const qty = Number(d.qty.replace(',', '.'));
-    if (!Number.isFinite(qty) || qty < 0 || qty > 1000) return { lines: null, problem: 'QTY' };
+    // Zero only makes sense with a per-weekday plan; a plain zero line is a subscription that bills ₹0.
+    if (!Number.isFinite(qty) || qty < 0 || qty > 1000 || (qty === 0 && kept.get(d.lineKey)?.qtyByWeekday?.length !== 7)) return { lines: null, problem: 'QTY' };
     const rate = parseRupeesToPaise(d.rate);
     if (rate === null || rate < 0) return { lines: null, problem: 'RATE' };
     const old = kept.get(d.lineKey);

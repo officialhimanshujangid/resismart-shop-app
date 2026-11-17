@@ -222,7 +222,7 @@ export function previewDocumentTax(
 }
 
 /** The slabs the web's line grid offers (`shared.ts#TAX_SLABS`), so the two screens speak one vocabulary. */
-export const TAX_SLABS = [0, 5, 12, 18, 28] as const;
+export const TAX_SLABS = [0, 5, 12, 18, 28, 40] as const; // QA-218 (Owner 11-11): + 40%
 
 /**
  * `shared.ts#DOC_UNITS` plus `JOB`, which only this app produces: a bill raised

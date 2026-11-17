@@ -49,6 +49,7 @@ export interface JobView {
   customerName: string;
   flatLabel?: string;
   partyId: string;
+  isWalkIn?: boolean;
   primaryBookingId: string;
   bookingIds: string[];
   approvedQuoteDocumentId?: string;
@@ -71,6 +72,7 @@ export interface JobQuoteView {
   sentByName: string;
   decidedAt?: string;
   declineReason?: string;
+  yesRecordedByName?: string;
   documentStatus?: string;
   lines: PartnerDocumentLine[];
   totals?: PartnerDocumentTotals;

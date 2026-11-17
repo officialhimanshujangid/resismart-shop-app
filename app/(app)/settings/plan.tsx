@@ -22,6 +22,8 @@ import { sharePlatformInvoicePdf } from '../../../src/features/billing/pdf';
 import { UsageMeterBar } from '../../../src/features/catalog/components/UsageMeterBar'; // X2F: one catalogue-items meter
 import { Card, ErrorBlock, Row, Screen, SectionLabel } from '../../../src/features/more/ui';
 import { formatI18nDate } from '../../../src/i18n';
+import { BillingContactCard } from '../../../src/features/billing/BillingContactCard'; // PAY-C P1-10
+import { PayOnWebRow } from '../../../src/features/billing/PayOnWeb'; // PAY-D P1-22 (D4a)
 
 /** The `t` this file needs — the whole signature, narrowed to what it calls. */
 type TFunc = (key: string, opts?: Record<string, unknown>) => string;
@@ -473,9 +475,13 @@ export default function PlanScreen() {
       ) : (
         // Shown to everybody, trial or not, admin or not: the one answer to
         // "how do I change this", with no link and no place to go and pay.
-        <Notice tone="neutral" icon="information-outline">
-          <Text style={{ color: ds.ink, fontSize: 13 }}>{t('settings.plan.changesNotInApp')}</Text>
-        </Notice>
+        <View style={{ gap: 10 }}>
+          <Notice tone="neutral" icon="information-outline">
+            <Text style={{ color: ds.ink, fontSize: 13 }}>{t('settings.plan.changesNotInApp')}</Text>
+          </Notice>
+          {/* PAY-D (D4a): plans are bought on the website — the same "Pay on web" in every app (admins). */}
+          {isAdmin ? <PayOnWebRow c={c} /> : null}
+        </View>
       )}
       </Rise>
 
@@ -527,7 +533,9 @@ export default function PlanScreen() {
                 // its Razorpay page is where it would be PAID — and says
                 // "Payment pending" instead of offering to open it.
                 const awaitingPayment = !IN_APP_PLAN_PURCHASES && !SETTLED_INVOICE.has(invoice.status ?? '');
-                const hasFile = !awaitingPayment && Boolean(invoice.customPdfUrl || invoice.razorpayInvoiceUrl);
+                // PAY-B P1-12: a numbered settled invoice is rebuilt at download if its PDF went missing.
+                const hasFile = !awaitingPayment && Boolean(invoice.customPdfUrl || invoice.razorpayInvoiceUrl
+                  || (invoice.customInvoiceNumber && SETTLED_INVOICE.has(invoice.status ?? '')));
                 return (
                   <View key={invoice._id}>
                     <Row
@@ -538,6 +546,9 @@ export default function PlanScreen() {
                       subtitle={
                         `${formatPaise(invoice.amount)} · ${t(`settings.plan.invoiceStatus.${invoice.status ?? 'PENDING'}`, { defaultValue: invoice.status ?? 'PENDING' })}` +
                         (invoice.planId?.name ? ` · ${invoice.planId.name}` : '') +
+                        // PAY-B P1-16 / P1-24 — prices are GST-inclusive; any TDS the business kept back.
+                        ((invoice.gstPaise ?? 0) > 0 ? `\n${t('settings.plan.inclGst', { amount: formatPaise(invoice.gstPaise as number) })}` : '') +
+                        ((invoice.tdsPaise ?? 0) > 0 ? `\n${t('settings.plan.tdsLine', { amount: formatPaise(invoice.tdsPaise as number), section: invoice.tdsSection || '—' })}` : '') +
                         (invoice.pricingSnapshot?.line ? `\n${invoice.pricingSnapshot.line}` : '')
                       }
                       right={
@@ -581,6 +592,9 @@ export default function PlanScreen() {
           )}
         </Rise>
       )}
+
+      {/* PAY-C P1-10 — all admins + an optional billing email (cc) get every billing mail. */}
+      {isAdmin && <BillingContactCard index={4} />}
 
       <Row
         c={c}

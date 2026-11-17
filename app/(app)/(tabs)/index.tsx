@@ -670,7 +670,7 @@ export default function TodayScreen() {
           <RentTodayCard c={c} list={myRent.data} />
 
           {/* Commerce C1: the one-tap Pause orders — only for someone who may pause; nothing otherwise. */}
-          <PauseOrdersCard c={c} />
+          <PauseOrdersCard c={c} hidden={listingHidden} />
 
           {/* >>> SHORTCUTS: the most-used jobs, one tap each — near the top, above
               the long lists. Each tile gated like its destination; nothing drawn

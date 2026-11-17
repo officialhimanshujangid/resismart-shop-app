@@ -1,4 +1,4 @@
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import axios from 'axios';
 import NetInfo from '@react-native-community/netinfo';
 import { QueryClient } from '@tanstack/react-query';
@@ -252,7 +252,10 @@ async function syncPending(): Promise<void> {
   syncing = true;
   emit();
   try {
-    const pending = visible().filter((d) => d.status === 'PENDING' || d.status === 'FAILED');
+    // A bill stopped at the credit limit waits for a person: the cashier said no,
+    // so it must not issue by itself later when the limit or the balance changes.
+    const pending = visible().filter((d) => d.status === 'PENDING'
+      || (d.status === 'FAILED' && d.lastErrorCode !== 'PARTY_CREDIT_LIMIT_EXCEEDED'));
     for (const draft of pending) {
       // Sequential, not parallel: each `create` charges one unit of
       // `max_invoices_month`. Two of these firing at once, one unit under the
@@ -284,7 +287,9 @@ function ensureInitialized(): void {
   });
 
   NetInfo.addEventListener((state) => {
-    const reachable = state.isInternetReachable;
+    // QA 11-04 — on web the reachability ping (a Google URL) is refused by CORS, so
+    // the web build always read "No connection"; there only the link state counts.
+    const reachable = Platform.OS === 'web' ? null : state.isInternetReachable;
     const nowOnline = reachable === null ? state.isConnected !== false : reachable;
     const wasOffline = !online;
     online = nowOnline;

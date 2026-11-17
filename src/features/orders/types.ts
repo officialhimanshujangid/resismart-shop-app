@@ -101,6 +101,8 @@ export interface PartnerOrder {
     discountPaise: number;
     totalPaise: number;
     // Commerce C1 extras (§1.2) — present only when the order was priced with them.
+    deliveryTaxablePaise?: number;
+    deliveryTaxPaise?: number;
     offerDiscountPaise?: number;
     pointsDiscountPaise?: number;
     walletPaise?: number;

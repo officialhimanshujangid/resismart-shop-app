@@ -43,13 +43,15 @@ export interface ShortcutGateInput {
   can: (m: PartnerAccessModule, level?: 'READ' | 'FULL') => boolean;
   hasModule: (m: PartnerModule) => boolean;
   commerce: CommerceAccess;
+  /** 11-06 — what the business does (web twin: `partnerShortcutTiles`). */
+  kind?: string;
 }
 
 /**
  * Pure — the tiles this person may open, most-used first. `[]` until the
  * entitlements answer lands (fail closed, like the tab bar).
  */
-export function shortcutTilesFor({ ready, can, hasModule, commerce }: ShortcutGateInput): ShortcutTile[] {
+export function shortcutTilesFor({ ready, can, hasModule, commerce, kind }: ShortcutGateInput): ShortcutTile[] {
   if (!ready) return [];
   const invoicing = hasModule('INVOICING');
   const catalog = hasModule('CATALOG');
@@ -79,7 +81,20 @@ export function shortcutTilesFor({ ready, can, hasModule, commerce }: ShortcutGa
     // The More door (settings.canEdit) AND the screen's own read gate (settings.canView).
     { key: 'ONLINE_SHOP', icon: 'storefront-edit-outline', labelKey: 'commerce.doors.settings', href: '/commerce/settings' as Href, show: commerce.settings.canView && commerce.settings.canEdit },
   ];
-  return tiles.filter((x) => x.show).map(({ key, icon, labelKey, href }) => ({ key, icon, labelKey, href }));
+  // 11-06 deep QA — the web twin's rule: a business that offers services gets
+  // Bookings, its services and its hours here; for SERVICE they lead and the
+  // shop tiles go last; RETAIL (and unknown) is unchanged.
+  const bookings = hasModule('BOOKINGS') && can('BOOKINGS_VIEW', 'READ');
+  const service: typeof tiles = [
+    { key: 'BOOKINGS', icon: 'calendar-check-outline', labelKey: 'modules.BOOKINGS.label', href: '/bookings' as Href, show: bookings },
+    { key: 'SERVICES', icon: 'star-four-points-outline', labelKey: 'more.rows.services', href: '/services' as Href, show: bookings && can('BOOKINGS_MANAGE', 'FULL') },
+    { key: 'WORKING_HOURS', icon: 'clock-outline', labelKey: 'availability.nav.title', href: '/availability' as Href, show: bookings && can('BOOKINGS_MANAGE', 'FULL') },
+  ];
+  const shopOnly = new Set(['ADD_PRODUCT', 'STOCK', 'ONLINE_SHOP']);
+  const ordered = kind === 'SERVICE'
+    ? [...service, ...tiles.filter((x) => !shopOnly.has(x.key)), ...tiles.filter((x) => shopOnly.has(x.key))]
+    : kind === 'BOTH' ? [...tiles.slice(0, 3), ...service, ...tiles.slice(3)] : tiles;
+  return ordered.filter((x) => x.show).map(({ key, icon, labelKey, href }) => ({ key, icon, labelKey, href }));
 }
 
 /**
@@ -179,10 +194,10 @@ function ShortcutTileButton({
  */
 export function TodayShortcutGrid(_props: { c: ColorScheme }) {
   const { t } = useTranslation();
-  const { ready, can, hasModule } = usePartnerEntitlements();
+  const { ready, can, hasModule, entitlements } = usePartnerEntitlements();
   const commerce = useCommerceAccess();
   const { width, fontScale } = useWindowDimensions();
-  const tiles = shortcutTilesFor({ ready, can, hasModule, commerce });
+  const tiles = shortcutTilesFor({ ready, can, hasModule, commerce, kind: (entitlements?.business as { kind?: string } | null | undefined)?.kind });
   // Nothing this person may open → no heading, no empty card.
   if (!tiles.length) return null;
 

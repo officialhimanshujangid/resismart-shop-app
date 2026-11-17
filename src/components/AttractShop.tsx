@@ -39,7 +39,7 @@ const track = (id: string, event: 'view' | 'tap' | 'dismiss') => {
   apiClient.post(`/app-promos/${encodeURIComponent(id)}/event`, { event }).catch(() => { /* counts are best effort */ });
 };
 const open = (href: string, external: boolean) => {
-  if (external) { void Linking.openURL(href).catch(() => {}); return; }
+  if (external) { if (href.toLowerCase().startsWith('https:')) void Linking.openURL(href).catch(() => {}); return; } // SEC-G7: https only
   router.push(href as Href);
 };
 

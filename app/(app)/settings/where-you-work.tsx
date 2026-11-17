@@ -9,6 +9,7 @@ import { qk } from '../../../src/lib/queryKeys';
 import { usePartnerEntitlements } from '../../../src/hooks';
 import { partnerApi } from '../../../src/api/partner.api';
 import { PartnerServiceMode } from '../../../src/types/api-contract.generated';
+import type { PartnerKind } from '../../../src/types/api-contract.generated';
 import { AppInput } from '../../../src/components/AppInput';
 import { Button, useToast } from '../../../src/components/ui'; // M19: kit button (haptic) + success toast
 import { Card, ChipRow, ErrorBlock, Loading, Screen, SectionLabel } from '../../../src/features/more/ui';
@@ -72,12 +73,25 @@ export default function WhereYouWorkScreen() {
   );
 
   const [choice, setChoice] = useState<ModeChoice | ''>('');
+  // 11-06 — what the business does (web twin: Partner settings → What you do).
+  const [kind, setKind] = useState<PartnerKind | ''>('');
+  const [loadedKind, setLoadedKind] = useState<PartnerKind | ''>('');
+  const kinds = useMemo(
+    () => ([
+      { key: 'RETAIL' as PartnerKind, label: t('settings.whatYouDo.RETAIL') },
+      { key: 'SERVICE' as PartnerKind, label: t('settings.whatYouDo.SERVICE') },
+      { key: 'BOTH' as PartnerKind, label: t('settings.whatYouDo.BOTH') },
+    ]),
+    [t],
+  );
   const [radius, setRadius] = useState('');
 
   useEffect(() => {
     const p = query.data?.partner;
     if (!p) return;
     setChoice(choiceOf(p.serviceModes));
+    setKind((p.kind as PartnerKind) || '');
+    setLoadedKind((p.kind as PartnerKind) || '');
     setRadius(p.serviceRadiusKm ? String(p.serviceRadiusKm) : '');
   }, [query.data]);
 
@@ -87,6 +101,7 @@ export default function WhereYouWorkScreen() {
       // Only when it applies. The server refuses a radius on a partner who does
       // not travel, and an empty string would fail its `z.coerce.number()`.
       serviceRadiusKm: travels(choice) && radius ? Number(radius) : undefined,
+      kind: kind && kind !== loadedKind ? kind : undefined,
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.partner.me() });
@@ -124,6 +139,12 @@ export default function WhereYouWorkScreen() {
 
   return (
     <Screen c={c} title={t('settings.whereYouWork.title')} subtitle={canEdit ? undefined : t('settings.whereYouWork.viewOnly')} rise>
+      <Card c={c}>
+        <SectionLabel c={c}>{t('settings.whatYouDo.title')}</SectionLabel>
+        <Text style={{ color: c.textSecondary, marginBottom: 12 }}>{t('settings.whatYouDo.note')}</Text>
+        <ChipRow<PartnerKind> c={c} options={kinds} value={kind} onChange={(k) => canEdit && setKind(k)} />
+      </Card>
+
       <Card c={c}>
         <SectionLabel c={c}>{t('settings.whereYouWork.howYouServe')}</SectionLabel>
         <Text style={{ color: c.textSecondary, marginBottom: 12 }}>

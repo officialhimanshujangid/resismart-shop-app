@@ -69,6 +69,22 @@ beforeEach(() => {
   mockState.features = [];
 });
 
+describe('11-06 — Today shortcuts follow what the business does', () => {
+  const forKind = (kind: string) => {
+    const can = () => true;
+    const hasModule = () => true;
+    const commerce = commerceAccessOf({ ready: true, isAdmin: true, permissions: {}, features: [], can, hasModule });
+    return shortcutTilesFor({ ready: true, can, hasModule, commerce, kind }).map((t) => t.key);
+  };
+  it('services lead for SERVICE; shop tiles last; RETAIL unchanged', () => {
+    const k = forKind('SERVICE');
+    expect(k.slice(0, 3)).toEqual(['BOOKINGS', 'SERVICES', 'WORKING_HOURS']);
+    expect(k.indexOf('ADD_PRODUCT')).toBeGreaterThan(k.indexOf('REPORTS'));
+    expect(forKind('BOTH').slice(3, 6)).toEqual(['BOOKINGS', 'SERVICES', 'WORKING_HOURS']);
+    expect(forKind('RETAIL')).not.toContain('BOOKINGS');
+  });
+});
+
 describe('Today shortcuts — gates', () => {
   it('the proprietor gets every tile, most-used first (Offers only once the feature is on)', () => {
     expect(tilesFor({ isAdmin: true, features: ['OFFERS', 'STOREFRONT'] })).toEqual([
@@ -135,12 +151,13 @@ describe('Today shortcuts — gates', () => {
       const can = () => true;
       const hasModule = () => true;
       const commerce = commerceAccessOf({ ready: true, isAdmin: true, permissions: {}, features: ['OFFERS'], can, hasModule });
-      return shortcutTilesFor({ ready: true, can, hasModule, commerce });
+      return shortcutTilesFor({ ready: true, can, hasModule, commerce, kind: 'BOTH' }); // 11-06: incl. service tiles
     })();
     const appDir = resolve(__dirname, '../../app/(app)');
     for (const t of tiles) {
       const path = String(t.href);
-      const file = existsSync(resolve(appDir, `.${path}.tsx`)) || existsSync(resolve(appDir, `.${path}/index.tsx`));
+      const file = existsSync(resolve(appDir, `.${path}.tsx`)) || existsSync(resolve(appDir, `.${path}/index.tsx`))
+        || existsSync(resolve(appDir, `./(tabs)${path}.tsx`)); // a tab screen (e.g. /bookings) lives in the (tabs) group
       expect([path, file]).toEqual([path, true]);
     }
   });

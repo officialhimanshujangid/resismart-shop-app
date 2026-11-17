@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
+import { ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -21,6 +22,8 @@ import { queryClient } from '../src/lib/queryClient';
 import { useOnboardingGate } from '../src/hooks';
 import { useAppFonts } from '../src/theme/fonts';
 import { ToastProvider } from '../src/components/ui/Toast';
+import { navThemeFor } from '../src/theme/navTheme';
+import { themeColors } from '../src/constants/colors';
 
 /**
  * Which half of the app exists, decided by `Stack.Protected`.
@@ -148,7 +151,8 @@ export default function RootLayout() {
   if (!languageReady || !fontsReady) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    // DARK-D4: in dark the window ground is the app ground (light unchanged).
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: isDark ? themeColors(true).background : undefined }}>
       <SafeAreaProvider>
         {/*
           The QueryClientProvider sits ABOVE AuthProvider on purpose: the auth
@@ -161,7 +165,10 @@ export default function RootLayout() {
             <ToastProvider>
               <AuthProvider>
                 <StatusBar style={isDark ? 'light' : 'dark'} />
-                <RootNavigator />
+                {/* DARK-D4: nav cards / fades follow the theme, not DefaultTheme grey. */}
+                <NavThemeProvider value={navThemeFor(isDark)}>
+                  <RootNavigator />
+                </NavThemeProvider>
               </AuthProvider>
             </ToastProvider>
           </PaperProvider>

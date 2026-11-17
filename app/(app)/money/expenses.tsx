@@ -4,6 +4,7 @@ import { Snackbar, Text } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useMoneyName } from '@/features/money/names';
 
 import { radii, themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -26,6 +27,7 @@ type Period = 'MONTH' | 'LAST30';
 
 export default function ExpensesScreen() {
   const { t } = useTranslation();
+  const nm = useMoneyName(); // PAR-032
   const c = themeColors(useColorScheme() === 'dark');
   const queryClient = useQueryClient();
   const { can } = usePartnerEntitlements();
@@ -58,7 +60,7 @@ export default function ExpensesScreen() {
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[styles.title, { color: c.textPrimary }]} numberOfLines={1}>{item.description}</Text>
           <Text style={[styles.meta, { color: c.textSecondary }]} numberOfLines={1}>
-            {item.categoryName} · {formatI18nDate(item.expenseDate, t)} · {t(`money.mode.${item.mode}`)}
+            {nm(item.categoryName)} · {formatI18nDate(item.expenseDate, t)} · {t(`money.mode.${item.mode}`)}
           </Text>
           {off ? <Text style={[styles.meta, { color: c.error }]}>{t('money.expense.cancelled')}</Text> : null}
         </View>

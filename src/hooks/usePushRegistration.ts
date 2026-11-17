@@ -11,6 +11,7 @@ import { qk } from '../lib/queryKeys';
 import { pushScopeKey, pushRegistrationDue, pushRegistrationFresh, stampPushScope } from '../lib/appIdentity'; // NOTIFY-ROUTE · SY
 import i18n from '../i18n';
 import { useLanguage } from '../i18n/useLanguage';
+import { clearGetMemo } from '../api/axios'; // API-DIET (Owner 11-04)
 
 /**
  * Register this device so a new booking reaches a partner who is not looking at
@@ -245,6 +246,7 @@ export function usePushRegistration({ enabled, partnerId }: PushRegistrationInpu
     if (!enabled) return;
     if (Constants.appOwnership === 'expo') return; // Expo Go does not support push notifications
     const sub = Notifications.addNotificationReceivedListener(() => {
+      clearGetMemo(); // API-DIET — the server changed; a refetch must not get the GET memo's older answer
       void queryClient.invalidateQueries({ queryKey: qk.notifications() });
       void queryClient.invalidateQueries({ queryKey: qk.today() });
     });

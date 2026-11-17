@@ -3,6 +3,7 @@ import { StyleSheet, useColorScheme, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useMoneyName } from '@/features/money/names';
 
 import { themeColors } from '../../../src/constants/colors';
 import { usePartnerEntitlements } from '../../../src/hooks';
@@ -36,6 +37,7 @@ function windowOf(p: Period, now = new Date()): { from: string; to: string } {
 
 export default function PnlScreen() {
   const { t } = useTranslation();
+  const nm = useMoneyName(); // PAR-032
   const c = themeColors(useColorScheme() === 'dark');
   const { can } = usePartnerEntitlements();
   const [period, setPeriod] = useState<Period>('MONTH');
@@ -100,7 +102,7 @@ export default function PnlScreen() {
               {(r.expenses ?? []).length > 0 && (
                 <Card c={c}>
                   <Text style={[styles.title, { color: c.textPrimary }]}>{t('money.pnlExpenseSection')}</Text>
-                  {r.expenses!.map((e) => money(e.categoryName, e.amountPaise))}
+                  {r.expenses!.map((e) => money(nm(e.categoryName), e.amountPaise))}
                 </Card>
               )}
               {(r.uncostedItems ?? []).length > 0 && (
